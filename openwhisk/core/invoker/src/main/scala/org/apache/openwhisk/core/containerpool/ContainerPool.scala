@@ -365,7 +365,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   /** Creates a new container and updates state accordingly. */
   def createContainer(memoryLimit: ByteSize): (ActorRef, ContainerData) = {
     val ref = childFactory(context)
-    val data = MemoryData(memoryLimit)
+    val data = MemoryData(new RuntimeResources(1, memoryLimit, 0.B))
     freePool = freePool + (ref -> data)
     ref -> data
   }
@@ -456,15 +456,15 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     MetricEmitter.emitGaugeMetric(LoggingMarkers.CONTAINER_POOL_ACTIVE_COUNT, containersInUse.size)
     MetricEmitter.emitGaugeMetric(
       LoggingMarkers.CONTAINER_POOL_ACTIVE_SIZE,
-      containersInUse.map(_._2.memoryLimit.toMB).sum)
+      containersInUse.map(_._2.resources.mem.amount.toMB).sum)
     MetricEmitter.emitGaugeMetric(
       LoggingMarkers.CONTAINER_POOL_PREWARM_COUNT,
       prewarmedPool.size + prewarmStartingPool.size)
     MetricEmitter.emitGaugeMetric(
       LoggingMarkers.CONTAINER_POOL_PREWARM_SIZE,
-      prewarmedPool.map(_._2.memoryLimit.toMB).sum + prewarmStartingPool.map(_._2._2.toMB).sum)
+      prewarmedPool.map(_._2.resources.mem.amount.toMB).sum + prewarmStartingPool.map(_._2._2.toMB).sum)
     val unused = freePool.filter(_._2.activeActivationCount == 0)
-    val unusedMB = unused.map(_._2.memoryLimit.toMB).sum
+    val unusedMB = unused.map(_._2.resources.mem.amount.toMB).sum
     MetricEmitter.emitGaugeMetric(LoggingMarkers.CONTAINER_POOL_IDLES_COUNT, unused.size)
     MetricEmitter.emitGaugeMetric(LoggingMarkers.CONTAINER_POOL_IDLES_SIZE, unusedMB)
   }
@@ -479,7 +479,7 @@ object ContainerPool {
    * @return The memory consumption of all containers in the pool in Megabytes.
    */
   protected[containerpool] def memoryConsumptionOf[A](pool: Map[A, ContainerData]): Long = {
-    pool.map(_._2.memoryLimit.toMB).sum
+    pool.map(_._2.resources.mem.amount.toMB).sum
   }
 
   /**
@@ -548,7 +548,7 @@ object ContainerPool {
       // - there are enough free containers that can be removed
       val (ref, data) = freeContainers.minBy(_._2.lastUsed)
       // Catch exception if remaining memory will be negative
-      val remainingMemory = Try(memory - data.memoryLimit).getOrElse(0.B)
+      val remainingMemory = Try(memory - data.resources.mem.amount).getOrElse(0.B)
       remove(freeContainers - ref, remainingMemory, toRemove ++ List(ref))
     } else {
       // If this is the first call: All containers are in use currently, or there is more memory needed than
