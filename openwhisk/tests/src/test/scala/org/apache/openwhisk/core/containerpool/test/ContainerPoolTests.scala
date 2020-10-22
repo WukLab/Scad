@@ -118,7 +118,7 @@ class ContainerPoolTests
 
   /** Helper to create PreWarmedData */
   def preWarmedData(kind: String, memoryLimit: ByteSize = memoryLimit, expires: Option[Deadline] = None) =
-    PreWarmedData(stub[MockableContainer], kind, new RuntimeResources(1, memoryLimit, 0.B), expires = expires)
+    PreWarmedData(stub[MockableContainer], kind, new ResourceSpec(1, memoryLimit, 0.B), expires = expires)
 
   /** Helper to create WarmedData */
   def warmedData(run: Run, lastUsed: Instant = Instant.now) = {
@@ -990,7 +990,7 @@ class ContainerPoolObjectTests extends FlatSpec with Matchers with MockFactory {
 
   /** Helper to create PreWarmedData with sensible defaults */
   def preWarmedData(kind: String = "anyKind", expires: Option[Deadline] = None) =
-    PreWarmedData(stub[MockableContainer], kind, new RuntimeResources(1, 256.MB, 0.B), expires = expires)
+    PreWarmedData(stub[MockableContainer], kind, new ResourceSpec(1, 256.MB, 0.B), expires = expires)
 
   /** Helper to create NoData */
   def noData() = NoData()
