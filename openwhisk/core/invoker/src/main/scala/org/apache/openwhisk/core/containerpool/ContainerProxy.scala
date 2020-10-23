@@ -78,16 +78,41 @@ case object Removing extends ContainerState
 
 abstract class ResourceType[T](var amount: T) {
 }
-class Cpu(amount: Int) extends ResourceType[Int](amount){
+
+/**
+ *
+ * @param amount represents a number of physical CPUs a container occupies
+ */
+class Cpu(amount: Double) extends ResourceType[Double](amount){
 }
+
+/**
+ * @param amount represents a maximum amount of local memory that a container occupies
+ */
 class Memory(amount: ByteSize) extends ResourceType[ByteSize](amount){
 }
+
+/**
+ * @param amount represents an amount of "far" (non-local) memory a container occupies
+ */
 class FarMemory(amount: ByteSize) extends ResourceType[ByteSize](amount) {
 }
+
+/**
+ * @param amount represents an amount of local storage that a container occupies
+ */
 class Storage(amount: ByteSize) extends ResourceType[ByteSize](amount){
 }
 
-class ResourceSpec(cpus: Int = 1, memSize: ByteSize = 0.B, storageSize: ByteSize = 0.B) {
+/**
+ * A resource specification used to determine which types of resource should be utilized by a given
+ * container.
+ *
+ * @param cpus the number of CPUs this container may use
+ * @param memSize the maximum amount of local memory the container may use
+ * @param storageSize the amount of local storage this container may utilize.
+ */
+class ResourceSpec(cpus: Double = 1, memSize: ByteSize = 0.B, storageSize: ByteSize = 0.B) {
   val cpu: Cpu = new Cpu(cpus)
   var mem: Memory = new Memory(memSize)
   var storage: Storage = new Storage(storageSize)
