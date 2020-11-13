@@ -247,7 +247,7 @@ object Controller {
 
     // if deploying multiple instances (scale out), must pass the instance number as the
     require(args.length >= 1, "controller instance required")
-    val instance = ControllerInstanceId(args(0))
+    val instance = new ControllerInstanceId(args(0))
 
     def abort(message: String) = {
       logger.error(this, message)

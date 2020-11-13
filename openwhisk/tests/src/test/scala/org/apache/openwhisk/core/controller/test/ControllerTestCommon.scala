@@ -55,7 +55,7 @@ protected trait ControllerTestCommon
     with StreamLogging
     with CustomHeaders {
 
-  val activeAckTopicIndex = ControllerInstanceId("0")
+  val activeAckTopicIndex = new ControllerInstanceId("0")
 
   implicit val routeTestTimeout = RouteTestTimeout(90 seconds)
 

@@ -1989,7 +1989,7 @@ trait WebActionsApiBaseTests extends ControllerTestCommon with BeforeAndAfterEac
   }
 
   class TestingEntitlementProvider(config: WhiskConfig, loadBalancer: LoadBalancer)
-      extends EntitlementProvider(config, loadBalancer, ControllerInstanceId("0")) {
+      extends EntitlementProvider(config, loadBalancer, new ControllerInstanceId("0")) {
 
     // The check method checks both throttle and entitlement.
     protected[core] override def check(user: Identity, right: Privilege, resource: Resource)(

@@ -33,7 +33,7 @@ class ControllerInstanceIdTests extends FlatSpec with Matchers {
 
   it should "accept usable characters" in {
     Seq("a", "1", "a.1", "a_1").foreach { s =>
-      ControllerInstanceId(s).asString shouldBe s
+      new ControllerInstanceId(s).asString shouldBe s
 
     }
   }
@@ -41,18 +41,18 @@ class ControllerInstanceIdTests extends FlatSpec with Matchers {
   it should "reject unusable characters" in {
     Seq(" ", "!", "$", "a" * 129).foreach { s =>
       an[IllegalArgumentException] shouldBe thrownBy {
-        ControllerInstanceId(s)
+        new ControllerInstanceId(s)
       }
     }
   }
 
   it should "deserialize legacy ControllerInstanceId format" in {
-    val i = ControllerInstanceId("controller0")
+    val i = new ControllerInstanceId("controller0")
     ControllerInstanceId.parse(JsObject("asString" -> JsString("controller0")).compactPrint) shouldBe Success(i)
   }
 
   it should "serialize and deserialize ControllerInstanceId" in {
-    val i = ControllerInstanceId("controller0")
+    val i = new ControllerInstanceId("controller0")
     i.serialize shouldBe JsObject("asString" -> JsString(i.asString), "instanceType" -> JsString(i.instanceType)).compactPrint
     i.serialize shouldBe i.toJson.compactPrint
     InstanceId.parse(i.serialize) shouldBe Success(i)

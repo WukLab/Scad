@@ -481,7 +481,7 @@ class ShardingContainerPoolBalancerTests
         TestProbe().testActor
     }
     val balancer =
-      new ShardingContainerPoolBalancer(config, ControllerInstanceId("0"), feedProbe, invokerPoolProbe, mockMessaging)
+      new ShardingContainerPoolBalancer(config, new ControllerInstanceId("0"), feedProbe, invokerPoolProbe, mockMessaging)
 
     val invokers = IndexedSeq.tabulate(numInvokers) { i =>
       new InvokerHealth(InvokerInstanceId(i, userMemory = invokerMem), Healthy)
@@ -505,7 +505,7 @@ class ShardingContainerPoolBalancerTests
         actionMetaData.rev,
         Identity(Subject(), Namespace(invocationNamespace, uuid), BasicAuthenticationAuthKey(uuid, Secret())),
         aid,
-        ControllerInstanceId("0"),
+        new ControllerInstanceId("0"),
         blocking = false,
         content = None,
         initArgs = Set.empty,

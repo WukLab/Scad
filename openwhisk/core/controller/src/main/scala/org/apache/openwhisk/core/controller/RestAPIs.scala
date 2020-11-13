@@ -80,7 +80,7 @@ protected[controller] class SwaggerDocs(apipath: Uri.Path, doc: String)(implicit
   private def apiDocsUrl = basepath(apipath / swaggerdocpath)
 }
 
-protected[controller] object RestApiCommons {
+protected[core] object RestApiCommons {
   def requiredProperties =
     Map(WhiskConfig.servicePort -> 8080.toString) ++
       EntitlementProvider.requiredProperties ++

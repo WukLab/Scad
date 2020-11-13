@@ -192,7 +192,7 @@ class InvokerSupervisionTests
         Namespace(EntityName("unhealthyInvokerCheck"), uuid),
         BasicAuthenticationAuthKey(uuid, Secret())),
       activationId = new ActivationIdGenerator {}.make(),
-      rootControllerIndex = ControllerInstanceId("0"),
+      rootControllerIndex = new ControllerInstanceId("0"),
       blocking = false,
       content = None,
       initArgs = Set.empty,
@@ -213,7 +213,7 @@ class InvokerSupervisionTests
     val pool = TestProbe()
     val invoker =
       pool.system.actorOf(
-        InvokerActor.props(InvokerInstanceId(0, userMemory = defaultUserMemory), ControllerInstanceId("0")))
+        InvokerActor.props(InvokerInstanceId(0, userMemory = defaultUserMemory), new ControllerInstanceId("0")))
 
     within(timeout.duration) {
       pool.send(invoker, SubscribeTransitionCallBack(pool.ref))
@@ -231,7 +231,7 @@ class InvokerSupervisionTests
     val pool = TestProbe()
     val invoker =
       pool.system.actorOf(
-        InvokerActor.props(InvokerInstanceId(0, userMemory = defaultUserMemory), ControllerInstanceId("0")))
+        InvokerActor.props(InvokerInstanceId(0, userMemory = defaultUserMemory), new ControllerInstanceId("0")))
 
     within(timeout.duration) {
       pool.send(invoker, SubscribeTransitionCallBack(pool.ref))
@@ -267,7 +267,7 @@ class InvokerSupervisionTests
     val pool = TestProbe()
     val invoker =
       pool.system.actorOf(
-        InvokerActor.props(InvokerInstanceId(0, userMemory = defaultUserMemory), ControllerInstanceId("0")))
+        InvokerActor.props(InvokerInstanceId(0, userMemory = defaultUserMemory), new ControllerInstanceId("0")))
 
     within(timeout.duration) {
       pool.send(invoker, SubscribeTransitionCallBack(pool.ref))
@@ -304,7 +304,7 @@ class InvokerSupervisionTests
     val pool = TestProbe()
     val invoker =
       pool.system.actorOf(
-        InvokerActor.props(InvokerInstanceId(0, userMemory = defaultUserMemory), ControllerInstanceId("0")))
+        InvokerActor.props(InvokerInstanceId(0, userMemory = defaultUserMemory), new ControllerInstanceId("0")))
 
     within(timeout.duration) {
       pool.send(invoker, SubscribeTransitionCallBack(pool.ref))
@@ -320,7 +320,7 @@ class InvokerSupervisionTests
 
   it should "start timer to send testactions when unhealthy" in {
     val invoker =
-      TestFSMRef(new InvokerActor(InvokerInstanceId(0, userMemory = defaultUserMemory), ControllerInstanceId("0")))
+      TestFSMRef(new InvokerActor(InvokerInstanceId(0, userMemory = defaultUserMemory), new ControllerInstanceId("0")))
     invoker.stateName shouldBe Unhealthy
 
     invoker.isTimerActive(InvokerActor.timerName) shouldBe true

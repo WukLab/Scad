@@ -46,7 +46,7 @@ case class InvokerInstanceId(val instance: Int,
   override val toJson: JsValue = InvokerInstanceId.serdes.write(this)
 }
 
-case class ControllerInstanceId(asString: String) extends InstanceId {
+class ControllerInstanceId(val asString: String) extends InstanceId {
   validate(asString)
   override val instanceType = "controller"
 
@@ -57,15 +57,9 @@ case class ControllerInstanceId(asString: String) extends InstanceId {
   override val toJson: JsValue = ControllerInstanceId.serdes.write(this)
 }
 
-case class RackSchedInstanceId(asString: String) extends InstanceId {
+class RackSchedInstanceId(override val asString: String) extends ControllerInstanceId(asString) {
   validate(asString)
-  override val instanceType = "rackSched"
-
-  override val source = s"$instanceType$asString"
-
-  override val toString: String = source
-
-  override val toJson: JsValue = RackSchedInstanceId.serdes.write(this)
+  override val instanceType = "racksched"
 }
 
 object InvokerInstanceId extends DefaultJsonProtocol {
@@ -122,34 +116,34 @@ object ControllerInstanceId extends DefaultJsonProtocol {
     }
   }
 }
-
-object RackSchedInstanceId extends DefaultJsonProtocol {
-  def parse(c: String): Try[RackSchedInstanceId] = Try(serdes.read(c.parseJson))
-
-  implicit val serdes: RootJsonFormat[RackSchedInstanceId] = new RootJsonFormat[RackSchedInstanceId] {
-    override def write(c: RackSchedInstanceId): JsValue =
-      JsObject("asString" -> JsString(c.asString), "instanceType" -> JsString(c.instanceType))
-
-    override def read(json: JsValue): RackSchedInstanceId = {
-      json.asJsObject.getFields("asString", "instanceType") match {
-        case Seq(JsString(asString), JsString(instanceType)) =>
-          if (instanceType == "controller") {
-            new RackSchedInstanceId(asString)
-          } else {
-            deserializationError("could not read ControllerInstanceId")
-          }
-        case Seq(JsString(asString)) =>
-          new RackSchedInstanceId(asString)
-        case _ =>
-          deserializationError("could not read ControllerInstanceId")
-      }
-    }
-  }
-}
+//
+//object RackSchedInstanceId extends DefaultJsonProtocol {
+//  def parse(c: String): Try[RackSchedInstanceId] = Try(serdes.read(c.parseJson))
+//
+//  implicit val serdes: RootJsonFormat[RackSchedInstanceId] = new RootJsonFormat[RackSchedInstanceId] {
+//    override def write(c: RackSchedInstanceId): JsValue =
+//      JsObject("asString" -> JsString(c.asString), "instanceType" -> JsString(c.instanceType))
+//
+//    override def read(json: JsValue): RackSchedInstanceId = {
+//      json.asJsObject.getFields("asString", "instanceType") match {
+//        case Seq(JsString(asString), JsString(instanceType)) =>
+//          if (instanceType == "controller") {
+//            new RackSchedInstanceId(asString)
+//          } else {
+//            deserializationError("could not read ControllerInstanceId")
+//          }
+//        case Seq(JsString(asString)) =>
+//          new RackSchedInstanceId(asString)
+//        case _ =>
+//          deserializationError("could not read ControllerInstanceId")
+//      }
+//    }
+//  }
+//}
 
 trait InstanceId {
 
-  // controller ids become part of a kafka topic, hence, hence allow only certain characters
+  // controller ids become part of a kafka topic, hence allow only certain characters
   // see https://github.com/apache/kafka/blob/trunk/clients/src/main/java/org/apache/kafka/common/internals/Topic.java#L29
   private val LEGAL_CHARS = "[a-zA-Z0-9._-]+"
 
