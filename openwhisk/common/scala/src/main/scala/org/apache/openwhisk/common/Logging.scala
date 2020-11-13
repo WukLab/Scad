@@ -345,6 +345,7 @@ object LoggingMarkers {
   private val loadbalancer = "loadbalancer"
   private val containerClient = "containerClient"
   private val containerPool = "containerPool"
+  private val racksched = "racksched"
 
   /*
    * The following markers are used to emit log messages as well as metrics. Add all LogMarkerTokens below to
@@ -577,4 +578,26 @@ object LoggingMarkers {
   val DATABASE_ATTS_DELETE =
     LogMarkerToken(database, "deleteDocumentAttachments", start)(MeasurementUnit.time.milliseconds)
   val DATABASE_BATCH_SIZE = LogMarkerToken(database, "batchSize", counter)(MeasurementUnit.none)
+
+  /*
+   * RackSched related markers
+   */
+  def RACKSCHED_STARTUP(id: String) =
+    if (TransactionId.metricsKamonTags)
+      LogMarkerToken(controller, s"startup", counter, None, Map("racksched_id" -> id))(MeasurementUnit.none)
+    else LogMarkerToken(controller, s"startup$id", counter)(MeasurementUnit.none)
+
+  // Time of the activation in controller until it is delivered to Kafka
+  val RACKSCHED_ACTIVATION =
+    LogMarkerToken(controller, activation, start)(MeasurementUnit.time.milliseconds)
+  val RACKSCHED_ACTIVATION_BLOCKING =
+    LogMarkerToken(controller, "blockingActivation", start)(MeasurementUnit.time.milliseconds)
+  val RACKSCHED_ACTIVATION_BLOCKING_DATABASE_RETRIEVAL =
+    LogMarkerToken(controller, "blockingActivationDatabaseRetrieval", counter)(MeasurementUnit.none)
+
+  // Time that is needed to load balance the activation
+  val RACKSCHED_LOADBALANCER = LogMarkerToken(controller, loadbalancer, start)(MeasurementUnit.none)
+
+  // Time that is needed to produce message in kafka
+  val RACKSCHED_KAFKA = LogMarkerToken(controller, kafka, start)(MeasurementUnit.time.milliseconds)
 }

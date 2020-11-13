@@ -57,6 +57,17 @@ case class ControllerInstanceId(asString: String) extends InstanceId {
   override val toJson: JsValue = ControllerInstanceId.serdes.write(this)
 }
 
+case class RackSchedInstanceId(asString: String) extends InstanceId {
+  validate(asString)
+  override val instanceType = "rackSched"
+
+  override val source = s"$instanceType$asString"
+
+  override val toString: String = source
+
+  override val toJson: JsValue = RackSchedInstanceId.serdes.write(this)
+}
+
 object InvokerInstanceId extends DefaultJsonProtocol {
   def parse(c: String): Try[InvokerInstanceId] = Try(serdes.read(c.parseJson))
 
@@ -105,6 +116,30 @@ object ControllerInstanceId extends DefaultJsonProtocol {
           }
         case Seq(JsString(asString)) =>
           new ControllerInstanceId(asString)
+        case _ =>
+          deserializationError("could not read ControllerInstanceId")
+      }
+    }
+  }
+}
+
+object RackSchedInstanceId extends DefaultJsonProtocol {
+  def parse(c: String): Try[RackSchedInstanceId] = Try(serdes.read(c.parseJson))
+
+  implicit val serdes: RootJsonFormat[RackSchedInstanceId] = new RootJsonFormat[RackSchedInstanceId] {
+    override def write(c: RackSchedInstanceId): JsValue =
+      JsObject("asString" -> JsString(c.asString), "instanceType" -> JsString(c.instanceType))
+
+    override def read(json: JsValue): RackSchedInstanceId = {
+      json.asJsObject.getFields("asString", "instanceType") match {
+        case Seq(JsString(asString), JsString(instanceType)) =>
+          if (instanceType == "controller") {
+            new RackSchedInstanceId(asString)
+          } else {
+            deserializationError("could not read ControllerInstanceId")
+          }
+        case Seq(JsString(asString)) =>
+          new RackSchedInstanceId(asString)
         case _ =>
           deserializationError("could not read ControllerInstanceId")
       }
