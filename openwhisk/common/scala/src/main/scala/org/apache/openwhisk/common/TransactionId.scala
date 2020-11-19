@@ -243,6 +243,7 @@ object TransactionId {
   val controller = TransactionId(systemPrefix + "controller") // Controller startup
   val dbBatcher = TransactionId(systemPrefix + "dbBatcher") // Database batcher
   val actionHealthPing = TransactionId(systemPrefix + "actionHealth")
+  val topsched = TransactionId(systemPrefix + "topsched") // tl scheduler startup
   val racksched = TransactionId(systemPrefix + "racksched") // rack scheduler startup
 
   private val dict = ('A' to 'Z') ++ ('a' to 'z') ++ ('0' to '9')

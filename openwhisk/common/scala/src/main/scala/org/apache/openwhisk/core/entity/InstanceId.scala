@@ -57,9 +57,22 @@ class ControllerInstanceId(val asString: String) extends InstanceId {
   override val toJson: JsValue = ControllerInstanceId.serdes.write(this)
 }
 
-class RackSchedInstanceId(override val asString: String) extends ControllerInstanceId(asString) {
+class TopSchedInstanceId(override val asString: String) extends ControllerInstanceId(asString) {
+  validate(asString)
+  override val instanceType = "topsched"
+}
+
+class RackSchedInstanceId(override val asString: String, instance: Int, uniqueName: Option[String], displayName: Option[String]) extends ControllerInstanceId(asString) {
   validate(asString)
   override val instanceType = "racksched"
+
+  def toInt: Int = instance
+
+  override val source = s"$instanceType$instance"
+
+  override val toString: String = (Seq("invoker" + instance) ++ uniqueName ++ displayName).mkString("/")
+
+//  override val toJson: JsValue = InvokerInstanceId.serdes.write(this)
 }
 
 object InvokerInstanceId extends DefaultJsonProtocol {
@@ -116,30 +129,6 @@ object ControllerInstanceId extends DefaultJsonProtocol {
     }
   }
 }
-//
-//object RackSchedInstanceId extends DefaultJsonProtocol {
-//  def parse(c: String): Try[RackSchedInstanceId] = Try(serdes.read(c.parseJson))
-//
-//  implicit val serdes: RootJsonFormat[RackSchedInstanceId] = new RootJsonFormat[RackSchedInstanceId] {
-//    override def write(c: RackSchedInstanceId): JsValue =
-//      JsObject("asString" -> JsString(c.asString), "instanceType" -> JsString(c.instanceType))
-//
-//    override def read(json: JsValue): RackSchedInstanceId = {
-//      json.asJsObject.getFields("asString", "instanceType") match {
-//        case Seq(JsString(asString), JsString(instanceType)) =>
-//          if (instanceType == "controller") {
-//            new RackSchedInstanceId(asString)
-//          } else {
-//            deserializationError("could not read ControllerInstanceId")
-//          }
-//        case Seq(JsString(asString)) =>
-//          new RackSchedInstanceId(asString)
-//        case _ =>
-//          deserializationError("could not read ControllerInstanceId")
-//      }
-//    }
-//  }
-//}
 
 trait InstanceId {
 

@@ -31,7 +31,7 @@ import pureconfig.generic.auto._
 import spray.json.DefaultJsonProtocol._
 import spray.json._
 import org.apache.openwhisk.common.Https.HttpsConfig
-import org.apache.openwhisk.common.{AkkaLogging, ConfigMXBean, Logging, LoggingMarkers, TransactionId}
+import org.apache.openwhisk.common.{AkkaLogging, Logging, LoggingMarkers, TransactionId}
 import org.apache.openwhisk.core.WhiskConfig
 import org.apache.openwhisk.core.connector.MessagingProvider
 import org.apache.openwhisk.core.containerpool.logging.LogStoreProvider
@@ -48,6 +48,8 @@ import org.apache.openwhisk.spi.SpiLoader
 import scala.concurrent.ExecutionContext.Implicits
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.Await
+import scala.concurrent.ExecutionContextExecutor
+import scala.util.Random
 import scala.util.{Failure, Success}
 
 /**
@@ -63,7 +65,7 @@ class RackSched(val instance: RackSchedInstanceId,
 
   TransactionId.racksched.mark(
     this,
-    LoggingMarkers.CONTROLLER_STARTUP(instance.asString),
+    LoggingMarkers.RACKSCHED_STARTUP(instance.asString),
     s"starting racksched instance ${instance.asString}",
     logLevel = InfoLevel)
 
@@ -78,7 +80,7 @@ class RackSched(val instance: RackSchedInstanceId,
       (pathEndOrSingleSlash & get) {
         complete(info)
       }
-    } ~ apiV1.routes ~ internalInvokerHealth
+    } ~ internalInvokerHealth
   }
 
   // initialize datastores
@@ -95,7 +97,7 @@ class RackSched(val instance: RackSchedInstanceId,
   // initialize backend services
   private implicit val loadBalancer =
     SpiLoader.get[RackLoadBalancerProvider].instance(whiskConfig, instance)
-  logging.info(this, s"loadbalancer initialized: ${loadBalancer.getClass.getSimpleName}")(TransactionId.controller)
+  logging.info(this, s"loadbalancer initialized: ${loadBalancer.getClass.getSimpleName}")(TransactionId.racksched)
 
   private implicit val entitlementProvider =
     SpiLoader.get[EntitlementSpiProvider].instance(whiskConfig, loadBalancer, instance)
@@ -108,7 +110,7 @@ class RackSched(val instance: RackSchedInstanceId,
   Collection.initialize(entityStore)
 
   /** The REST APIs. */
-  implicit val rackschedInstance = instance
+  implicit val rackschedInstance: RackSchedInstanceId = instance
   private val apiV1 = new RestAPIVersion(whiskConfig, "api", "v1")
 
   /**
@@ -119,8 +121,8 @@ class RackSched(val instance: RackSchedInstanceId,
    *
    * @return JSON with details of invoker health or count of healthy invokers respectively.
    */
-  protected[RackSched] val internalInvokerHealth = {
-    implicit val executionContext = actorSystem.dispatcher
+  protected[RackSched] val internalInvokerHealth: Route = {
+    implicit val executionContext: ExecutionContextExecutor = actorSystem.dispatcher
     (pathPrefix("invokers") & get) {
       pathEndOrSingleSlash {
         complete {
@@ -148,7 +150,7 @@ class RackSched(val instance: RackSchedInstanceId,
     }
   }
 
-  // controller top level info
+  // racksched top level info
   private val info =
     RackSched.info(whiskConfig, TimeLimit.config, MemoryLimit.config, LogLimit.config, runtimes, List(apiV1.basepath()))
 }
@@ -201,13 +203,12 @@ object RackSched {
   }
 
   def main(args: Array[String]): Unit = {
-    implicit val actorSystem = ActorSystem("controller-actor-system")
+    implicit val actorSystem = ActorSystem("racksched-actor-system")
     implicit val logger = new AkkaLogging(akka.event.Logging.getLogger(actorSystem, this))
     start(args)
   }
 
   def start(args: Array[String])(implicit actorSystem: ActorSystem, logger: Logging): Unit = {
-    ConfigMXBean.register()
     Kamon.init()
 
     // Prepare Kamon shutdown
@@ -221,8 +222,8 @@ object RackSched {
     val port = config.servicePort.toInt
 
     // if deploying multiple instances (scale out), must pass the instance number as the
-    require(args.length >= 1, "controller instance required")
-    val instance = new RackSchedInstanceId(args(0))
+    require(args.length >= 1, "racksched instance required")
+    val instance = new RackSchedInstanceId(args(0), Random.nextInt(), None, None)
 
     def abort(message: String) = {
       logger.error(this, message)
@@ -250,7 +251,7 @@ object RackSched {
 
     ExecManifest.initialize(config) match {
       case Success(_) =>
-        val controller = new RackSched(
+        val racksched = new RackSched(
           instance,
           ExecManifest.runtimesManifest,
           config,
@@ -259,11 +260,11 @@ object RackSched {
           logger)
 
         val httpsConfig =
-          if (RackSched.protocol == "https") Some(loadConfigOrThrow[HttpsConfig]("whisk.controller.https")) else None
+          if (RackSched.protocol == "https") Some(loadConfigOrThrow[HttpsConfig]("whisk.racksched.https")) else None
 
-        BasicHttpService.startHttpService(controller.route, port, httpsConfig, interface)(
+        BasicHttpService.startHttpService(racksched.route, port, httpsConfig, interface)(
           actorSystem,
-          controller.materializer)
+          racksched.materializer)
 
       case Failure(t) =>
         abort(s"Invalid runtimes manifest: $t")

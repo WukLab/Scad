@@ -41,6 +41,7 @@ import org.apache.openwhisk.core.entity.ActivationId.ActivationIdGenerator
 import org.apache.openwhisk.core.entity.ExecManifest.Runtimes
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.loadBalancer.{InvokerState, LoadBalancerProvider}
+import org.apache.openwhisk.core.topbalancer.TopBalancerProvider
 import org.apache.openwhisk.http.{BasicHttpService, BasicRasService}
 import org.apache.openwhisk.spi.SpiLoader
 
@@ -67,10 +68,10 @@ import scala.util.{Failure, Success}
  *
  * Uses the Akka routing DSL: http://doc.akka.io/docs/akka-http/current/scala/http/routing-dsl/overview.html
  *
- * @param config A set of properties needed to run an instance of the controller service
+// * @param config A set of properties needed to run an instance of the controller service
  * @param instance if running in scale-out, a unique identifier for this instance in the group
- * @param verbosity logging verbosity
- * @param executionContext Scala runtime support for concurrent operations
+// * @param verbosity logging verbosity
+// * @param executionContext Scala runtime support for concurrent operations
  */
 class Controller(val instance: ControllerInstanceId,
                  runtimes: Runtimes,
@@ -113,7 +114,7 @@ class Controller(val instance: ControllerInstanceId,
 
   // initialize backend services
   private implicit val loadBalancer =
-    SpiLoader.get[LoadBalancerProvider].instance(whiskConfig, instance)
+    SpiLoader.get[TopBalancerProvider].instance(whiskConfig, instance)
   logging.info(this, s"loadbalancer initialized: ${loadBalancer.getClass.getSimpleName}")(TransactionId.controller)
 
   private implicit val entitlementProvider =
