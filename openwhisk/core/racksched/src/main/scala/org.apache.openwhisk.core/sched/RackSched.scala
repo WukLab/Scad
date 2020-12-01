@@ -17,39 +17,36 @@
 
 package org.apache.openwhisk.core.sched
 
-import akka.Done
 import akka.actor.ActorSystem
-import akka.actor.CoordinatedShutdown
 import akka.event.Logging.InfoLevel
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
 import akka.http.scaladsl.model.StatusCodes._
 import akka.http.scaladsl.server.Route
 import akka.stream.ActorMaterializer
-import kamon.Kamon
 import pureconfig._
 import pureconfig.generic.auto._
 import spray.json.DefaultJsonProtocol._
 import spray.json._
 import org.apache.openwhisk.common.Https.HttpsConfig
-import org.apache.openwhisk.common.{AkkaLogging, Logging, LoggingMarkers, TransactionId}
+import org.apache.openwhisk.common.{AkkaLogging, Logging, LoggingMarkers, Scheduler, TransactionId}
 import org.apache.openwhisk.core.WhiskConfig
-import org.apache.openwhisk.core.connector.MessagingProvider
+import org.apache.openwhisk.core.connector.{MessagingProvider, PingRackMessage}
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.containerpool.logging.LogStoreProvider
-import org.apache.openwhisk.core.controller.{RestAPIVersion, RestApiCommons}
+import org.apache.openwhisk.core.controller.RestApiCommons
 import org.apache.openwhisk.core.database.{ActivationStoreProvider, CacheChangeNotification, RemoteCacheInvalidation}
 import org.apache.openwhisk.core.entitlement._
 import org.apache.openwhisk.core.entity.ActivationId.ActivationIdGenerator
 import org.apache.openwhisk.core.entity.ExecManifest.Runtimes
 import org.apache.openwhisk.core.entity._
-import org.apache.openwhisk.core.loadBalancer.{InvokerState, LoadBalancerProvider}
+import org.apache.openwhisk.core.loadBalancer.InvokerState
 import org.apache.openwhisk.http.{BasicHttpService, BasicRasService}
 import org.apache.openwhisk.spi.SpiLoader
+import pureconfig.ConfigReader.Result
 
-import scala.concurrent.ExecutionContext.Implicits
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.Await
 import scala.concurrent.ExecutionContextExecutor
-import scala.util.Random
 import scala.util.{Failure, Success}
 
 /**
@@ -65,8 +62,8 @@ class RackSched(val instance: RackSchedInstanceId,
 
   TransactionId.racksched.mark(
     this,
-    LoggingMarkers.RACKSCHED_STARTUP(instance.asString),
-    s"starting racksched instance ${instance.asString}",
+    LoggingMarkers.RACKSCHED_STARTUP(instance.toString),
+    s"starting racksched instance ${instance.toString}",
     logLevel = InfoLevel)
 
   /**
@@ -84,7 +81,6 @@ class RackSched(val instance: RackSchedInstanceId,
   }
 
   // initialize datastores
-  private implicit val authStore = WhiskAuthStore.datastore()
   private implicit val entityStore = WhiskEntityStore.datastore()
   private implicit val cacheChangeNotification = Some(new CacheChangeNotification {
     val remoteCacheInvalidaton = new RemoteCacheInvalidation(whiskConfig, "racksched", instance)
@@ -97,10 +93,8 @@ class RackSched(val instance: RackSchedInstanceId,
   // initialize backend services
   private implicit val loadBalancer =
     SpiLoader.get[RackLoadBalancerProvider].instance(whiskConfig, instance)
-  logging.info(this, s"loadbalancer initialized: ${loadBalancer.getClass.getSimpleName}")(TransactionId.racksched)
+  logging.info(this, s"rackbalancer initialized: ${loadBalancer.getClass.getSimpleName}")(TransactionId.racksched)
 
-  private implicit val entitlementProvider =
-    SpiLoader.get[EntitlementSpiProvider].instance(whiskConfig, loadBalancer, instance)
   private implicit val activationIdFactory = new ActivationIdGenerator {}
   private implicit val logStore = SpiLoader.get[LogStoreProvider].instance(actorSystem)
   private implicit val activationStore =
@@ -111,7 +105,7 @@ class RackSched(val instance: RackSchedInstanceId,
 
   /** The REST APIs. */
   implicit val rackschedInstance: RackSchedInstanceId = instance
-  private val apiV1 = new RestAPIVersion(whiskConfig, "api", "v1")
+//  private val apiV1 = new RestAPIVersion(whiskConfig, "api", "v1")
 
   /**
    * Handles GET /invokers - list of invokers
@@ -121,7 +115,7 @@ class RackSched(val instance: RackSchedInstanceId,
    *
    * @return JSON with details of invoker health or count of healthy invokers respectively.
    */
-  protected[RackSched] val internalInvokerHealth: Route = {
+  protected[sched] val internalInvokerHealth: Route = {
     implicit val executionContext: ExecutionContextExecutor = actorSystem.dispatcher
     (pathPrefix("invokers") & get) {
       pathEndOrSingleSlash {
@@ -152,7 +146,7 @@ class RackSched(val instance: RackSchedInstanceId,
 
   // racksched top level info
   private val info =
-    RackSched.info(whiskConfig, TimeLimit.config, MemoryLimit.config, LogLimit.config, runtimes, List(apiV1.basepath()))
+    RackSched.info(whiskConfig, TimeLimit.config, MemoryLimit.config, LogLimit.config, runtimes, List("/fillerAPIPath"))
 }
 
 /**
@@ -160,9 +154,9 @@ class RackSched(val instance: RackSchedInstanceId,
  */
 object RackSched {
 
-  protected val protocol = loadConfigOrThrow[String]("whisk.racksched.protocol")
-  protected val interface = loadConfigOrThrow[String]("whisk.racksched.interface")
-  protected val readinessThreshold = loadConfig[Double]("whisk.racksched.readiness-fraction")
+  protected val protocol: String = loadConfigOrThrow[String]("whisk.racksched.protocol")
+  protected val interface: String = loadConfigOrThrow[String]("whisk.racksched.interface")
+  protected val readinessThreshold: Result[Double] = loadConfig[Double]("whisk.racksched.readiness-fraction")
 
   // requiredProperties is a Map whose keys define properties that must be bound to
   // a value, and whose values are default values.   A null value in the Map means there is
@@ -170,15 +164,14 @@ object RackSched {
   def requiredProperties =
     ExecManifest.requiredProperties ++
       RestApiCommons.requiredProperties ++
-      SpiLoader.get[LoadBalancerProvider].requiredProperties ++
-      EntitlementProvider.requiredProperties
+      SpiLoader.get[RackLoadBalancerProvider].requiredProperties
 
-  private def info(config: WhiskConfig,
-                   timeLimit: TimeLimitConfig,
-                   memLimit: MemoryLimitConfig,
-                   logLimit: MemoryLimitConfig,
-                   runtimes: Runtimes,
-                   apis: List[String]) =
+  def info(config: WhiskConfig,
+           timeLimit: TimeLimitConfig,
+           memLimit: MemoryLimitConfig,
+           logLimit: MemoryLimitConfig,
+           runtimes: Runtimes,
+           apis: List[String]) =
     JsObject(
       "description" -> "OpenWhisk".toJson,
       "support" -> JsObject(
@@ -209,21 +202,15 @@ object RackSched {
   }
 
   def start(args: Array[String])(implicit actorSystem: ActorSystem, logger: Logging): Unit = {
-    Kamon.init()
-
-    // Prepare Kamon shutdown
-    CoordinatedShutdown(actorSystem).addTask(CoordinatedShutdown.PhaseActorSystemTerminate, "shutdownKamon") { () =>
-      logger.info(this, s"Shutting down Kamon with coordinated shutdown")
-      Kamon.stopModules().map(_ => Done)(Implicits.global)
-    }
-
     // extract configuration data from the environment
     val config = new WhiskConfig(requiredProperties)
     val port = config.servicePort.toInt
 
     // if deploying multiple instances (scale out), must pass the instance number as the
     require(args.length >= 1, "racksched instance required")
-    val instance = new RackSchedInstanceId(args(0), Random.nextInt(), None, None)
+    val instance = new RackSchedInstanceId(args(0).toInt,
+      new RuntimeResources(0, ByteSize.fromString("0B"), ByteSize.fromString("0B")),
+      None, None)
 
     def abort(message: String) = {
       logger.error(this, message)
@@ -239,7 +226,7 @@ object RackSched {
     val msgProvider = SpiLoader.get[MessagingProvider]
 
     Seq(
-      ("completed" + instance.asString, "completed", Some(ActivationEntityLimit.MAX_ACTIVATION_LIMIT)),
+      ("completed" + instance.toString, "completed", Some(ActivationEntityLimit.MAX_ACTIVATION_LIMIT)),
       ("health", "health", None),
       ("cacheInvalidation", "cache-invalidation", None),
       ("events", "events", None)).foreach {
@@ -248,6 +235,11 @@ object RackSched {
           abort(s"failure during msgProvider.ensureTopic for topic $topic")
         }
     }
+
+    val healthProducer = msgProvider.getProducer(config)
+    Scheduler.scheduleWaitAtMost(1.seconds)(() => {
+      healthProducer.send("health", PingRackMessage(instance))
+    })
 
     ExecManifest.initialize(config) match {
       case Success(_) =>

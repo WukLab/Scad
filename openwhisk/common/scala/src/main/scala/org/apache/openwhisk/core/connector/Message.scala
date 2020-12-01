@@ -268,6 +268,15 @@ object PingMessage extends DefaultJsonProtocol {
   implicit val serdes = jsonFormat(PingMessage.apply _, "name")
 }
 
+case class PingRackMessage(instance: RackSchedInstanceId) extends Message {
+  override def serialize = PingRackMessage.serdes.write(this).compactPrint
+}
+
+object PingRackMessage extends DefaultJsonProtocol {
+  def parse(msg: String) = Try(serdes.read(msg.parseJson))
+  implicit val serdes = jsonFormat(PingRackMessage.apply _, "name")
+}
+
 trait EventMessageBody extends Message {
   def typeName: String
 }

@@ -27,7 +27,7 @@ import kamon.Kamon
 import kamon.metric.{MeasurementUnit, Counter => KCounter, Gauge => KGauge, Histogram => KHistogram}
 import kamon.statsd.{MetricKeyGenerator, SimpleMetricKeyGenerator}
 import kamon.tag.TagSet
-import org.apache.openwhisk.core.entity.ControllerInstanceId
+import org.apache.openwhisk.core.entity.{ControllerInstanceId, RackSchedInstanceId}
 
 trait Logging {
 
@@ -450,6 +450,52 @@ object LoggingMarkers {
     else
       LogMarkerToken(
         loadbalancer + controllerInstance.asString,
+        "completionAck_" + completionAckType.asString,
+        counter)(MeasurementUnit.none)
+
+  //
+  // Rack Balancer Log Messages
+  //
+  // Check invoker healthy state from loadbalancer
+  def RACKSCHED_BALANCER_INVOKER_STATUS_CHANGE(state: String) =
+    LogMarkerToken(racksched, "invokerState", counter, Some(state), Map("state" -> state))(MeasurementUnit.none)
+  val RACKSCHED_BALANCER_ACTIVATION_START = LogMarkerToken(racksched, "activations", counter)(MeasurementUnit.none)
+
+  def RACKSCHED_BALANCER_ACTIVATIONS_INFLIGHT(controllerInstance: RackSchedInstanceId) = {
+    if (TransactionId.metricsKamonTags)
+      LogMarkerToken(
+        racksched,
+        "activationsInflight",
+        counter,
+        None,
+        Map("racksched_id" -> controllerInstance.toString))(MeasurementUnit.none)
+    else
+      LogMarkerToken(loadbalancer + controllerInstance.toString, "activationsInflight", counter)(MeasurementUnit.none)
+  }
+  def RACKSCHED_BALANCER_MEMORY_INFLIGHT(controllerInstance: RackSchedInstanceId, actionType: String) =
+    if (TransactionId.metricsKamonTags)
+      LogMarkerToken(
+        racksched,
+        s"memory${actionType}Inflight",
+        counter,
+        None,
+        Map("racksched_id" -> controllerInstance.toString))(MeasurementUnit.none)
+    else
+      LogMarkerToken(loadbalancer + controllerInstance.toString, s"memory${actionType}Inflight", counter)(
+        MeasurementUnit.none)
+
+  // Convenience function to create log marker tokens used for emitting counter metrics related to completion acks.
+  def RACKSCHED_BALANCER_COMPLETION_ACK(controllerInstance: RackSchedInstanceId, completionAckType: CompletionAckType) =
+    if (TransactionId.metricsKamonTags)
+      LogMarkerToken(
+        racksched,
+        "completionAck",
+        counter,
+        None,
+        Map("racksched_id" -> controllerInstance.toString, "type" -> completionAckType.asString))(MeasurementUnit.none)
+    else
+      LogMarkerToken(
+        racksched + controllerInstance.toString,
         "completionAck_" + completionAckType.asString,
         counter)(MeasurementUnit.none)
 

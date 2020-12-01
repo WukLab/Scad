@@ -17,7 +17,8 @@
 
 package org.apache.openwhisk.core.entity
 
-import spray.json.{deserializationError, DefaultJsonProtocol, JsNumber, JsObject, JsString, JsValue, RootJsonFormat}
+import org.apache.openwhisk.core.containerpool.RuntimeResources
+import spray.json.{DefaultJsonProtocol, JsNumber, JsObject, JsString, JsValue, RootJsonFormat, deserializationError}
 import spray.json._
 
 import scala.collection.mutable.ListBuffer
@@ -62,17 +63,20 @@ class TopSchedInstanceId(override val asString: String) extends ControllerInstan
   override val instanceType = "topsched"
 }
 
-class RackSchedInstanceId(override val asString: String, instance: Int, uniqueName: Option[String], displayName: Option[String]) extends ControllerInstanceId(asString) {
-  validate(asString)
+class RackSchedInstanceId(instance: Int, var resources: RuntimeResources, val uniqueName: Option[String] = None, val displayName: Option[String] = None) extends InstanceId {
   override val instanceType = "racksched"
 
   def toInt: Int = instance
 
-  override val source = s"$instanceType$instance"
+  override val source = s"$instanceType.$instance"
 
-  override val toString: String = (Seq("invoker" + instance) ++ uniqueName ++ displayName).mkString("/")
+  override val toString: String = (Seq("racksched" + instance) ++ uniqueName ++ displayName).mkString("/")
 
-//  override val toJson: JsValue = InvokerInstanceId.serdes.write(this)
+  override val toJson: JsValue = RackSchedInstanceId.serdes.write(this)
+
+  def updateResources(runtimeResources: RuntimeResources): Unit = {
+    resources = runtimeResources
+  }
 }
 
 object InvokerInstanceId extends DefaultJsonProtocol {
@@ -103,7 +107,36 @@ object InvokerInstanceId extends DefaultJsonProtocol {
       }
     }
   }
+}
 
+object RackSchedInstanceId extends DefaultJsonProtocol {
+  def parse(c: String): Try[RackSchedInstanceId] = Try(serdes.read(c.parseJson))
+
+  implicit val serdes = new RootJsonFormat[RackSchedInstanceId] {
+    override def write(i: RackSchedInstanceId): JsValue = {
+      val fields = new ListBuffer[(String, JsValue)]
+      fields ++= List("instance" -> JsNumber(i.instanceType))
+      fields ++= List("resources" -> i.resources.toJson)
+      fields ++= List("instanceType" -> JsString(i.instanceType))
+      i.uniqueName.foreach(uniqueName => fields ++= List("uniqueName" -> JsString(uniqueName)))
+      i.displayName.foreach(displayedName => fields ++= List("displayName" -> JsString(displayedName)))
+      JsObject(fields.toSeq: _*)
+    }
+
+    override def read(json: JsValue): RackSchedInstanceId = {
+      val instance = fromField[Int](json, "instance")
+      val uniqueName = fromField[Option[String]](json, "uniqueName")
+      val displayName = fromField[Option[String]](json, "displayName")
+      val resources = fromField[RuntimeResources](json, "resources")
+      val instanceType = fromField[String](json, "instanceType")
+
+      if (instanceType == "racksched") {
+        new RackSchedInstanceId( instance, resources, uniqueName, displayName)
+      } else {
+        deserializationError("could not read InvokerInstanceId")
+      }
+    }
+  }
 }
 
 object ControllerInstanceId extends DefaultJsonProtocol {
@@ -123,6 +156,30 @@ object ControllerInstanceId extends DefaultJsonProtocol {
           }
         case Seq(JsString(asString)) =>
           new ControllerInstanceId(asString)
+        case _ =>
+          deserializationError("could not read ControllerInstanceId")
+      }
+    }
+  }
+}
+
+object TopSchedInstanceId extends DefaultJsonProtocol {
+  def parse(c: String): Try[TopSchedInstanceId] = Try(serdes.read(c.parseJson))
+
+  implicit val serdes = new RootJsonFormat[TopSchedInstanceId] {
+    override def write(c: TopSchedInstanceId): JsValue =
+      JsObject("asString" -> JsString(c.asString), "instanceType" -> JsString(c.instanceType))
+
+    override def read(json: JsValue): TopSchedInstanceId = {
+      json.asJsObject.getFields("asString", "instanceType") match {
+        case Seq(JsString(asString), JsString(instanceType)) =>
+          if (instanceType == "topsched") {
+            new TopSchedInstanceId(asString)
+          } else {
+            deserializationError("could not read ControllerInstanceId")
+          }
+        case Seq(JsString(asString)) =>
+          new TopSchedInstanceId(asString)
         case _ =>
           deserializationError("could not read ControllerInstanceId")
       }
@@ -168,6 +225,10 @@ object InstanceId extends DefaultJsonProtocol {
             json.convertTo[InvokerInstanceId]
           case "controller" =>
             json.convertTo[ControllerInstanceId]
+          case "racksched" =>
+            json.convertTo[RackSchedInstanceId]
+          case "topsched" =>
+            json.convertTo[TopSchedInstanceId]
           case _ =>
             deserializationError("could not read InstanceId")
         })

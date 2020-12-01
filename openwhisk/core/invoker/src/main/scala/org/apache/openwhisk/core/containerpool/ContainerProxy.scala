@@ -76,23 +76,6 @@ case object Pausing extends ContainerState
 case object Paused extends ContainerState
 case object Removing extends ContainerState
 
-abstract class ResourceType[T](var amount: T) {
-}
-class Cpu(amount: Int) extends ResourceType[Int](amount){
-}
-class Memory(amount: ByteSize) extends ResourceType[ByteSize](amount){
-}
-class FarMemory(amount: ByteSize) extends ResourceType[ByteSize](amount) {
-}
-class Storage(amount: ByteSize) extends ResourceType[ByteSize](amount){
-}
-
-class RuntimeResources(cpus: Int, memSize: ByteSize, storageSize: ByteSize) {
-  val cpu: Cpu = new Cpu(cpus)
-  var mem: Memory = new Memory(memSize)
-  var storage: Storage = new Storage(storageSize)
-}
-
 // Data
 /** Base data type */
 sealed abstract class ContainerData(val lastUsed: Instant, val resources: RuntimeResources, val activeActivationCount: Int) {
