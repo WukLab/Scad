@@ -6,7 +6,7 @@ sealed trait RackState {
   val isUsable: Boolean
 }
 
-object InvokerState {
+object RackState {
   // Invokers in this state can be used to schedule workload to
   sealed trait Usable extends RackState { val isUsable = true }
   // No workload should be scheduled to invokers in this state
@@ -21,3 +21,5 @@ object InvokerState {
   // Pings are not arriving for this invoker
   case object Offline extends Unusable { val asString = "down" }
 }
+
+case class CurrentRackPoolState(newState: IndexedSeq[RackHealth])

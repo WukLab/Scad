@@ -78,6 +78,7 @@ object InvocationFinishedResult {
 }
 
 case class ActivationRequest(msg: ActivationMessage, invoker: InvokerInstanceId)
+case class RackActivationRequest(msg: ActivationMessage, rack: RackSchedInstanceId)
 case class InvocationFinishedMessage(invokerInstance: InvokerInstanceId, result: InvocationFinishedResult)
 
 // Sent to a monitor if the state changed

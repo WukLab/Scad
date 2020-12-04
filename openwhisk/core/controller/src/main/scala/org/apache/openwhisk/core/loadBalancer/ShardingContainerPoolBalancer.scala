@@ -316,7 +316,7 @@ class ShardingContainerPoolBalancer(
       }
   }
 
-  override val invokerPool =
+  override val invokerPool: ActorRef =
     invokerPoolFactory.createInvokerPool(
       actorSystem,
       messagingProvider,

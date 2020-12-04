@@ -40,7 +40,8 @@ import org.apache.openwhisk.core.entitlement._
 import org.apache.openwhisk.core.entity.ActivationId.ActivationIdGenerator
 import org.apache.openwhisk.core.entity.ExecManifest.Runtimes
 import org.apache.openwhisk.core.entity._
-import org.apache.openwhisk.core.loadBalancer.{InvokerState, LoadBalancerProvider}
+import org.apache.openwhisk.core.loadBalancer.LoadBalancerProvider
+import org.apache.openwhisk.core.topbalancer.RackState
 import org.apache.openwhisk.core.topbalancer.TopBalancerProvider
 import org.apache.openwhisk.http.{BasicHttpService, BasicRasService}
 import org.apache.openwhisk.spi.SpiLoader
@@ -73,7 +74,7 @@ import scala.util.{Failure, Success}
 // * @param verbosity logging verbosity
 // * @param executionContext Scala runtime support for concurrent operations
  */
-class Controller(val instance: ControllerInstanceId,
+class Controller(val instance: TopSchedInstanceId,
                  runtimes: Runtimes,
                  implicit val whiskConfig: WhiskConfig,
                  implicit val actorSystem: ActorSystem,
@@ -98,7 +99,8 @@ class Controller(val instance: ControllerInstanceId,
       (pathEndOrSingleSlash & get) {
         complete(info)
       }
-    } ~ apiV1.routes ~ swagger.swaggerRoutes ~ internalInvokerHealth
+    } ~ apiV1.routes ~ swagger.swaggerRoutes
+//    ~ internalInvokerHealth
   }
 
   // initialize datastores
@@ -128,7 +130,7 @@ class Controller(val instance: ControllerInstanceId,
   Collection.initialize(entityStore)
 
   /** The REST APIs. */
-  implicit val controllerInstance = instance
+  implicit val controllerInstance: TopSchedInstanceId = instance
   private val apiV1 = new RestAPIVersion(whiskConfig, "api", "v1")
   private val swagger = new SwaggerDocs(Uri.Path.Empty, "infoswagger.json")
 
@@ -146,19 +148,19 @@ class Controller(val instance: ControllerInstanceId,
       pathEndOrSingleSlash {
         complete {
           loadBalancer
-            .invokerHealth()
+            .rackHealth()
             .map(_.map(i => i.id.toString -> i.status.asString).toMap.toJson.asJsObject)
         }
       } ~ path("healthy" / "count") {
         complete {
           loadBalancer
-            .invokerHealth()
-            .map(_.count(_.status == InvokerState.Healthy).toJson)
+            .rackHealth()
+            .map(_.count(_.status == RackState.Healthy).toJson)
         }
       } ~ path("ready") {
-        onSuccess(loadBalancer.invokerHealth()) { invokersHealth =>
+        onSuccess(loadBalancer.rackHealth()) { invokersHealth =>
           val all = invokersHealth.size
-          val healthy = invokersHealth.count(_.status == InvokerState.Healthy)
+          val healthy = invokersHealth.count(_.status == RackState.Healthy)
           val ready = Controller.readyState(all, healthy, Controller.readinessThreshold.getOrElse(1))
           if (ready)
             complete(JsObject("healthy" -> s"$healthy/$all".toJson))
@@ -248,7 +250,7 @@ object Controller {
 
     // if deploying multiple instances (scale out), must pass the instance number as the
     require(args.length >= 1, "controller instance required")
-    val instance = new ControllerInstanceId(args(0))
+    val instance = new TopSchedInstanceId(args(0))
 
     def abort(message: String) = {
       logger.error(this, message)
@@ -265,7 +267,8 @@ object Controller {
 
     Seq(
       ("completed" + instance.asString, "completed", Some(ActivationEntityLimit.MAX_ACTIVATION_LIMIT)),
-      ("health", "health", None),
+//      ("health", "health", None),
+      ("rackHealth", "rackHealth", None),
       ("cacheInvalidation", "cache-invalidation", None),
       ("events", "events", None)).foreach {
       case (topic, topicConfigurationKey, maxMessageBytes) =>

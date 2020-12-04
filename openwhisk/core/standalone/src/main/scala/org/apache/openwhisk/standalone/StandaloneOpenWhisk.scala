@@ -44,7 +44,8 @@ import scala.io.AnsiColor
 import scala.util.{Failure, Success, Try}
 import KafkaLauncher._
 import org.apache.openwhisk.core.sched.RackSched
-//import org.apache.openwhisk.core.sched.RackSched
+
+import scala.util.Random
 
 class Conf(arguments: Seq[String]) extends ScallopConf(Conf.expandAllMode(arguments)) {
   import StandaloneOpenWhisk.preferredPgPort
@@ -340,7 +341,7 @@ object StandaloneOpenWhisk extends SLF4JLogging {
   }
 
   private def startRackSched()(implicit actorSystem: ActorSystem, logger: Logging): Unit = {
-    RackSched.start(Array("standalone"))
+    RackSched.start(Array(Random.nextInt().toString))
   }
 
   private def startController()(implicit actorSystem: ActorSystem, logger: Logging): Unit = {

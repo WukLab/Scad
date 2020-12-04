@@ -35,7 +35,7 @@ import org.apache.openwhisk.core.entitlement._
 import org.apache.openwhisk.core.entity.ActivationId.ActivationIdGenerator
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.types._
-import org.apache.openwhisk.core.loadBalancer.LoadBalancer
+import org.apache.openwhisk.core.topbalancer.TopBalancer
 import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
 import org.apache.openwhisk.http.Messages
 import org.apache.openwhisk.spi.{Spi, SpiLoader}
@@ -165,7 +165,7 @@ class RestAPIVersion(config: WhiskConfig, apiPath: String, apiVersion: String)(
   implicit val entityStore: EntityStore,
   implicit val entitlementProvider: EntitlementProvider,
   implicit val activationIdFactory: ActivationIdGenerator,
-  implicit val loadBalancer: LoadBalancer,
+  implicit val loadBalancer: TopBalancer,
   implicit val cacheChangeNotification: Some[CacheChangeNotification],
   implicit val activationStore: ActivationStore,
   implicit val logStore: LogStore,
@@ -252,7 +252,7 @@ class RestAPIVersion(config: WhiskConfig, apiPath: String, apiVersion: String)(
     override val activationStore: ActivationStore,
     override val entitlementProvider: EntitlementProvider,
     override val activationIdFactory: ActivationIdGenerator,
-    override val loadBalancer: LoadBalancer,
+    override val loadBalancer: TopBalancer,
     override val cacheChangeNotification: Some[CacheChangeNotification],
     override val executionContext: ExecutionContext,
     override val logging: Logging,
@@ -275,7 +275,7 @@ class RestAPIVersion(config: WhiskConfig, apiPath: String, apiVersion: String)(
     implicit override val entityStore: EntityStore,
     override val entitlementProvider: EntitlementProvider,
     override val activationIdFactory: ActivationIdGenerator,
-    override val loadBalancer: LoadBalancer,
+    override val loadBalancer: TopBalancer,
     override val cacheChangeNotification: Some[CacheChangeNotification],
     override val executionContext: ExecutionContext,
     override val logging: Logging,
@@ -288,7 +288,7 @@ class RestAPIVersion(config: WhiskConfig, apiPath: String, apiVersion: String)(
     override val entityStore: EntityStore,
     override val entitlementProvider: EntitlementProvider,
     override val activationIdFactory: ActivationIdGenerator,
-    override val loadBalancer: LoadBalancer,
+    override val loadBalancer: TopBalancer,
     override val cacheChangeNotification: Some[CacheChangeNotification],
     override val executionContext: ExecutionContext,
     override val logging: Logging,
@@ -302,7 +302,7 @@ class RestAPIVersion(config: WhiskConfig, apiPath: String, apiVersion: String)(
     override val entitlementProvider: EntitlementProvider,
     override val activationStore: ActivationStore,
     override val activationIdFactory: ActivationIdGenerator,
-    override val loadBalancer: LoadBalancer,
+    override val loadBalancer: TopBalancer,
     override val cacheChangeNotification: Some[CacheChangeNotification],
     override val executionContext: ExecutionContext,
     override val logging: Logging,
@@ -319,7 +319,7 @@ class RestAPIVersion(config: WhiskConfig, apiPath: String, apiVersion: String)(
     override val activationStore: ActivationStore,
     override val entitlementProvider: EntitlementProvider,
     override val activationIdFactory: ActivationIdGenerator,
-    override val loadBalancer: LoadBalancer,
+    override val loadBalancer: TopBalancer,
     override val actorSystem: ActorSystem,
     override val executionContext: ExecutionContext,
     override val logging: Logging,

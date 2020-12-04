@@ -20,7 +20,7 @@ package org.apache.openwhisk.core.entitlement
 import org.apache.openwhisk.common.Logging
 import org.apache.openwhisk.common.TransactionId
 import org.apache.openwhisk.core.entity.Identity
-import org.apache.openwhisk.core.loadBalancer.LoadBalancer
+import org.apache.openwhisk.core.topbalancer.TopBalancer
 import org.apache.openwhisk.http.Messages
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -31,7 +31,7 @@ import scala.concurrent.{ExecutionContext, Future}
  * @param loadBalancer contains active quotas
  * @param concurrencyLimit a calculated limit relative to the user using the system
  */
-class ActivationThrottler(loadBalancer: LoadBalancer, concurrencyLimit: Identity => Int)(
+class ActivationThrottler(loadBalancer: TopBalancer, concurrencyLimit: Identity => Int)(
   implicit logging: Logging,
   executionContext: ExecutionContext) {
 

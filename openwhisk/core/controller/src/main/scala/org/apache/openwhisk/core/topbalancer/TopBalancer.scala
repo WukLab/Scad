@@ -14,10 +14,10 @@ import org.apache.openwhisk.core.entity.ActivationId
 import org.apache.openwhisk.core.entity.ControllerInstanceId
 import org.apache.openwhisk.core.entity.ExecutableWhiskActionMetaData
 import org.apache.openwhisk.core.entity.RackSchedInstanceId
+import org.apache.openwhisk.core.entity.TopSchedInstanceId
 import org.apache.openwhisk.core.entity.UUID
 import org.apache.openwhisk.core.entity.WhiskActivation
 import org.apache.openwhisk.core.loadBalancer.FeedFactory
-import org.apache.openwhisk.core.loadBalancer.LoadBalancer
 import org.apache.openwhisk.spi.Spi
 
 import scala.concurrent.Future
@@ -69,9 +69,9 @@ trait TopBalancer {
 trait TopBalancerProvider extends Spi {
   def requiredProperties: Map[String, String]
 
-  def instance(whiskConfig: WhiskConfig, instance: ControllerInstanceId)(implicit actorSystem: ActorSystem,
-                                                                         logging: Logging,
-                                                                         materializer: ActorMaterializer): LoadBalancer
+  def instance(whiskConfig: WhiskConfig, instance: TopSchedInstanceId)(implicit actorSystem: ActorSystem,
+                                                                       logging: Logging,
+                                                                       materializer: ActorMaterializer): TopBalancer
 
   /** Return default FeedFactory */
   def createFeedFactory(whiskConfig: WhiskConfig, instance: ControllerInstanceId)(implicit actorSystem: ActorSystem,

@@ -115,7 +115,7 @@ object RackSchedInstanceId extends DefaultJsonProtocol {
   implicit val serdes = new RootJsonFormat[RackSchedInstanceId] {
     override def write(i: RackSchedInstanceId): JsValue = {
       val fields = new ListBuffer[(String, JsValue)]
-      fields ++= List("instance" -> JsNumber(i.instanceType))
+      fields ++= List("instance" -> JsNumber(i.toInt))
       fields ++= List("resources" -> i.resources.toJson)
       fields ++= List("instanceType" -> JsString(i.instanceType))
       i.uniqueName.foreach(uniqueName => fields ++= List("uniqueName" -> JsString(uniqueName)))

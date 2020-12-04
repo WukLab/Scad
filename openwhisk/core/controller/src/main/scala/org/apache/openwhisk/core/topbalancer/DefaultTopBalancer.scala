@@ -1,33 +1,56 @@
 package org.apache.openwhisk.core.topbalancer
+import akka.actor.Actor
+import akka.actor.ActorRef
+import akka.actor.ActorRefFactory
+
 import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.atomic.LongAdder
-
 import akka.actor.ActorSystem
+import akka.actor.Props
 import akka.actor.TypedActor.dispatcher
+import akka.cluster.Cluster
+import akka.cluster.ClusterEvent.ClusterDomainEvent
+import akka.cluster.ClusterEvent.CurrentClusterState
+import akka.cluster.ClusterEvent.MemberEvent
+import akka.cluster.ClusterEvent.MemberRemoved
+import akka.cluster.ClusterEvent.MemberUp
+import akka.cluster.ClusterEvent.ReachabilityEvent
+import akka.cluster.ClusterEvent.ReachableMember
+import akka.cluster.ClusterEvent.UnreachableMember
+import akka.cluster.Member
+import akka.cluster.MemberStatus
 import akka.event.Logging.InfoLevel
+import akka.management.cluster.bootstrap.ClusterBootstrap
+import akka.management.scaladsl.AkkaManagement
 import akka.stream.ActorMaterializer
 import org.apache.kafka.clients.producer.RecordMetadata
 import org.apache.openwhisk.common.Logging
 import org.apache.openwhisk.common.LoggingMarkers
 import org.apache.openwhisk.common.MetricEmitter
 import org.apache.openwhisk.common.TransactionId
+import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.WhiskConfig
 import org.apache.openwhisk.core.connector.ActivationMessage
 import org.apache.openwhisk.core.connector.MessageProducer
 import org.apache.openwhisk.core.connector.MessagingProvider
 import org.apache.openwhisk.core.entity.ActivationEntityLimit
 import org.apache.openwhisk.core.entity.ActivationId
-import org.apache.openwhisk.core.entity.ControllerInstanceId
 import org.apache.openwhisk.core.entity.ExecutableWhiskActionMetaData
 import org.apache.openwhisk.core.entity.FullyQualifiedEntityName
 import org.apache.openwhisk.core.entity.MemoryLimit
 import org.apache.openwhisk.core.entity.RackSchedInstanceId
 import org.apache.openwhisk.core.entity.TimeLimit
+import org.apache.openwhisk.core.entity.TopSchedInstanceId
 import org.apache.openwhisk.core.entity.UUID
 import org.apache.openwhisk.core.entity.WhiskActivation
-import org.apache.openwhisk.core.loadBalancer.LoadBalancer
+import org.apache.openwhisk.core.entity.WhiskEntityStore
+import org.apache.openwhisk.core.loadBalancer.ClusterConfig
 import org.apache.openwhisk.core.loadBalancer.LoadBalancerException
 import org.apache.openwhisk.core.loadBalancer.ShardingContainerPoolBalancer
+import org.apache.openwhisk.spi.SpiLoader
+import pureconfig.loadConfigOrThrow
+import pureconfig._
+import pureconfig.generic.auto._
 
 import scala.annotation.tailrec
 import scala.collection.concurrent.TrieMap
@@ -35,16 +58,74 @@ import scala.concurrent.Future
 import scala.util.Failure
 import scala.util.Success
 
-class DefaultTopBalancer(config: WhiskConfig)(implicit actorSystem: ActorSystem,
+class DefaultTopBalancer(config: WhiskConfig,
+                         val rackPoolFactory: RackPoolFactory)(implicit actorSystem: ActorSystem,
                            logging: Logging,
                            materializer: ActorMaterializer,
-                           messagingProvider: MessagingProvider) extends TopBalancer {
+                           implicit val messagingProvider: MessagingProvider = SpiLoader.get[MessagingProvider])
+                           extends TopBalancer {
+
+  /** Build a cluster of all loadbalancers */
+  private val cluster: Option[Cluster] = if (loadConfigOrThrow[ClusterConfig](ConfigKeys.cluster).useClusterBootstrap) {
+    AkkaManagement(actorSystem).start()
+    ClusterBootstrap(actorSystem).start()
+    Some(Cluster(actorSystem))
+  } else if (loadConfigOrThrow[Seq[String]]("akka.cluster.seed-nodes").nonEmpty) {
+    Some(Cluster(actorSystem))
+  } else {
+    None
+  }
+
+  protected val messageProducer: MessageProducer =
+    messagingProvider.getProducer(config, Some(ActivationEntityLimit.MAX_ACTIVATION_LIMIT))
 
   val state = TopBalancerState()
   protected val activationsPerNamespace = TrieMap[UUID, LongAdder]()
   protected val totalActivations = new LongAdder()
   protected val totalBlackBoxActivationMemory = new LongAdder()
   protected val totalManagedActivationMemory = new LongAdder()
+
+  private val monitor = actorSystem.actorOf(Props(new Actor {
+    override def preStart(): Unit = {
+      cluster.foreach(_.subscribe(self, classOf[MemberEvent], classOf[ReachabilityEvent]))
+    }
+
+    // all members of the cluster that are available
+    var availableMembers = Set.empty[Member]
+
+    override def receive: Receive = {
+      case CurrentRackPoolState(newState) =>
+        state.updateRacks(newState)
+
+      // State of the cluster as it is right now
+      case CurrentClusterState(members, _, _, _, _) =>
+        availableMembers = members.filter(_.status == MemberStatus.Up)
+        state.updateCluster(availableMembers.size)
+
+      // General lifecycle events and events concerning the reachability of members. Split-brain is not a huge concern
+      // in this case as only the invoker-threshold is adjusted according to the perceived cluster-size.
+      // Taking the unreachable member out of the cluster from that point-of-view results in a better experience
+      // even under split-brain-conditions, as that (in the worst-case) results in premature overloading of invokers vs.
+      // going into overflow mode prematurely.
+      case event: ClusterDomainEvent =>
+        availableMembers = event match {
+          case MemberUp(member)          => availableMembers + member
+          case ReachableMember(member)   => availableMembers + member
+          case MemberRemoved(member, _)  => availableMembers - member
+          case UnreachableMember(member) => availableMembers - member
+          case _                         => availableMembers
+        }
+
+        state.updateCluster(availableMembers.size)
+    }
+  }))
+
+  val rackPool = rackPoolFactory.createRackPool(actorSystem,
+    messagingProvider,
+    messageProducer,
+    sendActivationToRack,
+    Some(monitor))
+
 
   /**
    * Publishes activation message on internal bus for an invoker to pick up.
@@ -119,9 +200,6 @@ class DefaultTopBalancer(config: WhiskConfig)(implicit actorSystem: ActorSystem,
     Future.successful(Left(msg.activationId))
   }
 
-  protected val messageProducer =
-    messagingProvider.getProducer(config, Some(ActivationEntityLimit.MAX_ACTIVATION_LIMIT))
-
   /** 3. Send the activation to the invoker */
   protected def sendActivationToRack(producer: MessageProducer,
                                      msg: ActivationMessage,
@@ -156,22 +234,40 @@ class DefaultTopBalancer(config: WhiskConfig)(implicit actorSystem: ActorSystem,
   override def rackHealth(): Future[IndexedSeq[RackHealth]] = Future.successful(state.rackHealth)
 
   /** Gets the number of in-flight activations for a specific user. */
-  override def activeActivationsFor(namespace: UUID): Future[Int] = ???
+  override def activeActivationsFor(namespace: UUID): Future[Int] = { Future.successful(0) }
 
   /** Gets the number of in-flight activations in the system. */
-  override def totalActiveActivations: Future[Int] = ???
-
+  override def totalActiveActivations: Future[Int] = { Future.successful(0) }
 
 }
 
 case class TopBalancerState(
   private var _rackHealth: IndexedSeq[RackHealth] = IndexedSeq.empty,
   private var _racks: IndexedSeq[RackHealth] = IndexedSeq.empty,
-  private var _managedStepSizes: Seq[Int] = ShardingContainerPoolBalancer.pairwiseCoprimeNumbersUntil(0)
-                           ) {
+  private var _managedStepSizes: Seq[Int] = ShardingContainerPoolBalancer.pairwiseCoprimeNumbersUntil(0),
+  private var _numRacks: Int = 1
+                           )(implicit logging: Logging) {
+
+
   def rackHealth: IndexedSeq[RackHealth] = _rackHealth
   def racks: IndexedSeq[RackHealth] = _racks
   def stepSizes: Seq[Int] = _managedStepSizes
+
+  def updateRacks(newRacks: IndexedSeq[RackHealth]): Unit = {
+    _racks = newRacks
+  }
+
+  def updateCluster(newSize: Int): Unit = {
+    val actualSize = newSize max 1 // if a cluster size < 1 is reported, falls back to a size of 1 (alone)
+    if (_numRacks != actualSize) {
+      val oldSize = _numRacks
+      _numRacks = actualSize
+      logging.info(
+        this,
+        s"loadbalancer cluster size changed from $oldSize to $actualSize active nodes.")(
+        TransactionId.topsched)
+    }
+  }
 
 }
 
@@ -183,8 +279,6 @@ object DefaultTopBalancer extends TopBalancerProvider {
    *
    * @param maxConcurrent concurrency limit supported by this action
    * @param racks a list of available invokers to search in, including their state
-//   * @param dispatched semaphores for each invoker to give the slots away from
-//   * @param slots Number of slots, that need to be acquired (e.g. memory in MB)
    * @param index the index to start from (initially should be the "homeInvoker"
    * @param step stable identifier of the entity to be scheduled
    * @return an invoker to schedule to or None of no invoker is available
@@ -194,8 +288,6 @@ object DefaultTopBalancer extends TopBalancerProvider {
                 maxConcurrent: Int,
                 fqn: FullyQualifiedEntityName,
                 racks: IndexedSeq[RackHealth],
-//                dispatched: IndexedSeq[NestedSemaphore[FullyQualifiedEntityName]],
-//                slots: Int,
                 index: Int,
                 step: Int,
                 stepsDone: Int = 0)(implicit logging: Logging, transId: TransactionId): Option[RackSchedInstanceId] = {
@@ -209,10 +301,10 @@ object DefaultTopBalancer extends TopBalancerProvider {
       } else {
         // If we've gone through all invokers
         if (stepsDone == numRacks + 1) {
-          val healthyInvokers = racks.filter(_.status.isUsable)
-          if (healthyInvokers.nonEmpty) {
+          val healthyRacks = racks.filter(_.status.isUsable)
+          if (healthyRacks.nonEmpty) {
             // Choose a healthy rack randomly
-            val random = healthyInvokers(ThreadLocalRandom.current().nextInt(healthyInvokers.size)).id
+            val random = healthyRacks(ThreadLocalRandom.current().nextInt(healthyRacks.size)).id
 //            dispatched(random.toInt).forceAcquireConcurrent(fqn, maxConcurrent, slots)
             logging.warn(this, s"system is overloaded. Chose rack${random.toInt} by random assignment.")
             Some(random)
@@ -231,5 +323,24 @@ object DefaultTopBalancer extends TopBalancerProvider {
 
   override def requiredProperties: Map[String, String] = ???
 
-  override def instance(whiskConfig: WhiskConfig, instance: ControllerInstanceId)(implicit actorSystem: ActorSystem, logging: Logging, materializer: ActorMaterializer): LoadBalancer = ???
+  override def instance(whiskConfig: WhiskConfig, instance: TopSchedInstanceId)(implicit actorSystem: ActorSystem, logging: Logging, materializer: ActorMaterializer): TopBalancer = {
+    val rackPoolFactory = new RackPoolFactory {
+      override def createRackPool(actorRefFactory: ActorRefFactory,
+                                      messagingProvider: MessagingProvider,
+                                      messagingProducer: MessageProducer,
+                                      sendActivationToRack: (MessageProducer, ActivationMessage, RackSchedInstanceId) => Future[RecordMetadata],
+                                      monitor: Option[ActorRef]): ActorRef = {
+
+        RackPool.prepare(instance, WhiskEntityStore.datastore())
+
+        actorRefFactory.actorOf(
+          RackPool.props(
+            (f, i) => f.actorOf(RackActor.props(i, instance)),
+            (m, i) => sendActivationToRack(messagingProducer, m, i),
+            messagingProvider.getConsumer(whiskConfig, s"health${instance.asString}", "rackHealth", maxPeek = 128),
+            monitor))
+      }
+    }
+    new DefaultTopBalancer(whiskConfig, rackPoolFactory)
+  }
 }

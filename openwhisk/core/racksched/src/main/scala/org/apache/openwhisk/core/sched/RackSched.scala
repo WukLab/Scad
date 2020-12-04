@@ -238,7 +238,7 @@ object RackSched {
 
     val healthProducer = msgProvider.getProducer(config)
     Scheduler.scheduleWaitAtMost(1.seconds)(() => {
-      healthProducer.send("health", PingRackMessage(instance))
+      healthProducer.send("rackHealth", PingRackMessage(instance))
     })
 
     ExecManifest.initialize(config) match {

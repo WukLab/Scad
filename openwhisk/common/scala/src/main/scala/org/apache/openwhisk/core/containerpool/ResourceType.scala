@@ -22,9 +22,9 @@ class RuntimeResources(cpus: Int, memSize: ByteSize, storageSize: ByteSize) {
   var storage: Storage = new Storage(storageSize)
 
   val toJson: JsValue = RuntimeResources.serdes.write(this)
-
-
 }
+
+
 
 object RuntimeResources extends DefaultJsonProtocol {
   def parse(i: String): Try[RuntimeResources] = Try(serdes.read(JsonParser(i)))

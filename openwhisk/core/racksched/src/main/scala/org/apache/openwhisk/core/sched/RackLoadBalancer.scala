@@ -9,7 +9,6 @@ import akka.event.Logging.InfoLevel
 import akka.stream.ActorMaterializer
 import org.apache.kafka.clients.producer.RecordMetadata
 import org.apache.openwhisk.common.LoggingMarkers.{ForcedAfterRegularCompletionAck, ForcedCompletionAck, HealthcheckCompletionAck, RegularAfterForcedCompletionAck, RegularCompletionAck}
-import pureconfig.generic.auto._
 import org.apache.openwhisk.common.{LogMarkerToken, Logging, LoggingMarkers, MetricEmitter, TransactionId}
 import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.WhiskConfig
@@ -23,6 +22,9 @@ import org.apache.openwhisk.spi.Spi
 import org.apache.openwhisk.spi.SpiLoader
 import org.apache.openwhisk.utils.ExecutionContextFactory
 import pureconfig.loadConfigOrThrow
+import pureconfig._
+import pureconfig.generic.auto._
+import org.apache.openwhisk.core.entity.size._
 
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.{Future, Promise}
@@ -128,7 +130,7 @@ class RackSimpleBalancer(config: WhiskConfig,
 
   val poolConfig: ContainerPoolConfig = loadConfigOrThrow[ContainerPoolConfig](ConfigKeys.containerPool)
 
-  val invokerName = InvokerInstanceId(0, None, None, poolConfig.userMemory)
+  val invokerName: InvokerInstanceId = InvokerInstanceId(0, None, None, poolConfig.userMemory)
 
   /** 1. Publish a message to the rackLoadBalancer */
   override def publish(action: ExecutableWhiskActionMetaData, msg: ActivationMessage)(
