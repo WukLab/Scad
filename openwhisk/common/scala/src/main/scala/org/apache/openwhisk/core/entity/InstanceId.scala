@@ -149,10 +149,14 @@ object ControllerInstanceId extends DefaultJsonProtocol {
     override def read(json: JsValue): ControllerInstanceId = {
       json.asJsObject.getFields("asString", "instanceType") match {
         case Seq(JsString(asString), JsString(instanceType)) =>
-          if (instanceType == "controller") {
-            new ControllerInstanceId(asString)
-          } else {
-            deserializationError("could not read ControllerInstanceId")
+          instanceType match {
+            case "controller" => {
+              new ControllerInstanceId(asString)
+            }
+            case "topsched" => {
+              new TopSchedInstanceId(asString)
+            }
+            case _ => deserializationError("could not read ControllerInstanceId")
           }
         case Seq(JsString(asString)) =>
           new ControllerInstanceId(asString)

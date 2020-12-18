@@ -7,7 +7,6 @@ import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.atomic.LongAdder
 import akka.actor.ActorSystem
 import akka.actor.Props
-import akka.actor.TypedActor.dispatcher
 import akka.cluster.Cluster
 import akka.cluster.ClusterEvent.ClusterDomainEvent
 import akka.cluster.ClusterEvent.CurrentClusterState
@@ -30,6 +29,7 @@ import org.apache.openwhisk.common.MetricEmitter
 import org.apache.openwhisk.common.TransactionId
 import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.WhiskConfig
+import org.apache.openwhisk.core.WhiskConfig.kafkaHosts
 import org.apache.openwhisk.core.connector.ActivationMessage
 import org.apache.openwhisk.core.connector.MessageProducer
 import org.apache.openwhisk.core.connector.MessagingProvider
@@ -45,6 +45,7 @@ import org.apache.openwhisk.core.entity.UUID
 import org.apache.openwhisk.core.entity.WhiskActivation
 import org.apache.openwhisk.core.entity.WhiskEntityStore
 import org.apache.openwhisk.core.loadBalancer.ClusterConfig
+import org.apache.openwhisk.core.loadBalancer.FeedFactory
 import org.apache.openwhisk.core.loadBalancer.LoadBalancerException
 import org.apache.openwhisk.core.loadBalancer.ShardingContainerPoolBalancer
 import org.apache.openwhisk.spi.SpiLoader
@@ -54,16 +55,19 @@ import pureconfig.generic.auto._
 
 import scala.annotation.tailrec
 import scala.collection.concurrent.TrieMap
+import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import scala.util.Failure
 import scala.util.Success
 
 class DefaultTopBalancer(config: WhiskConfig,
+                         feedFactory: FeedFactory,
                          val rackPoolFactory: RackPoolFactory)(implicit actorSystem: ActorSystem,
                            logging: Logging,
                            materializer: ActorMaterializer,
                            implicit val messagingProvider: MessagingProvider = SpiLoader.get[MessagingProvider])
                            extends TopBalancer {
+  protected implicit val executionContext: ExecutionContext = actorSystem.dispatcher
 
   /** Build a cluster of all loadbalancers */
   private val cluster: Option[Cluster] = if (loadConfigOrThrow[ClusterConfig](ConfigKeys.cluster).useClusterBootstrap) {
@@ -120,11 +124,16 @@ class DefaultTopBalancer(config: WhiskConfig,
     }
   }))
 
-  val rackPool = rackPoolFactory.createRackPool(actorSystem,
+  val rackPool: ActorRef = rackPoolFactory.createRackPool(actorSystem,
     messagingProvider,
     messageProducer,
     sendActivationToRack,
     Some(monitor))
+
+  // TODO(zac): setup a feed for DAG completions from racks
+  /** Subscribes to ack messages from the invokers (result / completion) and registers a handler for these messages. */
+//  private val activationFeed: ActorRef =
+//    feedFactory.createFeed(actorSystem, messagingProvider, processAcknowledgement)
 
 
   /**
@@ -206,7 +215,7 @@ class DefaultTopBalancer(config: WhiskConfig,
                                      racksched: RackSchedInstanceId): Future[RecordMetadata] = {
     implicit val transid: TransactionId = msg.transid
 
-    val topic = s"racksched${racksched.toInt}"
+    val topic = racksched.toString
 
     MetricEmitter.emitCounterMetric(LoggingMarkers.LOADBALANCER_ACTIVATION_START)
     val start = transid.started(
@@ -254,7 +263,13 @@ case class TopBalancerState(
   def stepSizes: Seq[Int] = _managedStepSizes
 
   def updateRacks(newRacks: IndexedSeq[RackHealth]): Unit = {
+    val oldSize = _racks.size
+    val newSize = newRacks.size
     _racks = newRacks
+    if (oldSize != newSize) {
+      val managed = Math.max(1, Math.ceil(newSize.toDouble).toInt)
+      _managedStepSizes = ShardingContainerPoolBalancer.pairwiseCoprimeNumbersUntil(managed)
+    }
   }
 
   def updateCluster(newSize: Int): Unit = {
@@ -321,7 +336,7 @@ object DefaultTopBalancer extends TopBalancerProvider {
     }
   }
 
-  override def requiredProperties: Map[String, String] = ???
+  override def requiredProperties: Map[String, String] = kafkaHosts
 
   override def instance(whiskConfig: WhiskConfig, instance: TopSchedInstanceId)(implicit actorSystem: ActorSystem, logging: Logging, materializer: ActorMaterializer): TopBalancer = {
     val rackPoolFactory = new RackPoolFactory {
@@ -337,10 +352,10 @@ object DefaultTopBalancer extends TopBalancerProvider {
           RackPool.props(
             (f, i) => f.actorOf(RackActor.props(i, instance)),
             (m, i) => sendActivationToRack(messagingProducer, m, i),
-            messagingProvider.getConsumer(whiskConfig, s"health${instance.asString}", "rackHealth", maxPeek = 128),
+            messagingProvider.getConsumer(whiskConfig, s"rackHealth${instance.asString}", "rackHealth", maxPeek = 128),
             monitor))
       }
     }
-    new DefaultTopBalancer(whiskConfig, rackPoolFactory)
+    new DefaultTopBalancer(whiskConfig, createFeedFactory(whiskConfig, instance), rackPoolFactory)
   }
 }

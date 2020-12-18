@@ -329,7 +329,7 @@ class InvokerActor(invokerInstance: InvokerInstanceId, controllerInstance: Contr
    * for 20 seconds.
    */
   when(Healthy, stateTimeout = healthyTimeout) {
-    case Event(_: PingMessage, _) => stay
+    case Event(_: PingRackMessage, _) => stay
     case Event(StateTimeout, _)   => goto(Offline)
   }
 

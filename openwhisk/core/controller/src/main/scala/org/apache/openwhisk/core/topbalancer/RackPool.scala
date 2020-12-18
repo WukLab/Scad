@@ -1,13 +1,9 @@
 package org.apache.openwhisk.core.topbalancer
 
-import akka.actor.Actor
-import akka.actor.ActorRef
-import akka.actor.ActorRefFactory
-import akka.actor.FSM
+import akka.actor.{Actor, ActorRef, ActorRefFactory, FSM, Props}
 import akka.actor.FSM.CurrentState
 import akka.actor.FSM.SubscribeTransitionCallBack
 import akka.actor.FSM.Transition
-import akka.actor.Props
 import akka.pattern.pipe
 import akka.util.Timeout
 
@@ -23,7 +19,6 @@ import org.apache.openwhisk.core.connector.MessageConsumer
 import org.apache.openwhisk.core.connector.MessageFeed
 import org.apache.openwhisk.core.connector.MessageProducer
 import org.apache.openwhisk.core.connector.MessagingProvider
-import org.apache.openwhisk.core.connector.PingMessage
 import org.apache.openwhisk.core.connector.PingRackMessage
 import org.apache.openwhisk.core.database.NoDocumentException
 import org.apache.openwhisk.core.entity.ActionLimits
@@ -135,7 +130,7 @@ class RackPool(childFactory: (ActorRefFactory, RackSchedInstanceId) => ActorRef,
       }
       logStatus()
 
-    // this is only used for the internal test action which enabled an rack to become healthy again
+    // this is only used for the internal test action which enables a rack to become healthy again
     case msg: RackActivationRequest => sendActivationToRack(msg.msg, msg.rack).pipeTo(sender)
   }
 
@@ -290,15 +285,14 @@ class RackActor(rackInstance: RackSchedInstanceId, topsched: TopSchedInstanceId)
 
   /** An Offline rack represents an existing but broken rack. This means, that it does not send pings anymore. */
   when(RackState.Offline) {
-    case Event(_: PingMessage, _) => goto(RackState.Unhealthy)
+    case Event(_: PingRackMessage, _) => goto(RackState.Unhealthy)
   }
 
   // To be used for all states that should send test actions to reverify the rack
   val healthPingingState: StateFunction = {
-    case Event(_: PingMessage, _) => stay
+    case Event(_: PingRackMessage, _) => goto(RackState.Healthy)
     case Event(StateTimeout, _)   => goto(RackState.Offline)
     case Event(Tick, _) =>
-      invokeTestAction()
       stay
   }
 
@@ -313,7 +307,7 @@ class RackActor(rackInstance: RackSchedInstanceId, topsched: TopSchedInstanceId)
    * for 20 seconds.
    */
   when(RackState.Healthy, stateTimeout = healthyTimeout) {
-    case Event(_: PingMessage, _) => stay
+    case Event(_: PingRackMessage, _) => stay
     case Event(StateTimeout, _)   => goto(RackState.Offline)
   }
 
@@ -336,7 +330,6 @@ class RackActor(rackInstance: RackSchedInstanceId, topsched: TopSchedInstanceId)
   // To be used for all states that should send test actions to reverify the rack
   def healthPingingTransitionHandler(state: RackState): TransitionHandler = {
     case _ -> `state` =>
-      invokeTestAction()
       setTimer(RackActor.timerName, Tick, 1.minute, repeat = true)
     case `state` -> _ => cancelTimer(RackActor.timerName)
   }

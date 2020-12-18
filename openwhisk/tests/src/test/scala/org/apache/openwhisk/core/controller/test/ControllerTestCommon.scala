@@ -39,9 +39,9 @@ import org.apache.openwhisk.core.database.test.DbUtils
 import org.apache.openwhisk.core.entitlement._
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.test.ExecHelpers
-import org.apache.openwhisk.core.loadBalancer.LoadBalancer
 import org.apache.openwhisk.spi.SpiLoader
 import org.apache.openwhisk.core.database.UserContext
+import org.apache.openwhisk.core.topbalancer.TopBalancer
 
 protected trait ControllerTestCommon
     extends FlatSpec
@@ -60,7 +60,7 @@ protected trait ControllerTestCommon
   implicit val routeTestTimeout = RouteTestTimeout(90 seconds)
 
   override implicit val actorSystem = system // defined in ScalatestRouteTest
-  override val executionContext = actorSystem.dispatcher
+  override implicit val executionContext = actorSystem.dispatcher
 
   override val whiskConfig = new WhiskConfig(RestApiCommons.requiredProperties ++ WhiskConfig.kafkaHosts)
   assert(whiskConfig.isValid)
@@ -302,7 +302,7 @@ protected trait ControllerTestCommon
   }
 }
 
-class DegenerateLoadBalancerService(config: WhiskConfig)(implicit ec: ExecutionContext) extends LoadBalancer {
+class DegenerateLoadBalancerService(config: WhiskConfig)(implicit ec: ExecutionContext) extends TopBalancer {
   import scala.concurrent.blocking
 
   // unit tests that need an activation via active ack/fast path should set this to value expected
@@ -331,5 +331,5 @@ class DegenerateLoadBalancerService(config: WhiskConfig)(implicit ec: ExecutionC
     }
   }
 
-  override def invokerHealth() = Future.successful(IndexedSeq.empty)
+  override def rackHealth() = Future.successful(IndexedSeq.empty)
 }

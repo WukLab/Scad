@@ -30,6 +30,7 @@ import spray.json._
 import org.apache.openwhisk.common.Https.HttpsConfig
 import org.apache.openwhisk.common.{AkkaLogging, Logging, LoggingMarkers, Scheduler, TransactionId}
 import org.apache.openwhisk.core.WhiskConfig
+import org.apache.openwhisk.core.WhiskConfig.kafkaHosts
 import org.apache.openwhisk.core.connector.{MessagingProvider, PingRackMessage}
 import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.containerpool.logging.LogStoreProvider
@@ -52,7 +53,8 @@ import scala.util.{Failure, Success}
 /**
  * The RackSched is the service that provides coarse-grained scheduling and Rest APIs
  **/
-class RackSched(val instance: RackSchedInstanceId,
+class
+RackSched(val instance: RackSchedInstanceId,
                 runtimes: Runtimes,
                 implicit val whiskConfig: WhiskConfig,
                 implicit val actorSystem: ActorSystem,
@@ -94,6 +96,8 @@ class RackSched(val instance: RackSchedInstanceId,
   private implicit val loadBalancer =
     SpiLoader.get[RackLoadBalancerProvider].instance(whiskConfig, instance)
   logging.info(this, s"rackbalancer initialized: ${loadBalancer.getClass.getSimpleName}")(TransactionId.racksched)
+
+
 
   private implicit val activationIdFactory = new ActivationIdGenerator {}
   private implicit val logStore = SpiLoader.get[LogStoreProvider].instance(actorSystem)
@@ -164,7 +168,8 @@ object RackSched {
   def requiredProperties =
     ExecManifest.requiredProperties ++
       RestApiCommons.requiredProperties ++
-      SpiLoader.get[RackLoadBalancerProvider].requiredProperties
+      SpiLoader.get[RackLoadBalancerProvider].requiredProperties ++
+      kafkaHosts
 
   def info(config: WhiskConfig,
            timeLimit: TimeLimitConfig,
@@ -208,6 +213,10 @@ object RackSched {
 
     // if deploying multiple instances (scale out), must pass the instance number as the
     require(args.length >= 1, "racksched instance required")
+    val id = args(0).toInt
+    if (id < 0) {
+      throw new RuntimeException(s"Rack scheduler instance ID must be > 0. Got id number ${id}")
+    }
     val instance = new RackSchedInstanceId(args(0).toInt,
       new RuntimeResources(0, ByteSize.fromString("0B"), ByteSize.fromString("0B")),
       None, None)
@@ -228,6 +237,8 @@ object RackSched {
     Seq(
       ("completed" + instance.toString, "completed", Some(ActivationEntityLimit.MAX_ACTIVATION_LIMIT)),
       ("health", "health", None),
+      ("rackHealth", "rackHealth", None),
+      (instance.toString, instance.toString, None),
       ("cacheInvalidation", "cache-invalidation", None),
       ("events", "events", None)).foreach {
       case (topic, topicConfigurationKey, maxMessageBytes) =>
