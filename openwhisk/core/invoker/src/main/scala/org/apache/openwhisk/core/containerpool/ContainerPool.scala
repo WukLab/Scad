@@ -365,7 +365,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   /** Creates a new container and updates state accordingly. */
   def createContainer(memoryLimit: ByteSize): (ActorRef, ContainerData) = {
     val ref = childFactory(context)
-    val data = MemoryData(new RuntimeResources(1, memoryLimit, 0.B))
+    val data = MemoryData(new ResourceSpec(1, memoryLimit, 0.B))
     freePool = freePool + (ref -> data)
     ref -> data
   }
