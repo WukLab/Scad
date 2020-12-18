@@ -76,58 +76,16 @@ case object Pausing extends ContainerState
 case object Paused extends ContainerState
 case object Removing extends ContainerState
 
-abstract class ResourceType[T](var amount: T) {
-}
-
-/**
- *
- * @param amount represents a number of physical CPUs a container occupies
- */
-class Cpu(amount: Double) extends ResourceType[Double](amount){
-}
-
-/**
- * @param amount represents a maximum amount of local memory that a container occupies
- */
-class Memory(amount: ByteSize) extends ResourceType[ByteSize](amount){
-}
-
-/**
- * @param amount represents an amount of "far" (non-local) memory a container occupies
- */
-class FarMemory(amount: ByteSize) extends ResourceType[ByteSize](amount) {
-}
-
-/**
- * @param amount represents an amount of local storage that a container occupies
- */
-class Storage(amount: ByteSize) extends ResourceType[ByteSize](amount){
-}
-
-/**
- * A resource specification used to determine which types of resource should be utilized by a given
- * container.
- *
- * @param cpus the number of CPUs this container may use
- * @param memSize the maximum amount of local memory the container may use
- * @param storageSize the amount of local storage this container may utilize.
- */
-class ResourceSpec(cpus: Double = 1, memSize: ByteSize = 0.B, storageSize: ByteSize = 0.B) {
-  val cpu: Cpu = new Cpu(cpus)
-  var mem: Memory = new Memory(memSize)
-  var storage: Storage = new Storage(storageSize)
-}
-
 sealed trait RuntimeSpec
-case object UserFunction extends RuntimeSpec
-case object Memory extends RuntimeSpec
-case object RemoteMemory extends RuntimeSpec
-case object LocalStorage extends RuntimeSpec
-case object RemoteStorage extends RuntimeSpec
+case object UserFunctionSpec extends RuntimeSpec
+case object MemorySpec extends RuntimeSpec
+case object RemoteMemorySpec extends RuntimeSpec
+case object LocalStorageSpec extends RuntimeSpec
+case object RemoteStorageSpec extends RuntimeSpec
 
 // Data
 /** Base data type */
-sealed abstract class ContainerData(val lastUsed: Instant, val runtimeSpec: RuntimeSpec, val resources: ResourceSpec, val activeActivationCount: Int) {
+sealed abstract class ContainerData(val lastUsed: Instant, val runtimeSpec: RuntimeSpec, val resources: RuntimeResources, val activeActivationCount: Int) {
 
   /** When ContainerProxy in this state is scheduled, it may result in a new state (ContainerData)*/
   def nextRun(r: Run): ContainerData
@@ -148,7 +106,7 @@ sealed abstract class ContainerData(val lastUsed: Instant, val runtimeSpec: Runt
 /** abstract type to indicate an unstarted container */
 sealed abstract class ContainerNotStarted(override val lastUsed: Instant,
                                           override val runtimeSpec: RuntimeSpec,
-                                          override val resources: ResourceSpec,
+                                          override val resources: RuntimeResources,
                                           override val activeActivationCount: Int)
     extends ContainerData(lastUsed, runtimeSpec, resources, activeActivationCount) {
   override def getContainer = None
@@ -159,7 +117,7 @@ sealed abstract class ContainerNotStarted(override val lastUsed: Instant,
 sealed abstract class ContainerStarted(val container: Container,
                                        override val lastUsed: Instant,
                                        override val runtimeSpec: RuntimeSpec,
-                                       override val resources: ResourceSpec,
+                                       override val resources: RuntimeResources,
                                        override val activeActivationCount: Int)
     extends ContainerData(lastUsed, runtimeSpec, resources, activeActivationCount) {
   override def getContainer = Some(container)
@@ -180,14 +138,14 @@ sealed abstract trait ContainerNotInUse {
 
 /** type representing a cold (not running) container */
 case class NoData(override val activeActivationCount: Int = 0)
-    extends ContainerNotStarted(Instant.EPOCH, UserFunction, new ResourceSpec(0, 0.B,0.B), activeActivationCount)
+    extends ContainerNotStarted(Instant.EPOCH, UserFunctionSpec, new RuntimeResources(0, 0.B,0.B), activeActivationCount)
     with ContainerNotInUse {
   override def nextRun(r: Run) = WarmingColdData(r.msg.user.namespace.name, r.action, Instant.now, 1)
 }
 
 /** type representing a cold (not running) container with specific resource allocation */
-case class MemoryData(override val resources: ResourceSpec, override val activeActivationCount: Int = 0)
-    extends ContainerNotStarted(Instant.EPOCH, UserFunction, resources, activeActivationCount)
+case class MemoryData(override val resources: RuntimeResources, override val activeActivationCount: Int = 0)
+    extends ContainerNotStarted(Instant.EPOCH, UserFunctionSpec, resources, activeActivationCount)
     with ContainerNotInUse {
   override def nextRun(r: Run) = WarmingColdData(r.msg.user.namespace.name, r.action, Instant.now, 1)
 }
@@ -195,10 +153,10 @@ case class MemoryData(override val resources: ResourceSpec, override val activeA
 /** type representing a prewarmed (running, but unused) container (with a specific resource allocation) */
 case class PreWarmedData(override val container: Container,
                          kind: String,
-                         override val resources: ResourceSpec,
+                         override val resources: RuntimeResources,
                          override val activeActivationCount: Int = 0,
                          expires: Option[Deadline] = None)
-    extends ContainerStarted(container, Instant.EPOCH, UserFunction, resources, activeActivationCount)
+    extends ContainerStarted(container, Instant.EPOCH, UserFunctionSpec, resources, activeActivationCount)
     with ContainerNotInUse {
   override val initingState = "prewarmed"
   override def nextRun(r: Run) =
@@ -212,7 +170,7 @@ case class WarmingData(override val container: Container,
                        action: ExecutableWhiskAction,
                        override val lastUsed: Instant,
                        override val activeActivationCount: Int = 0)
-    extends ContainerStarted(container, lastUsed, UserFunction, new ResourceSpec(memSize = action.limits.memory.megabytes.MB), activeActivationCount)
+    extends ContainerStarted(container, lastUsed, UserFunctionSpec, new RuntimeResources(memSize = action.limits.memory.megabytes.MB), activeActivationCount)
     with ContainerInUse {
   override val initingState = "warming"
   override def nextRun(r: Run) = copy(lastUsed = Instant.now, activeActivationCount = activeActivationCount + 1)
@@ -223,7 +181,7 @@ case class WarmingColdData(invocationNamespace: EntityName,
                            action: ExecutableWhiskAction,
                            override val lastUsed: Instant,
                            override val activeActivationCount: Int = 0)
-    extends ContainerNotStarted(lastUsed, UserFunction, new ResourceSpec(memSize = action.limits.memory.megabytes.MB), activeActivationCount)
+    extends ContainerNotStarted(lastUsed, UserFunctionSpec, new RuntimeResources(memSize = action.limits.memory.megabytes.MB), activeActivationCount)
     with ContainerInUse {
   override val initingState = "warmingCold"
   override def nextRun(r: Run) = copy(lastUsed = Instant.now, activeActivationCount = activeActivationCount + 1)
@@ -236,7 +194,7 @@ case class WarmedData(override val container: Container,
                       override val lastUsed: Instant,
                       override val activeActivationCount: Int = 0,
                       resumeRun: Option[Run] = None)
-    extends ContainerStarted(container, lastUsed, UserFunction, new ResourceSpec(memSize = action.limits.memory.megabytes.MB), activeActivationCount)
+    extends ContainerStarted(container, lastUsed, UserFunctionSpec, new RuntimeResources(memSize = action.limits.memory.megabytes.MB), activeActivationCount)
     with ContainerInUse {
   override val initingState = "warmed"
   override def nextRun(r: Run) = copy(lastUsed = Instant.now, activeActivationCount = activeActivationCount + 1)
@@ -343,7 +301,7 @@ class ContainerProxy(factory: (TransactionId,
         poolConfig.cpuShare(job.memoryLimit),
         None)
         .map(container =>
-          PreWarmCompleted(PreWarmedData(container, job.exec.kind, new ResourceSpec(1, job.memoryLimit, 0.B), expires = job.ttl.map(_.fromNow))))
+          PreWarmCompleted(PreWarmedData(container, job.exec.kind, new RuntimeResources(1, job.memoryLimit, 0.B), expires = job.ttl.map(_.fromNow))))
         .pipeTo(self)
 
       goto(Starting)
@@ -371,7 +329,7 @@ class ContainerProxy(factory: (TransactionId,
             // the container is ready to accept an activation; register it as PreWarmed; this
             // normalizes the life cycle for containers and their cleanup when activations fail
             self ! PreWarmCompleted(
-              PreWarmedData(container, job.action.exec.kind, new ResourceSpec(0, job.action.limits.memory.megabytes.MB, 0.B), 1, expires = None))
+              PreWarmedData(container, job.action.exec.kind, new RuntimeResources(0, job.action.limits.memory.megabytes.MB, 0.B), 1, expires = None))
 
           case Failure(t) =>
             // the container did not come up cleanly, so disambiguate the failure mode and then cleanup

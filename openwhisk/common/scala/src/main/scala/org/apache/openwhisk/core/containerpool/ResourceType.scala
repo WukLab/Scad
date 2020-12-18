@@ -1,30 +1,47 @@
 package org.apache.openwhisk.core.containerpool
 
+import org.apache.openwhisk.core.entity.size.SizeInt
 import org.apache.openwhisk.core.entity.{ByteSize, SizeUnits}
 import spray.json.{DefaultJsonProtocol, DeserializationException, JsNumber, JsObject, JsValue, JsonParser, RootJsonFormat}
 
 import scala.util.Try
 
-abstract class ResourceType[T](var amount: T) {
+abstract class ResourceType[T](val amount: T) {
 }
-class Cpu(amount: Int) extends ResourceType[Int](amount){
+
+/**
+ *
+ * @param amount represents a number of physical CPUs a container occupies
+ */
+class Cpu(amount: Double) extends ResourceType[Double](amount){
 }
+
+/**
+ * @param amount represents a maximum amount of local memory that a container occupies
+ */
 class Memory(amount: ByteSize) extends ResourceType[ByteSize](amount){
+  val test: ByteSize = amount
 }
+
+/**
+ * @param amount represents an amount of "far" (non-local) memory a container occupies
+ */
 class FarMemory(amount: ByteSize) extends ResourceType[ByteSize](amount) {
 }
+
+/**
+ * @param amount represents an amount of local storage that a container occupies
+ */
 class Storage(amount: ByteSize) extends ResourceType[ByteSize](amount){
 }
 
-class RuntimeResources(cpus: Int, memSize: ByteSize, storageSize: ByteSize) {
+class RuntimeResources(cpus: Double = 1, memSize: ByteSize = 0.B, storageSize: ByteSize = 0.B) {
   val cpu: Cpu = new Cpu(cpus)
-  var mem: Memory = new Memory(memSize)
-  var storage: Storage = new Storage(storageSize)
+  val mem: Memory = new Memory(memSize)
+  val storage: Storage = new Storage(storageSize)
 
   val toJson: JsValue = RuntimeResources.serdes.write(this)
 }
-
-
 
 object RuntimeResources extends DefaultJsonProtocol {
   def parse(i: String): Try[RuntimeResources] = Try(serdes.read(JsonParser(i)))
