@@ -285,9 +285,9 @@ object StandaloneOpenWhisk extends SLF4JLogging {
     if (canInstallUserAndActions(conf)) {
       bootstrapUsers()
     }
+    startController()
     startRackSched()
     startInvoker()
-    startController()
   }
 
   private def configureServerPort(conf: Conf) = {

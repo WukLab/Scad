@@ -99,8 +99,7 @@ class Controller(val instance: TopSchedInstanceId,
       (pathEndOrSingleSlash & get) {
         complete(info)
       }
-    } ~ apiV1.routes ~ swagger.swaggerRoutes
-//    ~ internalInvokerHealth
+    } ~ apiV1.routes ~ swagger.swaggerRoutes ~ internalRackHealth
   }
 
   // initialize datastores
@@ -142,9 +141,9 @@ class Controller(val instance: TopSchedInstanceId,
    *
    * @return JSON with details of invoker health or count of healthy invokers respectively.
    */
-  protected[controller] val internalInvokerHealth = {
+  protected[controller] val internalRackHealth = {
     implicit val executionContext = actorSystem.dispatcher
-    (pathPrefix("invokers") & get) {
+    (pathPrefix("racks") & get) {
       pathEndOrSingleSlash {
         complete {
           loadBalancer
@@ -158,9 +157,9 @@ class Controller(val instance: TopSchedInstanceId,
             .map(_.count(_.status == RackState.Healthy).toJson)
         }
       } ~ path("ready") {
-        onSuccess(loadBalancer.rackHealth()) { invokersHealth =>
-          val all = invokersHealth.size
-          val healthy = invokersHealth.count(_.status == RackState.Healthy)
+        onSuccess(loadBalancer.rackHealth()) { rackHealths =>
+          val all = rackHealths.size
+          val healthy = rackHealths.count(_.status == RackState.Healthy)
           val ready = Controller.readyState(all, healthy, Controller.readinessThreshold.getOrElse(1))
           if (ready)
             complete(JsObject("healthy" -> s"$healthy/$all".toJson))

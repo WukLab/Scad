@@ -27,7 +27,6 @@ import pureconfig._
 import pureconfig.generic.auto._
 import spray.json.DefaultJsonProtocol._
 import spray.json._
-import org.apache.openwhisk.common.Https.HttpsConfig
 import org.apache.openwhisk.common.{AkkaLogging, Logging, LoggingMarkers, Scheduler, TransactionId}
 import org.apache.openwhisk.core.WhiskConfig
 import org.apache.openwhisk.core.WhiskConfig.kafkaHosts
@@ -41,7 +40,7 @@ import org.apache.openwhisk.core.entity.ActivationId.ActivationIdGenerator
 import org.apache.openwhisk.core.entity.ExecManifest.Runtimes
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.loadBalancer.InvokerState
-import org.apache.openwhisk.http.{BasicHttpService, BasicRasService}
+import org.apache.openwhisk.http.BasicRasService
 import org.apache.openwhisk.spi.SpiLoader
 import pureconfig.ConfigReader.Result
 
@@ -209,7 +208,7 @@ object RackSched {
   def start(args: Array[String])(implicit actorSystem: ActorSystem, logger: Logging): Unit = {
     // extract configuration data from the environment
     val config = new WhiskConfig(requiredProperties)
-    val port = config.servicePort.toInt
+    val port = config.servicePort.toInt + 10
 
     // if deploying multiple instances (scale out), must pass the instance number as the
     require(args.length >= 1, "racksched instance required")
@@ -262,12 +261,12 @@ object RackSched {
           ActorMaterializer.create(actorSystem),
           logger)
 
-        val httpsConfig =
-          if (RackSched.protocol == "https") Some(loadConfigOrThrow[HttpsConfig]("whisk.racksched.https")) else None
-
-        BasicHttpService.startHttpService(racksched.route, port, httpsConfig, interface)(
-          actorSystem,
-          racksched.materializer)
+//        val httpsConfig =
+//          if (RackSched.protocol == "https") Some(loadConfigOrThrow[HttpsConfig]("whisk.racksched.https")) else None
+//
+//        BasicHttpService.startHttpService(racksched.route, port, httpsConfig, interface)(
+//          actorSystem,
+//          racksched.materializer)
 
       case Failure(t) =>
         abort(s"Invalid runtimes manifest: $t")

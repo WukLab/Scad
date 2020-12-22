@@ -27,9 +27,11 @@ import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.WhiskConfig
 import org.apache.openwhisk.core.WhiskConfig.kafkaHosts
 import org.apache.openwhisk.core.WhiskConfig.wskApiHost
+import org.apache.openwhisk.core.connector.AcknowledegmentMessage
 import org.apache.openwhisk.core.connector.{ActivationMessage, MessageFeed, MessageProducer, MessagingProvider}
 import org.apache.openwhisk.core.containerpool.ContainerPoolConfig
 import org.apache.openwhisk.core.entity.ControllerInstanceId
+import org.apache.openwhisk.core.entity.MemoryLimit
 import org.apache.openwhisk.core.entity.WhiskActionMetaData
 import org.apache.openwhisk.core.entity.WhiskEntityStore
 import org.apache.openwhisk.core.entity.size.SizeInt
@@ -47,6 +49,9 @@ import org.apache.openwhisk.core.loadBalancer.CurrentInvokerPoolState
 import org.apache.openwhisk.core.loadBalancer.InvokerActor
 import org.apache.openwhisk.core.loadBalancer.InvokerPool
 import org.apache.openwhisk.core.loadBalancer.InvokerPoolFactory
+import org.apache.openwhisk.core.loadBalancer.InvokerState
+import org.apache.openwhisk.core.loadBalancer.LoadBalancerException
+import org.apache.openwhisk.core.loadBalancer.ShardingContainerPoolBalancer
 import org.apache.openwhisk.core.loadBalancer.ShardingContainerPoolBalancerState
 
 import java.nio.charset.StandardCharsets
@@ -260,10 +265,63 @@ class RackSimpleBalancer(config: WhiskConfig,
   override def publish(action: ExecutableWhiskActionMetaData, msg: ActivationMessage)(
     implicit transid: TransactionId): Future[Future[Either[ActivationId, WhiskActivation]]] = {
 
-/** 2. Update local state with the activation to be executed scheduled. */
-    val activationResult = setupActivation(msg, action, invokerName)
-    sendActivationToInvoker(messageProducer, msg, invokerName).map(_ => activationResult)
+    val isBlackboxInvocation = action.exec.pull
+    val actionType = if (!isBlackboxInvocation) "managed" else "blackbox"
+    val (invokersToUse, stepSizes) =
+      if (!isBlackboxInvocation) (schedulingState.managedInvokers, schedulingState.managedStepSizes)
+      else (schedulingState.blackboxInvokers, schedulingState.blackboxStepSizes)
+    val chosen = if (invokersToUse.nonEmpty) {
+      val hash = ShardingContainerPoolBalancer.generateHash(msg.user.namespace.name, action.fullyQualifiedName(false))
+      val homeInvoker = hash % invokersToUse.size
+      val stepSize = stepSizes(hash % stepSizes.size)
+      val invoker: Option[(InvokerInstanceId, Boolean)] = ShardingContainerPoolBalancer.schedule(
+        action.limits.concurrency.maxConcurrent,
+        action.fullyQualifiedName(true),
+        invokersToUse,
+        schedulingState.invokerSlots,
+        action.limits.memory.megabytes,
+        homeInvoker,
+        stepSize)
+      invoker.foreach {
+        case (_, true) =>
+          val metric =
+            if (isBlackboxInvocation)
+              LoggingMarkers.BLACKBOX_SYSTEM_OVERLOAD
+            else
+              LoggingMarkers.MANAGED_SYSTEM_OVERLOAD
+          MetricEmitter.emitCounterMetric(metric)
+        case _ =>
+      }
+      invoker.map(_._1)
+    } else {
+      None
+    }
 
+    chosen
+      .map { invoker =>
+        // MemoryLimit() and TimeLimit() return singletons - they should be fast enough to be used here
+        val memoryLimit = action.limits.memory
+        val memoryLimitInfo = if (memoryLimit == MemoryLimit()) { "std" } else { "non-std" }
+        val timeLimit = action.limits.timeout
+        val timeLimitInfo = if (timeLimit == TimeLimit()) { "std" } else { "non-std" }
+        logging.info(
+          this,
+          s"scheduled activation ${msg.activationId}, action '${msg.action.asString}' ($actionType), ns '${msg.user.namespace.name.asString}', mem limit ${memoryLimit.megabytes} MB (${memoryLimitInfo}), time limit ${timeLimit.duration.toMillis} ms (${timeLimitInfo}) to ${invoker}")
+        val activationResult = setupActivation(msg, action, invoker)
+        sendActivationToInvoker(messageProducer, msg, invoker).map(_ => activationResult)
+      }
+      .getOrElse {
+        // report the state of all invokers
+        val invokerStates = invokersToUse.foldLeft(Map.empty[InvokerState, Int]) { (agg, curr) =>
+          val count = agg.getOrElse(curr.status, 0) + 1
+          agg + (curr.status -> count)
+        }
+
+        logging.error(
+          this,
+          s"failed to schedule activation ${msg.activationId}, action '${msg.action.asString}' ($actionType), ns '${msg.user.namespace.name.asString}' - invokers to use: $invokerStates")
+        Future.failed(LoadBalancerException("No invokers available"))
+      }
   }
 
   /**
@@ -361,6 +419,53 @@ class RackSimpleBalancer(config: WhiskConfig,
     LoggingMarkers.RACKSCHED_BALANCER_COMPLETION_ACK(rackschedInstance, RegularAfterForcedCompletionAck)
   protected val RACKSCHED_COMPLETION_ACK_FORCED_AFTER_REGULAR: LogMarkerToken =
     LoggingMarkers.RACKSCHED_BALANCER_COMPLETION_ACK(rackschedInstance, ForcedAfterRegularCompletionAck)
+
+  /** Subscribes to ack messages from the invokers (result / completion) and registers a handler for these messages. */
+  private val acknowledgementFeed: ActorRef =
+    feedFactory.createFeed(actorSystem, messagingProvider, processAcknowledgement)
+
+  /** 4. Get the ack message and parse it */
+  protected[sched] def processAcknowledgement(bytes: Array[Byte]): Future[Unit] = Future {
+    val raw = new String(bytes, StandardCharsets.UTF_8)
+    AcknowledegmentMessage.parse(raw) match {
+      case Success(acknowledegment) =>
+        acknowledegment.isSlotFree.foreach { instance =>
+          processCompletion(
+            acknowledegment.activationId,
+            acknowledegment.transid,
+            forced = false,
+            isSystemError = acknowledegment.isSystemError.getOrElse(false),
+            instance)
+        }
+
+        acknowledegment.result.foreach { response =>
+          processResult(acknowledegment.activationId, acknowledegment.transid, response)
+        }
+
+        acknowledgementFeed ! MessageFeed.Processed
+
+      case Failure(t) =>
+        acknowledgementFeed ! MessageFeed.Processed
+        logging.error(this, s"failed processing message: $raw")
+
+      case _ =>
+        acknowledgementFeed ! MessageFeed.Processed
+        logging.error(this, s"Unexpected Acknowledgment message received by loadbalancer: $raw")
+    }
+  }
+
+  /** 5. Process the result ack and return it to the user */
+  protected def processResult(aid: ActivationId,
+                              tid: TransactionId,
+                              response: Either[ActivationId, WhiskActivation]): Unit = {
+    // Resolve the promise to send the result back to the user.
+    // The activation will be removed from the activation slots later, when the completion message
+    // is received (because the slot in the invoker is not yet free for new activations).
+    activationPromises.remove(aid).foreach(_.trySuccess(response))
+    logging.info(this, s"received result ack for '$aid'")(tid)
+  }
+
+
 
   /** 6. Process the completion ack and update the state */
   protected[sched] def processCompletion(aid: ActivationId,

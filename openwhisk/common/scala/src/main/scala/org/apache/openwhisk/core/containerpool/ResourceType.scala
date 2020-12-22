@@ -1,7 +1,7 @@
 package org.apache.openwhisk.core.containerpool
 
-import org.apache.openwhisk.core.entity.size.SizeInt
 import org.apache.openwhisk.core.entity.{ByteSize, SizeUnits}
+import org.apache.openwhisk.core.entity.size.SizeInt
 import spray.json.{DefaultJsonProtocol, DeserializationException, JsNumber, JsObject, JsValue, JsonParser, RootJsonFormat}
 
 import scala.util.Try
@@ -53,8 +53,8 @@ object RuntimeResources extends DefaultJsonProtocol {
   implicit val serdes = new RootJsonFormat[RuntimeResources] {
     override def write(i: RuntimeResources): JsValue = JsObject(
       "cpu" -> JsNumber(i.cpu.amount),
-      "mem" -> JsNumber(i.mem.amount.size.toByte),
-      "storage" -> JsNumber(i.storage.amount.size.toByte),
+      "mem" -> JsNumber(i.mem.amount.toBytes.toLong),
+      "storage" -> JsNumber(i.storage.amount.toBytes.toLong),
     )
 
     override def read(json: JsValue): RuntimeResources = {
