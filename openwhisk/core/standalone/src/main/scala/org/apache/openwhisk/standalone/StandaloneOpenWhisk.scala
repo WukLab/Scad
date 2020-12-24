@@ -20,7 +20,6 @@ package org.apache.openwhisk.standalone
 import java.io.{ByteArrayInputStream, File}
 import java.nio.charset.StandardCharsets.UTF_8
 import java.util.Properties
-
 import akka.actor.ActorSystem
 import akka.event.slf4j.SLF4JLogging
 import akka.http.scaladsl.model.Uri
@@ -43,6 +42,10 @@ import scala.concurrent.{Await, ExecutionContext}
 import scala.io.AnsiColor
 import scala.util.{Failure, Success, Try}
 import KafkaLauncher._
+import org.apache.openwhisk.core.invoker.Invoker
+import org.apache.openwhisk.core.sched.RackSched
+
+import scala.util.Random
 
 class Conf(arguments: Seq[String]) extends ScallopConf(Conf.expandAllMode(arguments)) {
   import StandaloneOpenWhisk.preferredPgPort
@@ -67,8 +70,8 @@ class Conf(arguments: Seq[String]) extends ScallopConf(Conf.expandAllMode(argume
   val apiGwPort = opt[Int](descr = "API Gateway Port", default = Some(3234), noshort = true)
   val dataDir = opt[File](descr = "Directory used for storage", default = Some(StandaloneOpenWhisk.defaultWorkDir))
 
-  val kafka = opt[Boolean](descr = "Enable embedded Kafka support", noshort = true)
-  val kafkaUi = opt[Boolean](descr = "Enable Kafka UI", noshort = true)
+  val kafka = opt[Boolean](descr = "Enable embedded Kafka support", noshort = true, default = Some(true))
+  val kafkaUi = opt[Boolean](descr = "Enable Kafka UI", noshort = true, default = Some(true))
 
   //The port option below express following usage. Note that "preferred"" port values are not configured as default
   // on purpose
@@ -283,6 +286,8 @@ object StandaloneOpenWhisk extends SLF4JLogging {
       bootstrapUsers()
     }
     startController()
+    startRackSched()
+    startInvoker()
   }
 
   private def configureServerPort(conf: Conf) = {
@@ -334,6 +339,16 @@ object StandaloneOpenWhisk extends SLF4JLogging {
 
   private def setConfigProp(key: String, value: String): Unit = {
     setSysProp(configKey(key), value)
+  }
+
+  private def startInvoker()(implicit actorSystem: ActorSystem, logger: Logging): Unit = {
+    // needed to appease invoker even though we set the "--id" arg
+    setConfigProp(WhiskConfig.zookeeperHostList, "dummyHost")
+    Invoker.start(Array("--id", 0.toString))
+  }
+
+  private def startRackSched()(implicit actorSystem: ActorSystem, logger: Logging): Unit = {
+    RackSched.start(Array(Random.nextInt(1).toString))
   }
 
   private def startController()(implicit actorSystem: ActorSystem, logger: Logging): Unit = {

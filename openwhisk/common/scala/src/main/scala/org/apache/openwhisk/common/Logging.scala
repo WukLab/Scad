@@ -27,7 +27,7 @@ import kamon.Kamon
 import kamon.metric.{MeasurementUnit, Counter => KCounter, Gauge => KGauge, Histogram => KHistogram}
 import kamon.statsd.{MetricKeyGenerator, SimpleMetricKeyGenerator}
 import kamon.tag.TagSet
-import org.apache.openwhisk.core.entity.ControllerInstanceId
+import org.apache.openwhisk.core.entity.{ControllerInstanceId, RackSchedInstanceId}
 
 trait Logging {
 
@@ -345,6 +345,7 @@ object LoggingMarkers {
   private val loadbalancer = "loadbalancer"
   private val containerClient = "containerClient"
   private val containerPool = "containerPool"
+  private val racksched = "racksched"
 
   /*
    * The following markers are used to emit log messages as well as metrics. Add all LogMarkerTokens below to
@@ -404,6 +405,9 @@ object LoggingMarkers {
   // Check invoker healthy state from loadbalancer
   def LOADBALANCER_INVOKER_STATUS_CHANGE(state: String) =
     LogMarkerToken(loadbalancer, "invokerState", counter, Some(state), Map("state" -> state))(MeasurementUnit.none)
+  // Check invoker healthy state from loadbalancer
+  def LOADBALANCER_RACK_STATUS_CHANGE(state: String) =
+    LogMarkerToken(loadbalancer, "rackState", counter, Some(state), Map("state" -> state))(MeasurementUnit.none)
   val LOADBALANCER_ACTIVATION_START = LogMarkerToken(loadbalancer, "activations", counter)(MeasurementUnit.none)
 
   def LOADBALANCER_ACTIVATIONS_INFLIGHT(controllerInstance: ControllerInstanceId) = {
@@ -449,6 +453,52 @@ object LoggingMarkers {
     else
       LogMarkerToken(
         loadbalancer + controllerInstance.asString,
+        "completionAck_" + completionAckType.asString,
+        counter)(MeasurementUnit.none)
+
+  //
+  // Rack Balancer Log Messages
+  //
+  // Check invoker healthy state from loadbalancer
+  def RACKSCHED_BALANCER_INVOKER_STATUS_CHANGE(state: String) =
+    LogMarkerToken(racksched, "invokerState", counter, Some(state), Map("state" -> state))(MeasurementUnit.none)
+  val RACKSCHED_BALANCER_ACTIVATION_START = LogMarkerToken(racksched, "activations", counter)(MeasurementUnit.none)
+
+  def RACKSCHED_BALANCER_ACTIVATIONS_INFLIGHT(controllerInstance: RackSchedInstanceId) = {
+    if (TransactionId.metricsKamonTags)
+      LogMarkerToken(
+        racksched,
+        "activationsInflight",
+        counter,
+        None,
+        Map("racksched_id" -> controllerInstance.toString))(MeasurementUnit.none)
+    else
+      LogMarkerToken(loadbalancer + controllerInstance.toString, "activationsInflight", counter)(MeasurementUnit.none)
+  }
+  def RACKSCHED_BALANCER_MEMORY_INFLIGHT(controllerInstance: RackSchedInstanceId, actionType: String) =
+    if (TransactionId.metricsKamonTags)
+      LogMarkerToken(
+        racksched,
+        s"memory${actionType}Inflight",
+        counter,
+        None,
+        Map("racksched_id" -> controllerInstance.toString))(MeasurementUnit.none)
+    else
+      LogMarkerToken(loadbalancer + controllerInstance.toString, s"memory${actionType}Inflight", counter)(
+        MeasurementUnit.none)
+
+  // Convenience function to create log marker tokens used for emitting counter metrics related to completion acks.
+  def RACKSCHED_BALANCER_COMPLETION_ACK(controllerInstance: RackSchedInstanceId, completionAckType: CompletionAckType) =
+    if (TransactionId.metricsKamonTags)
+      LogMarkerToken(
+        racksched,
+        "completionAck",
+        counter,
+        None,
+        Map("racksched_id" -> controllerInstance.toString, "type" -> completionAckType.asString))(MeasurementUnit.none)
+    else
+      LogMarkerToken(
+        racksched + controllerInstance.toString,
         "completionAck_" + completionAckType.asString,
         counter)(MeasurementUnit.none)
 
@@ -577,4 +627,26 @@ object LoggingMarkers {
   val DATABASE_ATTS_DELETE =
     LogMarkerToken(database, "deleteDocumentAttachments", start)(MeasurementUnit.time.milliseconds)
   val DATABASE_BATCH_SIZE = LogMarkerToken(database, "batchSize", counter)(MeasurementUnit.none)
+
+  /*
+   * RackSched related markers
+   */
+  def RACKSCHED_STARTUP(id: String) =
+    if (TransactionId.metricsKamonTags)
+      LogMarkerToken(controller, s"startup", counter, None, Map("racksched_id" -> id))(MeasurementUnit.none)
+    else LogMarkerToken(controller, s"startup$id", counter)(MeasurementUnit.none)
+
+  // Time of the activation in controller until it is delivered to Kafka
+  val RACKSCHED_ACTIVATION =
+    LogMarkerToken(controller, activation, start)(MeasurementUnit.time.milliseconds)
+  val RACKSCHED_ACTIVATION_BLOCKING =
+    LogMarkerToken(controller, "blockingActivation", start)(MeasurementUnit.time.milliseconds)
+  val RACKSCHED_ACTIVATION_BLOCKING_DATABASE_RETRIEVAL =
+    LogMarkerToken(controller, "blockingActivationDatabaseRetrieval", counter)(MeasurementUnit.none)
+
+  // Time that is needed to load balance the activation
+  val RACKSCHED_LOADBALANCER = LogMarkerToken(controller, loadbalancer, start)(MeasurementUnit.none)
+
+  // Time that is needed to produce message in kafka
+  val RACKSCHED_KAFKA = LogMarkerToken(controller, kafka, start)(MeasurementUnit.time.milliseconds)
 }

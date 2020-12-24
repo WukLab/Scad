@@ -15,77 +15,56 @@
  * limitations under the License.
  */
 
-package org.apache.openwhisk.core.controller
+package org.apache.openwhisk.core.sched
 
-import akka.Done
-import akka.actor.{ActorSystem, CoordinatedShutdown}
+import akka.actor.ActorSystem
 import akka.event.Logging.InfoLevel
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
 import akka.http.scaladsl.model.StatusCodes._
-import akka.http.scaladsl.model.Uri
 import akka.http.scaladsl.server.Route
 import akka.stream.ActorMaterializer
-import kamon.Kamon
 import pureconfig._
 import pureconfig.generic.auto._
 import spray.json.DefaultJsonProtocol._
 import spray.json._
-import org.apache.openwhisk.common.Https.HttpsConfig
-import org.apache.openwhisk.common.{AkkaLogging, ConfigMXBean, Logging, LoggingMarkers, TransactionId}
+import org.apache.openwhisk.common.{AkkaLogging, Logging, LoggingMarkers, Scheduler, TransactionId}
 import org.apache.openwhisk.core.WhiskConfig
-import org.apache.openwhisk.core.connector.MessagingProvider
+import org.apache.openwhisk.core.WhiskConfig.kafkaHosts
+import org.apache.openwhisk.core.connector.{MessagingProvider, PingRackMessage}
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.containerpool.logging.LogStoreProvider
+import org.apache.openwhisk.core.controller.RestApiCommons
 import org.apache.openwhisk.core.database.{ActivationStoreProvider, CacheChangeNotification, RemoteCacheInvalidation}
 import org.apache.openwhisk.core.entitlement._
 import org.apache.openwhisk.core.entity.ActivationId.ActivationIdGenerator
 import org.apache.openwhisk.core.entity.ExecManifest.Runtimes
 import org.apache.openwhisk.core.entity._
-import org.apache.openwhisk.core.loadBalancer.LoadBalancerProvider
-import org.apache.openwhisk.core.topbalancer.RackState
-import org.apache.openwhisk.core.topbalancer.TopBalancerProvider
-import org.apache.openwhisk.http.{BasicHttpService, BasicRasService}
+import org.apache.openwhisk.core.loadBalancer.InvokerState
+import org.apache.openwhisk.http.BasicRasService
 import org.apache.openwhisk.spi.SpiLoader
+import pureconfig.ConfigReader.Result
 
-import scala.concurrent.ExecutionContext.Implicits
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.Await
+import scala.concurrent.ExecutionContextExecutor
 import scala.util.{Failure, Success}
 
 /**
- * The Controller is the service that provides the REST API for OpenWhisk.
- *
- * It extends the BasicRasService so it includes a ping endpoint for monitoring.
- *
- * Akka sends messages to akka Actors -- the Controller is an Actor, ready to receive messages.
- *
- * It is possible to deploy a hot-standby controller. Each controller needs its own instance. This instance is a
- * consecutive numbering, starting with 0.
- * The state and cache of each controller is not shared to the other controllers.
- * If the base controller crashes, the hot-standby controller will be used. After the base controller is up again,
- * it will be used again. Because of the empty cache after restart, there are no problems with inconsistency.
- * The only problem that could occur is, that the base controller is not reachable, but does not restart. After switching
- * back to the base controller, there could be an inconsistency in the cache (e.g. if a user has updated an action). This
- * inconsistency will be resolved by its own after removing the cached item, 5 minutes after it has been generated.
- *
- * Uses the Akka routing DSL: http://doc.akka.io/docs/akka-http/current/scala/http/routing-dsl/overview.html
- *
-// * @param config A set of properties needed to run an instance of the controller service
- * @param instance if running in scale-out, a unique identifier for this instance in the group
-// * @param verbosity logging verbosity
-// * @param executionContext Scala runtime support for concurrent operations
- */
-class Controller(val instance: TopSchedInstanceId,
-                 runtimes: Runtimes,
-                 implicit val whiskConfig: WhiskConfig,
-                 implicit val actorSystem: ActorSystem,
-                 implicit val materializer: ActorMaterializer,
-                 implicit val logging: Logging)
+ * The RackSched is the service that provides coarse-grained scheduling and Rest APIs
+ **/
+class
+RackSched(val instance: RackSchedInstanceId,
+                runtimes: Runtimes,
+                implicit val whiskConfig: WhiskConfig,
+                implicit val actorSystem: ActorSystem,
+                implicit val materializer: ActorMaterializer,
+                implicit val logging: Logging)
     extends BasicRasService {
 
-  TransactionId.controller.mark(
+  TransactionId.racksched.mark(
     this,
-    LoggingMarkers.CONTROLLER_STARTUP(instance.asString),
-    s"starting controller instance ${instance.asString}",
+    LoggingMarkers.RACKSCHED_STARTUP(instance.toString),
+    s"starting racksched instance ${instance.toString}",
     logLevel = InfoLevel)
 
   /**
@@ -99,14 +78,13 @@ class Controller(val instance: TopSchedInstanceId,
       (pathEndOrSingleSlash & get) {
         complete(info)
       }
-    } ~ apiV1.routes ~ swagger.swaggerRoutes ~ internalRackHealth
+    } ~ internalInvokerHealth
   }
 
   // initialize datastores
-  private implicit val authStore = WhiskAuthStore.datastore()
   private implicit val entityStore = WhiskEntityStore.datastore()
   private implicit val cacheChangeNotification = Some(new CacheChangeNotification {
-    val remoteCacheInvalidaton = new RemoteCacheInvalidation(whiskConfig, "controller", instance)
+    val remoteCacheInvalidaton = new RemoteCacheInvalidation(whiskConfig, "racksched", instance)
     override def apply(k: CacheKey) = {
       remoteCacheInvalidaton.invalidateWhiskActionMetaData(k)
       remoteCacheInvalidaton.notifyOtherInstancesAboutInvalidation(k)
@@ -115,11 +93,11 @@ class Controller(val instance: TopSchedInstanceId,
 
   // initialize backend services
   private implicit val loadBalancer =
-    SpiLoader.get[TopBalancerProvider].instance(whiskConfig, instance)
-  logging.info(this, s"loadbalancer initialized: ${loadBalancer.getClass.getSimpleName}")(TransactionId.controller)
+    SpiLoader.get[RackLoadBalancerProvider].instance(whiskConfig, instance)
+  logging.info(this, s"rackbalancer initialized: ${loadBalancer.getClass.getSimpleName}")(TransactionId.racksched)
 
-  private implicit val entitlementProvider =
-    SpiLoader.get[EntitlementSpiProvider].instance(whiskConfig, loadBalancer, instance)
+
+
   private implicit val activationIdFactory = new ActivationIdGenerator {}
   private implicit val logStore = SpiLoader.get[LogStoreProvider].instance(actorSystem)
   private implicit val activationStore =
@@ -129,9 +107,8 @@ class Controller(val instance: TopSchedInstanceId,
   Collection.initialize(entityStore)
 
   /** The REST APIs. */
-  implicit val controllerInstance: TopSchedInstanceId = instance
-  private val apiV1 = new RestAPIVersion(whiskConfig, "api", "v1")
-  private val swagger = new SwaggerDocs(Uri.Path.Empty, "infoswagger.json")
+  implicit val rackschedInstance: RackSchedInstanceId = instance
+//  private val apiV1 = new RestAPIVersion(whiskConfig, "api", "v1")
 
   /**
    * Handles GET /invokers - list of invokers
@@ -141,26 +118,26 @@ class Controller(val instance: TopSchedInstanceId,
    *
    * @return JSON with details of invoker health or count of healthy invokers respectively.
    */
-  protected[controller] val internalRackHealth = {
-    implicit val executionContext = actorSystem.dispatcher
-    (pathPrefix("racks") & get) {
+  protected[sched] val internalInvokerHealth: Route = {
+    implicit val executionContext: ExecutionContextExecutor = actorSystem.dispatcher
+    (pathPrefix("invokers") & get) {
       pathEndOrSingleSlash {
         complete {
           loadBalancer
-            .rackHealth()
+            .invokerHealth()
             .map(_.map(i => i.id.toString -> i.status.asString).toMap.toJson.asJsObject)
         }
       } ~ path("healthy" / "count") {
         complete {
           loadBalancer
-            .rackHealth()
-            .map(_.count(_.status == RackState.Healthy).toJson)
+            .invokerHealth()
+            .map(_.count(_.status == InvokerState.Healthy).toJson)
         }
       } ~ path("ready") {
-        onSuccess(loadBalancer.rackHealth()) { rackHealths =>
-          val all = rackHealths.size
-          val healthy = rackHealths.count(_.status == RackState.Healthy)
-          val ready = Controller.readyState(all, healthy, Controller.readinessThreshold.getOrElse(1))
+        onSuccess(loadBalancer.invokerHealth()) { invokersHealth =>
+          val all = invokersHealth.size
+          val healthy = invokersHealth.count(_.status == InvokerState.Healthy)
+          val ready = RackSched.readyState(all, healthy, RackSched.readinessThreshold.getOrElse(1))
           if (ready)
             complete(JsObject("healthy" -> s"$healthy/$all".toJson))
           else
@@ -170,24 +147,19 @@ class Controller(val instance: TopSchedInstanceId,
     }
   }
 
-  // controller top level info
-  private val info = Controller.info(
-    whiskConfig,
-    TimeLimit.config,
-    MemoryLimit.config,
-    LogLimit.config,
-    runtimes,
-    List(apiV1.basepath()))
+  // racksched top level info
+  private val info =
+    RackSched.info(whiskConfig, TimeLimit.config, MemoryLimit.config, LogLimit.config, runtimes, List("/fillerAPIPath"))
 }
 
 /**
- * Singleton object provides a factory to create and start an instance of the Controller service.
+ * Singleton object provides a factory to create and start an instance of the racksched service.
  */
-object Controller {
+object RackSched {
 
-  protected val protocol = loadConfigOrThrow[String]("whisk.controller.protocol")
-  protected val interface = loadConfigOrThrow[String]("whisk.controller.interface")
-  protected val readinessThreshold = loadConfig[Double]("whisk.controller.readiness-fraction")
+  protected val protocol: String = loadConfigOrThrow[String]("whisk.racksched.protocol")
+  protected val interface: String = loadConfigOrThrow[String]("whisk.racksched.interface")
+  protected val readinessThreshold: Result[Double] = loadConfig[Double]("whisk.racksched.readiness-fraction")
 
   // requiredProperties is a Map whose keys define properties that must be bound to
   // a value, and whose values are default values.   A null value in the Map means there is
@@ -195,15 +167,15 @@ object Controller {
   def requiredProperties =
     ExecManifest.requiredProperties ++
       RestApiCommons.requiredProperties ++
-      SpiLoader.get[LoadBalancerProvider].requiredProperties ++
-      EntitlementProvider.requiredProperties
+      SpiLoader.get[RackLoadBalancerProvider].requiredProperties ++
+      kafkaHosts
 
-  private def info(config: WhiskConfig,
-                   timeLimit: TimeLimitConfig,
-                   memLimit: MemoryLimitConfig,
-                   logLimit: MemoryLimitConfig,
-                   runtimes: Runtimes,
-                   apis: List[String]) =
+  def info(config: WhiskConfig,
+           timeLimit: TimeLimitConfig,
+           memLimit: MemoryLimitConfig,
+           logLimit: MemoryLimitConfig,
+           runtimes: Runtimes,
+           apis: List[String]) =
     JsObject(
       "description" -> "OpenWhisk".toJson,
       "support" -> JsObject(
@@ -228,28 +200,25 @@ object Controller {
   }
 
   def main(args: Array[String]): Unit = {
-    implicit val actorSystem = ActorSystem("controller-actor-system")
+    implicit val actorSystem = ActorSystem("racksched-actor-system")
     implicit val logger = new AkkaLogging(akka.event.Logging.getLogger(actorSystem, this))
     start(args)
   }
 
   def start(args: Array[String])(implicit actorSystem: ActorSystem, logger: Logging): Unit = {
-    ConfigMXBean.register()
-    Kamon.init()
-
-    // Prepare Kamon shutdown
-    CoordinatedShutdown(actorSystem).addTask(CoordinatedShutdown.PhaseActorSystemTerminate, "shutdownKamon") { () =>
-      logger.info(this, s"Shutting down Kamon with coordinated shutdown")
-      Kamon.stopModules().map(_ => Done)(Implicits.global)
-    }
-
     // extract configuration data from the environment
     val config = new WhiskConfig(requiredProperties)
-    val port = config.servicePort.toInt
+    val port = config.servicePort.toInt + 10
 
     // if deploying multiple instances (scale out), must pass the instance number as the
-    require(args.length >= 1, "controller instance required")
-    val instance = new TopSchedInstanceId(args(0))
+    require(args.length >= 1, "racksched instance required")
+    val id = args(0).toInt
+    if (id < 0) {
+      throw new RuntimeException(s"Rack scheduler instance ID must be > 0. Got id number ${id}")
+    }
+    val instance = new RackSchedInstanceId(args(0).toInt,
+      new RuntimeResources(0, ByteSize.fromString("0B"), ByteSize.fromString("0B")),
+      None, None)
 
     def abort(message: String) = {
       logger.error(this, message)
@@ -265,9 +234,10 @@ object Controller {
     val msgProvider = SpiLoader.get[MessagingProvider]
 
     Seq(
-      ("completed" + instance.asString, "completed", Some(ActivationEntityLimit.MAX_ACTIVATION_LIMIT)),
-//      ("health", "health", None),
+      ("completed" + instance.toString, "completed", Some(ActivationEntityLimit.MAX_ACTIVATION_LIMIT)),
+      ("health", "health", None),
       ("rackHealth", "rackHealth", None),
+      (instance.toString, instance.toString, None),
       ("cacheInvalidation", "cache-invalidation", None),
       ("events", "events", None)).foreach {
       case (topic, topicConfigurationKey, maxMessageBytes) =>
@@ -276,9 +246,14 @@ object Controller {
         }
     }
 
+    val healthProducer = msgProvider.getProducer(config)
+    Scheduler.scheduleWaitAtMost(1.seconds)(() => {
+      healthProducer.send("rackHealth", PingRackMessage(instance))
+    })
+
     ExecManifest.initialize(config) match {
       case Success(_) =>
-        val controller = new Controller(
+        val racksched = new RackSched(
           instance,
           ExecManifest.runtimesManifest,
           config,
@@ -286,12 +261,12 @@ object Controller {
           ActorMaterializer.create(actorSystem),
           logger)
 
-        val httpsConfig =
-          if (Controller.protocol == "https") Some(loadConfigOrThrow[HttpsConfig]("whisk.controller.https")) else None
-
-        BasicHttpService.startHttpService(controller.route, port, httpsConfig, interface)(
-          actorSystem,
-          controller.materializer)
+//        val httpsConfig =
+//          if (RackSched.protocol == "https") Some(loadConfigOrThrow[HttpsConfig]("whisk.racksched.https")) else None
+//
+//        BasicHttpService.startHttpService(racksched.route, port, httpsConfig, interface)(
+//          actorSystem,
+//          racksched.materializer)
 
       case Failure(t) =>
         abort(s"Invalid runtimes manifest: $t")

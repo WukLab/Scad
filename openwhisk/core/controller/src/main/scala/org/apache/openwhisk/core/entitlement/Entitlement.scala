@@ -32,10 +32,11 @@ import org.apache.openwhisk.core.WhiskConfig
 import org.apache.openwhisk.core.connector.{EventMessage, Metric}
 import org.apache.openwhisk.core.controller.RejectRequest
 import org.apache.openwhisk.core.entity._
-import org.apache.openwhisk.core.loadBalancer.{LoadBalancer, ShardingContainerPoolBalancer}
+import org.apache.openwhisk.core.loadBalancer.ShardingContainerPoolBalancer
 import org.apache.openwhisk.http.ErrorResponse
 import org.apache.openwhisk.http.Messages
 import org.apache.openwhisk.core.connector.MessagingProvider
+import org.apache.openwhisk.core.topbalancer.TopBalancer
 import org.apache.openwhisk.spi.SpiLoader
 import org.apache.openwhisk.spi.Spi
 
@@ -66,7 +67,7 @@ protected[core] case class Resource(namespace: EntityPath,
 }
 
 trait EntitlementSpiProvider extends Spi {
-  def instance(config: WhiskConfig, loadBalancer: LoadBalancer, instance: ControllerInstanceId)(
+  def instance(config: WhiskConfig, loadBalancer: TopBalancer, instance: ControllerInstanceId)(
     implicit actorSystem: ActorSystem,
     logging: Logging): EntitlementProvider
 }
@@ -85,7 +86,7 @@ protected[core] object EntitlementProvider {
  */
 protected[core] abstract class EntitlementProvider(
   config: WhiskConfig,
-  loadBalancer: LoadBalancer,
+  loadBalancer: TopBalancer,
   controllerInstance: ControllerInstanceId)(implicit actorSystem: ActorSystem, logging: Logging) {
 
   private implicit val executionContext: ExecutionContext = actorSystem.dispatcher

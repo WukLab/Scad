@@ -122,7 +122,7 @@ class ContainerProxyTests
     action.rev,
     Identity(Subject(), Namespace(invocationNamespace, uuid), BasicAuthenticationAuthKey(uuid, Secret())),
     ActivationId.generate(),
-    ControllerInstanceId("0"),
+    new ControllerInstanceId("0"),
     blocking = false,
     content = Some(activationArguments),
     initArgs = Set("ENV_VAR"),
@@ -2032,11 +2032,11 @@ class ContainerProxyTests
       case WarmingColdData(message.user.namespace.name, action, _, 1) =>
     }
 
-    val memData = MemoryData(new ResourceSpec(1, action.limits.memory.megabytes.MB, 0.B))
+    val memData = MemoryData(new RuntimeResources(1, action.limits.memory.megabytes.MB, 0.B))
     memData.nextRun(Run(action, message)) should matchPattern {
       case WarmingColdData(message.user.namespace.name, action, _, 1) =>
     }
-    val pwData = PreWarmedData(new TestContainer(), action.exec.kind, new ResourceSpec(0, action.limits.memory.megabytes.MB, 0.B))
+    val pwData = PreWarmedData(new TestContainer(), action.exec.kind, new RuntimeResources(0, action.limits.memory.megabytes.MB, 0.B))
     pwData.nextRun(Run(action, message)) should matchPattern {
       case WarmingData(pwData.container, message.user.namespace.name, action, _, 1) =>
     }

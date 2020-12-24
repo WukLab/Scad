@@ -20,7 +20,7 @@ package org.apache.openwhisk.core.controller
 import org.apache.openwhisk.core.WhiskConfig
 import org.apache.openwhisk.core.entitlement._
 import org.apache.openwhisk.core.entity.ActivationId.ActivationIdGenerator
-import org.apache.openwhisk.core.loadBalancer.LoadBalancer
+import org.apache.openwhisk.core.topbalancer.TopBalancer
 
 /**
  * A trait which defines a few services which a whisk microservice may rely on.
@@ -37,5 +37,5 @@ trait WhiskServices {
   protected val activationIdFactory: ActivationIdGenerator
 
   /** A load balancing service that launches invocations. */
-  protected val loadBalancer: LoadBalancer
+  protected val loadBalancer: TopBalancer
 }

@@ -205,7 +205,7 @@ class ShardingContainerPoolBalancer(
   }
 
   /** State needed for scheduling. */
-  val schedulingState = ShardingContainerPoolBalancerState()(lbConfig)
+  val schedulingState: ShardingContainerPoolBalancerState = ShardingContainerPoolBalancerState()(lbConfig)
 
   /**
    * Monitors invoker supervision and the cluster to update the state sequentially
@@ -316,7 +316,7 @@ class ShardingContainerPoolBalancer(
       }
   }
 
-  override val invokerPool =
+  override val invokerPool: ActorRef =
     invokerPoolFactory.createInvokerPool(
       actorSystem,
       messagingProvider,

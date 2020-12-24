@@ -24,11 +24,11 @@ import org.apache.openwhisk.common.Logging
 import org.apache.openwhisk.common.TransactionId
 import org.apache.openwhisk.core.WhiskConfig
 import org.apache.openwhisk.core.entity.{ControllerInstanceId, Identity, Subject}
-import org.apache.openwhisk.core.loadBalancer.LoadBalancer
+import org.apache.openwhisk.core.topbalancer.TopBalancer
 
 protected[core] class LocalEntitlementProvider(
   private val config: WhiskConfig,
-  private val loadBalancer: LoadBalancer,
+  private val loadBalancer: TopBalancer,
   private val controllerInstance: ControllerInstanceId)(implicit actorSystem: ActorSystem, logging: Logging)
     extends EntitlementProvider(config, loadBalancer, controllerInstance) {
 
@@ -74,8 +74,8 @@ private object LocalEntitlementProvider extends EntitlementSpiProvider {
 
   /** Poor mans entitlement matrix. Must persist to datastore eventually. */
   private val matrix = TrieMap[(Subject, String), Set[Privilege]]()
-  override def instance(config: WhiskConfig, loadBalancer: LoadBalancer, instance: ControllerInstanceId)(
+  override def instance(config: WhiskConfig, loadBalancer: TopBalancer, instance: ControllerInstanceId)(
     implicit actorSystem: ActorSystem,
     logging: Logging) =
-    new LocalEntitlementProvider(config: WhiskConfig, loadBalancer: LoadBalancer, instance)
+    new LocalEntitlementProvider(config: WhiskConfig, loadBalancer: TopBalancer, instance)
 }

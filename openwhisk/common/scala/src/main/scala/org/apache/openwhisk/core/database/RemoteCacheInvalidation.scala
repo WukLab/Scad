@@ -24,9 +24,9 @@ import scala.concurrent.duration.DurationInt
 import scala.util.Failure
 import scala.util.Success
 import scala.util.Try
-
 import akka.actor.ActorSystem
 import akka.actor.Props
+import akka.dispatch.MessageDispatcher
 import spray.json._
 import org.apache.openwhisk.common.Logging
 import org.apache.openwhisk.core.WhiskConfig
@@ -34,7 +34,7 @@ import org.apache.openwhisk.core.connector.Message
 import org.apache.openwhisk.core.connector.MessageFeed
 import org.apache.openwhisk.core.connector.MessagingProvider
 import org.apache.openwhisk.core.entity.CacheKey
-import org.apache.openwhisk.core.entity.ControllerInstanceId
+import org.apache.openwhisk.core.entity.InstanceId
 import org.apache.openwhisk.core.entity.WhiskAction
 import org.apache.openwhisk.core.entity.WhiskActionMetaData
 import org.apache.openwhisk.core.entity.WhiskPackage
@@ -48,16 +48,15 @@ case class CacheInvalidationMessage(key: CacheKey, instanceId: String) extends M
 
 object CacheInvalidationMessage extends DefaultJsonProtocol {
   def parse(msg: String) = Try(serdes.read(msg.parseJson))
-  implicit val serdes = jsonFormat(CacheInvalidationMessage.apply _, "key", "instanceId")
+  implicit val serdes = jsonFormat(CacheInvalidationMessage.apply, "key", "instanceId")
 }
 
-class RemoteCacheInvalidation(config: WhiskConfig, component: String, instance: ControllerInstanceId)(
-  implicit logging: Logging,
-  as: ActorSystem) {
+class RemoteCacheInvalidation(config: WhiskConfig, component: String, instance: InstanceId)(implicit logging: Logging,
+                                                                                            as: ActorSystem) {
   import RemoteCacheInvalidation._
-  implicit private val ec = as.dispatchers.lookup("dispatchers.kafka-dispatcher")
+  implicit private val ec: MessageDispatcher = as.dispatchers.lookup("dispatchers.kafka-dispatcher")
 
-  private val instanceId = s"$component${instance.asString}"
+  private val instanceId = s"$component${instance.toString}"
 
   private val msgProvider = SpiLoader.get[MessagingProvider]
   private val cacheInvalidationConsumer =

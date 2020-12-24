@@ -19,7 +19,6 @@ package org.apache.openwhisk.core.controller.test
 
 import java.time.Instant
 import java.util.Base64
-
 import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
 import org.junit.runner.RunWith
@@ -36,7 +35,7 @@ import akka.http.scaladsl.model.HttpResponse
 import akka.http.scaladsl.model.Uri.Query
 import akka.http.scaladsl.server.Route
 import akka.http.scaladsl.model.HttpMethods
-import akka.http.scaladsl.model.headers.{`Access-Control-Request-Headers`, `Content-Type`, RawHeader}
+import akka.http.scaladsl.model.headers.{RawHeader, `Access-Control-Request-Headers`, `Content-Type`}
 import akka.http.scaladsl.model.ContentTypes
 import akka.http.scaladsl.model.ContentType
 import akka.http.scaladsl.model.MediaType
@@ -50,7 +49,7 @@ import org.apache.openwhisk.core.entitlement.Privilege
 import org.apache.openwhisk.core.entitlement.Resource
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size._
-import org.apache.openwhisk.core.loadBalancer.LoadBalancer
+import org.apache.openwhisk.core.topbalancer.TopBalancer
 import org.apache.openwhisk.http.ErrorResponse
 import org.apache.openwhisk.http.Messages
 
@@ -1988,8 +1987,8 @@ trait WebActionsApiBaseTests extends ControllerTestCommon with BeforeAndAfterEac
     }
   }
 
-  class TestingEntitlementProvider(config: WhiskConfig, loadBalancer: LoadBalancer)
-      extends EntitlementProvider(config, loadBalancer, ControllerInstanceId("0")) {
+  class TestingEntitlementProvider(config: WhiskConfig, loadBalancer: TopBalancer)
+      extends EntitlementProvider(config, loadBalancer, new ControllerInstanceId("0")) {
 
     // The check method checks both throttle and entitlement.
     protected[core] override def check(user: Identity, right: Privilege, resource: Resource)(

@@ -1,3 +1,4 @@
+#!/bin/bash
 #
 # Licensed to the Apache Software Foundation (ASF) under one or more
 # contributor license agreements.  See the NOTICE file distributed with
@@ -15,9 +16,9 @@
 # limitations under the License.
 #
 
-style = intellij
-danglingParentheses = false
-maxColumn = 100
-docstrings = JavaDoc
-rewrite.rules = [SortImports]
-project.git = true
+./copyJMXFiles.sh
+
+export RACKSCHED_OPTS
+RACKSCHED_OPTS="$RACKSCHED_OPTS -Dakka.remote.netty.tcp.bind-hostname=$(hostname -i) $(./transformEnvironment.sh)"
+
+exec racksched/bin/racksched "$@"

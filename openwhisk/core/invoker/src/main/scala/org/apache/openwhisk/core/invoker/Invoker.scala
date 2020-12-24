@@ -88,10 +88,15 @@ object Invoker {
 
   def main(args: Array[String]): Unit = {
     ConfigMXBean.register()
-    implicit val ec = ExecutionContextFactory.makeCachedThreadPoolExecutionContext()
+    implicit val ec: ExecutionContext = ExecutionContextFactory.makeCachedThreadPoolExecutionContext()
     implicit val actorSystem: ActorSystem =
       ActorSystem(name = "invoker-actor-system", defaultExecutionContext = Some(ec))
-    implicit val logger = new AkkaLogging(akka.event.Logging.getLogger(actorSystem, this))
+    implicit val logger: AkkaLogging = new AkkaLogging(akka.event.Logging.getLogger(actorSystem, this))
+    start(args)
+  }
+
+  def start(args: Array[String])(implicit actorSystem: ActorSystem, logger: Logging): Unit = {
+    implicit val ec: ExecutionContext = actorSystem.getDispatcher
     val poolConfig: ContainerPoolConfig = loadConfigOrThrow[ContainerPoolConfig](ConfigKeys.containerPool)
     val limitConfig: ConcurrencyLimitConfig = loadConfigOrThrow[ConcurrencyLimitConfig](ConfigKeys.concurrencyLimit)
 
@@ -102,7 +107,7 @@ object Invoker {
     }
 
     // load values for the required properties from the environment
-    implicit val config = new WhiskConfig(requiredProperties)
+    implicit val config: WhiskConfig = new WhiskConfig(requiredProperties)
 
     def abort(message: String) = {
       logger.error(this, message)(TransactionId.invoker)
@@ -175,8 +180,8 @@ object Invoker {
 
     val msgProvider = SpiLoader.get[MessagingProvider]
     if (msgProvider
-          .ensureTopic(config, topic = topicName, topicConfig = topicBaseName, maxMessageBytes = maxMessageBytes)
-          .isFailure) {
+      .ensureTopic(config, topic = topicName, topicConfig = topicBaseName, maxMessageBytes = maxMessageBytes)
+      .isFailure) {
       abort(s"failure during msgProvider.ensureTopic for topic $topicName")
     }
 
