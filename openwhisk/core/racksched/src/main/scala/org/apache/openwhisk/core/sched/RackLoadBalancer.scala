@@ -232,22 +232,18 @@ class RackSimpleBalancer(config: WhiskConfig,
   /** 4. Get the ack message and parse it */
   protected[RackSimpleBalancer] def processSchedulingMessage(bytes: Array[Byte]): Future[Unit] = Future {
     val raw = new String(bytes, StandardCharsets.UTF_8)
-    ActivationMessage.parse(new String(bytes, StandardCharsets.UTF_8)) match {
-      case Success(activation) =>
-        implicit val transid: TransactionId = activation.transid
-        WhiskActionMetaData.resolveActionAndMergeParameters(entityStore, activation.action)
-          .foreach(metadata => {
-            publish(metadata.toExecutableWhiskAction.get, activation)
-          })
-        activationFeed ! MessageFeed.Processed
-
-      case Failure(t) =>
-        activationFeed ! MessageFeed.Processed
-        logging.error(this, s"failed processing top level scheduler message: $raw")
-
-      case _ =>
-        activationFeed ! MessageFeed.Processed
-        logging.error(this, s"Unexpected Acknowledgment message received by loadbalancer: $raw")
+    Future.fromTry(ActivationMessage.parse(raw))
+      .andThen {
+        case _ => activationFeed ! MessageFeed.Processed
+      }.map { activation =>
+      implicit val transid: TransactionId = activation.transid
+      WhiskActionMetaData.resolveActionAndMergeParameters(entityStore, activation.action)
+        .foreach(metadata => {
+          publish(metadata.toExecutableWhiskAction.get, activation)
+        })
+    }.recover {
+      case t => logging.error(this, s"failed processing top level scheduler message: $raw")
+      case _ => logging.error(this, s"Unexpected Acknowledgment message received by loadbalancer: $raw")
     }
   }
 
@@ -427,30 +423,26 @@ class RackSimpleBalancer(config: WhiskConfig,
   /** 4. Get the ack message and parse it */
   protected[sched] def processAcknowledgement(bytes: Array[Byte]): Future[Unit] = Future {
     val raw = new String(bytes, StandardCharsets.UTF_8)
-    AcknowledegmentMessage.parse(raw) match {
-      case Success(acknowledegment) =>
-        acknowledegment.isSlotFree.foreach { instance =>
-          processCompletion(
-            acknowledegment.activationId,
-            acknowledegment.transid,
-            forced = false,
-            isSystemError = acknowledegment.isSystemError.getOrElse(false),
-            instance)
-        }
+    Future.fromTry(AcknowledegmentMessage.parse(raw))
+      .andThen {
+        case _ => activationFeed ! MessageFeed.Processed
+      }.map { acknowledgement =>
+      acknowledgement.isSlotFree.foreach { instance =>
+        processCompletion(
+          acknowledgement.activationId,
+          acknowledgement.transid,
+          forced = false,
+          isSystemError = acknowledgement.isSystemError.getOrElse(false),
+          instance)
+      }
 
-        acknowledegment.result.foreach { response =>
-          processResult(acknowledegment.activationId, acknowledegment.transid, response)
-        }
+      acknowledgement.result.foreach { response =>
+        processResult(acknowledgement.activationId, acknowledgement.transid, response)
+      }
+    }.recover {
+      case t => logging.error(this, s"failed processing message: $raw")
 
-        acknowledgementFeed ! MessageFeed.Processed
-
-      case Failure(t) =>
-        acknowledgementFeed ! MessageFeed.Processed
-        logging.error(this, s"failed processing message: $raw")
-
-      case _ =>
-        acknowledgementFeed ! MessageFeed.Processed
-        logging.error(this, s"Unexpected Acknowledgment message received by loadbalancer: $raw")
+      case _ => logging.error(this, s"Unexpected Acknowledgment message received by loadbalancer: $raw")
     }
   }
 
