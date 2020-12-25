@@ -243,7 +243,6 @@ class RackSimpleBalancer(config: WhiskConfig,
         })
     }.recover {
       case t => logging.error(this, s"failed processing top level scheduler message: $raw")
-      case _ => logging.error(this, s"Unexpected Acknowledgment message received by loadbalancer: $raw")
     }
   }
 
@@ -441,8 +440,6 @@ class RackSimpleBalancer(config: WhiskConfig,
       }
     }.recover {
       case t => logging.error(this, s"failed processing message: $raw")
-
-      case _ => logging.error(this, s"Unexpected Acknowledgment message received by loadbalancer: $raw")
     }
   }
 
