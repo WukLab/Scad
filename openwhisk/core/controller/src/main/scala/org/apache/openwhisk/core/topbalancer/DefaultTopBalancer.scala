@@ -151,37 +151,44 @@ class DefaultTopBalancer(config: WhiskConfig,
   override def publish(action: ExecutableWhiskActionMetaData, msg: ActivationMessage)(implicit transid: TransactionId): Future[Future[Either[ActivationId, WhiskActivation]]] = {
     val (racksToUse, stepSizes) = (state.racks, state.stepSizes)
     val hash = ShardingContainerPoolBalancer.generateHash(msg.user.namespace.name, action.fullyQualifiedName(false))
-    val homeInvoker = hash % racksToUse.size
-    val stepSize = stepSizes(hash % stepSizes.size)
-    val rack = DefaultTopBalancer.schedule(action.limits.concurrency.maxConcurrent,
-      action.fullyQualifiedName(true),
-      racksToUse,
-//      action.limits.memory.megabytes,
-      homeInvoker,
-      stepSize)
+    if (racksToUse.size > 1) {
+      val homeInvoker = hash % racksToUse.size
+      val stepSize = stepSizes(hash % stepSizes.size)
+      val rack = DefaultTopBalancer.schedule(action.limits.concurrency.maxConcurrent,
+        action.fullyQualifiedName(true),
+        racksToUse,
+  //      action.limits.memory.megabytes,
+        homeInvoker,
+        stepSize)
 
-    rack.map { rack =>
-      val memoryLimit = action.limits.memory
-      val memoryLimitInfo = if (memoryLimit == MemoryLimit()) { "std" } else { "non-std" }
-      val timeLimit = action.limits.timeout
-      val timeLimitInfo = if (timeLimit == TimeLimit()) { "std" } else { "non-std" }
-      logging.info(
-        this,
-        s"sent activation to rack activation ${msg.activationId}, action '${msg.action.asString}', ns '${msg.user.namespace.name.asString}', mem limit ${memoryLimit.megabytes} MB (${memoryLimitInfo}), time limit ${timeLimit.duration.toMillis} ms (${timeLimitInfo}) to ${rack}")
-      val activationResult = setupActivation(msg, action, rack)
-      sendActivationToRack(messageProducer, msg, rack).map(_ => activationResult)
-    }
-    .getOrElse {
-      // report the state of all invokers
-      val invokerStates = racksToUse.foldLeft(Map.empty[RackState, Int]) { (agg, curr) =>
-        val count = agg.getOrElse(curr.status, 0) + 1
-        agg + (curr.status -> count)
+      rack.map { rack =>
+        val memoryLimit = action.limits.memory
+        val memoryLimitInfo = if (memoryLimit == MemoryLimit()) { "std" } else { "non-std" }
+        val timeLimit = action.limits.timeout
+        val timeLimitInfo = if (timeLimit == TimeLimit()) { "std" } else { "non-std" }
+        logging.info(
+          this,
+          s"sent activation to rack activation ${msg.activationId}, action '${msg.action.asString}', ns '${msg.user.namespace.name.asString}', mem limit ${memoryLimit.megabytes} MB (${memoryLimitInfo}), time limit ${timeLimit.duration.toMillis} ms (${timeLimitInfo}) to ${rack}")
+        val activationResult = setupActivation(msg, action, rack)
+        sendActivationToRack(messageProducer, msg, rack).map(_ => activationResult)
       }
+      .getOrElse {
+        // report the state of all invokers
+        val invokerStates = racksToUse.foldLeft(Map.empty[RackState, Int]) { (agg, curr) =>
+          val count = agg.getOrElse(curr.status, 0) + 1
+          agg + (curr.status -> count)
+        }
 
+        logging.error(
+          this,
+          s"failed to schedule activation ${msg.activationId}, action '${msg.action.asString}', ns '${msg.user.namespace.name.asString}' - invokers to use: $invokerStates")
+        Future.failed(LoadBalancerException("No invokers available"))
+      }
+    } else {
       logging.error(
         this,
-        s"failed to schedule activation ${msg.activationId}, action '${msg.action.asString}', ns '${msg.user.namespace.name.asString}' - invokers to use: $invokerStates")
-      Future.failed(LoadBalancerException("No invokers available"))
+        s"The number of available racks is ${racksToUse.size}. Cannot determine the home invoker.")
+        Future.failed(LoadBalancerException("No rack available!"))
     }
   }
 
