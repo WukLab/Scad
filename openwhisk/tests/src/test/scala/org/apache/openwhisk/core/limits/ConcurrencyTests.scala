@@ -22,7 +22,7 @@ import common._
 import common.rest.WskRestOperations
 import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.containerpool.ContainerPoolConfig
-import org.apache.openwhisk.core.entity.MemoryLimit
+import org.apache.openwhisk.core.entity.ResourceLimit
 import org.apache.openwhisk.core.entity.size._
 import org.junit.runner.RunWith
 import org.scalatest.junit.JUnitRunner
@@ -77,10 +77,10 @@ class ConcurrencyTests extends TestHelpers with WskTestHelpers with WskActorSyst
 
       //read configs to determine max concurrency support - currently based on single invoker and invokerUserMemory config
       val busyThreshold =
-        (loadConfigOrThrow[ContainerPoolConfig](ConfigKeys.containerPool).userMemory / MemoryLimit.STD_MEMORY).toInt
+        (loadConfigOrThrow[ContainerPoolConfig](ConfigKeys.containerPool).resources / ResourceLimit.STD_RESOURCES)
 
       //run maximum allowed concurrent actions via Futures
-      val requestCount = busyThreshold
+      val requestCount = Seq(busyThreshold.cpu.toLong, busyThreshold.mem.toBytes, busyThreshold.storage.toBytes).min.toInt
       println(s"executing $requestCount activations")
       val runs = (1 to requestCount).map { _ =>
         Future {
@@ -126,10 +126,10 @@ class ConcurrencyTests extends TestHelpers with WskTestHelpers with WskActorSyst
 
       //read configs to determine max concurrency support - currently based on single invoker and invokerUserMemory config
       val busyThreshold =
-        (loadConfigOrThrow[ContainerPoolConfig](ConfigKeys.containerPool).userMemory / MemoryLimit.STD_MEMORY).toInt
+        loadConfigOrThrow[ContainerPoolConfig](ConfigKeys.containerPool).resources / ResourceLimit.STD_RESOURCES
 
       //run maximum allowed concurrent actions via Futures
-      val requestCount = busyThreshold
+      val requestCount = Seq(busyThreshold.cpu.toLong, busyThreshold.mem.toBytes, busyThreshold.storage.toBytes).min.toInt
       println(s"executing $requestCount activations")
       val runs = (1 to requestCount).map { _ =>
         Future {

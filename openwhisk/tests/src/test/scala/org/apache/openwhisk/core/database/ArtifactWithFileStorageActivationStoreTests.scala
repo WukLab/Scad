@@ -20,7 +20,6 @@ package org.apache.openwhisk.core.database
 import java.io.File
 import java.nio.file.Paths
 import java.time.Instant
-
 import akka.actor.ActorSystem
 import akka.http.scaladsl.model.HttpRequest
 import akka.stream.ActorMaterializer
@@ -34,6 +33,7 @@ import spray.json.DefaultJsonProtocol._
 import spray.json._
 import org.apache.openwhisk.common.{Logging, TransactionId, WhiskInstants}
 import org.apache.openwhisk.core.ConfigKeys
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size.SizeInt
 import pureconfig._
@@ -156,7 +156,7 @@ class ArtifactWithFileStorageActivationStoreTests()
             duration = Some(101L),
             annotations = Parameters("kind", "nodejs:10") ++ Parameters(
               "limits",
-              ActionLimits(TimeLimit(60.second), MemoryLimit(256.MB), LogLimit(10.MB)).toJson) ++
+              ActionLimits(TimeLimit(60.second), ResourceLimit(RuntimeResources(0, 256.MB, 0.B)), LogLimit(10.MB)).toJson) ++
               Parameters("waitTime", 16.toJson) ++
               Parameters("initTime", 44.toJson))
           val docInfo = await(activationStore.store(activation, context))
@@ -207,7 +207,7 @@ class ArtifactWithFileStorageActivationStoreTests()
             duration = Some(101L),
             annotations = Parameters("kind", "nodejs:10") ++ Parameters(
               "limits",
-              ActionLimits(TimeLimit(60.second), MemoryLimit(256.MB), LogLimit(10.MB)).toJson) ++
+              ActionLimits(TimeLimit(60.second), ResourceLimit(RuntimeResources(0, 256.MB, 0.B)), LogLimit(10.MB)).toJson) ++
               Parameters("waitTime", 16.toJson) ++
               Parameters("initTime", 44.toJson))
           val docInfo = await(activationStore.store(activation, context))
@@ -319,7 +319,7 @@ class ArtifactWithFileStorageActivationStoreTests()
               duration = Some(101L),
               annotations = Parameters("kind", "nodejs:10") ++ Parameters(
                 "limits",
-                ActionLimits(TimeLimit(60.second), MemoryLimit(256.MB), LogLimit(10.MB)).toJson) ++
+                ActionLimits(TimeLimit(60.second), ResourceLimit(RuntimeResources(0, 256.MB, 0.B)), LogLimit(10.MB)).toJson) ++
                 Parameters("waitTime", 16.toJson) ++
                 Parameters("initTime", 44.toJson))
             val docInfo = await(activationStore.store(activation, context))

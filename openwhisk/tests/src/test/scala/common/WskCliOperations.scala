@@ -19,7 +19,6 @@ package common
 
 import java.io.File
 import java.time.Instant
-
 import scala.Left
 import scala.Right
 import scala.collection.mutable.Buffer
@@ -29,15 +28,14 @@ import scala.language.postfixOps
 import scala.util.Failure
 import scala.util.Success
 import scala.util.Try
-
 import common.TestUtils._
 import spray.json.JsObject
 import spray.json.JsValue
 import org.apache.openwhisk.core.entity.ByteSize
 import org.apache.openwhisk.utils.retry
-
 import FullyQualifiedNames.fqn
 import FullyQualifiedNames.resolve
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 
 /**
  * Provide Scala bindings for the whisk CLI.
@@ -188,25 +186,25 @@ class CliActionOperations(override val wsk: RunCliCmd)
    * if the code is anything but DONTCARE_EXIT, assert the code is as expected
    */
   override def create(
-    name: String,
-    artifact: Option[String],
-    kind: Option[String] = None, // one of docker, copy, sequence or none for autoselect else an explicit type
-    main: Option[String] = None,
-    docker: Option[String] = None,
-    parameters: Map[String, JsValue] = Map.empty,
-    annotations: Map[String, JsValue] = Map.empty,
-    delAnnotations: Array[String] = Array(),
-    parameterFile: Option[String] = None,
-    annotationFile: Option[String] = None,
-    timeout: Option[Duration] = None,
-    memory: Option[ByteSize] = None,
-    logsize: Option[ByteSize] = None,
-    concurrency: Option[Int] = None,
-    shared: Option[Boolean] = None,
-    update: Boolean = false,
-    web: Option[String] = None,
-    websecure: Option[String] = None,
-    expectedExitCode: Int = SUCCESS_EXIT)(implicit wp: WskProps): RunResult = {
+                       name: String,
+                       artifact: Option[String],
+                       kind: Option[String] = None, // one of docker, copy, sequence or none for autoselect else an explicit type
+                       main: Option[String] = None,
+                       docker: Option[String] = None,
+                       parameters: Map[String, JsValue] = Map.empty,
+                       annotations: Map[String, JsValue] = Map.empty,
+                       delAnnotations: Array[String] = Array(),
+                       parameterFile: Option[String] = None,
+                       annotationFile: Option[String] = None,
+                       timeout: Option[Duration] = None,
+                       resources: Option[RuntimeResources] = None,
+                       logsize: Option[ByteSize] = None,
+                       concurrency: Option[Int] = None,
+                       shared: Option[Boolean] = None,
+                       update: Boolean = false,
+                       web: Option[String] = None,
+                       websecure: Option[String] = None,
+                       expectedExitCode: Int = SUCCESS_EXIT)(implicit wp: WskProps): RunResult = {
     val params = Seq(noun, if (!update) "create" else "update", "--auth", wp.authKey, fqn(name)) ++ {
       artifact map { Seq(_) } getOrElse Seq.empty
     } ++ {
@@ -247,8 +245,8 @@ class CliActionOperations(override val wsk: RunCliCmd)
         Seq("-t", t.toMillis.toString)
       } getOrElse Seq.empty
     } ++ {
-      memory map { m =>
-        Seq("-m", m.toMB.toString)
+      resources map { m =>
+        Seq("-r", m.toString)
       } getOrElse Seq.empty
     } ++ {
       logsize map { l =>

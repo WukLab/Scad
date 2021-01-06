@@ -33,12 +33,13 @@ import org.apache.openwhisk.core.WhiskConfig.kafkaHosts
 import org.apache.openwhisk.core.connector.ActivationMessage
 import org.apache.openwhisk.core.connector.MessageProducer
 import org.apache.openwhisk.core.connector.MessagingProvider
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.entity.ActivationEntityLimit
 import org.apache.openwhisk.core.entity.ActivationId
 import org.apache.openwhisk.core.entity.ExecutableWhiskActionMetaData
 import org.apache.openwhisk.core.entity.FullyQualifiedEntityName
-import org.apache.openwhisk.core.entity.MemoryLimit
 import org.apache.openwhisk.core.entity.RackSchedInstanceId
+import org.apache.openwhisk.core.entity.ResourceLimit
 import org.apache.openwhisk.core.entity.TimeLimit
 import org.apache.openwhisk.core.entity.TopSchedInstanceId
 import org.apache.openwhisk.core.entity.UUID
@@ -53,6 +54,7 @@ import pureconfig.loadConfigOrThrow
 import pureconfig._
 import pureconfig.generic.auto._
 
+import java.util.concurrent.atomic.AtomicReference
 import scala.annotation.tailrec
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.ExecutionContext
@@ -86,8 +88,8 @@ class DefaultTopBalancer(config: WhiskConfig,
   val state = TopBalancerState()
   protected val activationsPerNamespace = TrieMap[UUID, LongAdder]()
   protected val totalActivations = new LongAdder()
-  protected val totalBlackBoxActivationMemory = new LongAdder()
-  protected val totalManagedActivationMemory = new LongAdder()
+  protected val totalBlackBoxActivationResources = new AtomicReference[RuntimeResources](RuntimeResources.none())
+  protected val totalManagedActivationResources = new AtomicReference[RuntimeResources](RuntimeResources.none())
 
   private val monitor = actorSystem.actorOf(Props(new Actor {
     override def preStart(): Unit = {
@@ -161,13 +163,13 @@ class DefaultTopBalancer(config: WhiskConfig,
       stepSize)
 
     rack.map { rack =>
-      val memoryLimit = action.limits.memory
-      val memoryLimitInfo = if (memoryLimit == MemoryLimit()) { "std" } else { "non-std" }
+      val resourceLimit = action.limits.resources
+      val resourceLimitInfo = if (resourceLimit == ResourceLimit()) { "std" } else { "non-std" }
       val timeLimit = action.limits.timeout
       val timeLimitInfo = if (timeLimit == TimeLimit()) { "std" } else { "non-std" }
       logging.info(
         this,
-        s"sent activation to rack activation ${msg.activationId}, action '${msg.action.asString}', ns '${msg.user.namespace.name.asString}', mem limit ${memoryLimit.megabytes} MB (${memoryLimitInfo}), time limit ${timeLimit.duration.toMillis} ms (${timeLimitInfo}) to ${rack}")
+        s"sent activation to rack activation ${msg.activationId}, action '${msg.action.asString}', ns '${msg.user.namespace.name.asString}', resource limit ${resourceLimit} (${resourceLimitInfo}), time limit ${timeLimit.duration.toMillis} ms (${timeLimitInfo}) to ${rack}")
       val activationResult = setupActivation(msg, action, rack)
       sendActivationToRack(messageProducer, msg, rack).map(_ => activationResult)
     }
@@ -201,9 +203,9 @@ class DefaultTopBalancer(config: WhiskConfig,
     // Needed for emitting metrics.
     totalActivations.increment()
     val isBlackboxInvocation = action.exec.pull
-    val totalActivationMemory =
-      if (isBlackboxInvocation) totalBlackBoxActivationMemory else totalManagedActivationMemory
-    totalActivationMemory.add(action.limits.memory.megabytes)
+    val totalActivationResources =
+      if (isBlackboxInvocation) totalBlackBoxActivationResources else totalManagedActivationResources
+    totalActivationResources.getAndUpdate(a => a + action.limits.resources.limits)
 
     activationsPerNamespace.getOrElseUpdate(msg.user.namespace.uuid, new LongAdder()).increment()
     Future.successful(Left(msg.activationId))

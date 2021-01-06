@@ -18,15 +18,13 @@
 package org.apache.openwhisk.core.controller.actions.test
 
 import java.time.Instant
-
 import scala.concurrent.duration.DurationInt
-
 import org.junit.runner.RunWith
 import org.scalatest.FlatSpec
 import org.scalatest.Matchers
 import org.scalatest.junit.JUnitRunner
-
 import common.WskActorSystem
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import spray.json._
 import org.apache.openwhisk.core.controller.actions.SequenceAccounting
 import org.apache.openwhisk.core.entity._
@@ -51,7 +49,7 @@ class SequenceAccountingTests extends FlatSpec with Matchers with WskActorSystem
     start = Instant.now(),
     end = Instant.now(),
     response = okRes2,
-    annotations = Parameters("limits", ActionLimits(TimeLimit(1.second), MemoryLimit(128.MB), LogLimit(1.MB)).toJson),
+    annotations = Parameters("limits", ActionLimits(TimeLimit(1.second), ResourceLimit(RuntimeResources(0, 128.MB, 0.B)), LogLimit(1.MB)).toJson),
     duration = Some(123))
 
   val notOkActivation = WhiskActivation(
@@ -62,7 +60,7 @@ class SequenceAccountingTests extends FlatSpec with Matchers with WskActorSystem
     start = Instant.now(),
     end = Instant.now(),
     response = failedRes,
-    annotations = Parameters("limits", ActionLimits(TimeLimit(11.second), MemoryLimit(256.MB), LogLimit(2.MB)).toJson),
+    annotations = Parameters("limits", ActionLimits(TimeLimit(11.second), ResourceLimit(RuntimeResources(0, 256.MB, 0.B)), LogLimit(2.MB)).toJson),
     duration = Some(234))
 
   it should "create initial accounting object" in {
@@ -71,7 +69,7 @@ class SequenceAccountingTests extends FlatSpec with Matchers with WskActorSystem
     s.previousResponse.get shouldBe okRes1
     s.logs shouldBe empty
     s.duration shouldBe 0
-    s.maxMemory shouldBe None
+    s.maxResources shouldBe None
     s.shortcircuit shouldBe false
   }
 
@@ -83,7 +81,7 @@ class SequenceAccountingTests extends FlatSpec with Matchers with WskActorSystem
     n1.logs.length shouldBe 1
     n1.logs(0) shouldBe okActivation.activationId
     n1.duration shouldBe 123
-    n1.maxMemory shouldBe Some(128)
+    n1.maxResources shouldBe Some(128)
     n1.shortcircuit shouldBe false
   }
 
@@ -97,7 +95,7 @@ class SequenceAccountingTests extends FlatSpec with Matchers with WskActorSystem
     n2.logs(0) shouldBe okActivation.activationId
     n2.logs(1) shouldBe notOkActivation.activationId
     n2.duration shouldBe (123 + 234)
-    n2.maxMemory shouldBe Some(256)
+    n2.maxResources shouldBe Some(256)
     n2.shortcircuit shouldBe true
   }
 
@@ -109,7 +107,7 @@ class SequenceAccountingTests extends FlatSpec with Matchers with WskActorSystem
     n.logs.length shouldBe 1
     n.logs(0) shouldBe okActivation.activationId
     n.duration shouldBe 123
-    n.maxMemory shouldBe Some(128)
+    n.maxResources shouldBe Some(128)
     n.shortcircuit shouldBe true
   }
 
@@ -122,16 +120,16 @@ class SequenceAccountingTests extends FlatSpec with Matchers with WskActorSystem
     f.logs.length shouldBe 1
     f.logs(0) shouldBe okActivation.activationId
     f.duration shouldBe 123
-    f.maxMemory shouldBe Some(128)
+    f.maxResources shouldBe Some(128)
     f.shortcircuit shouldBe true
   }
 
   it should "resolve max memory" in {
-    SequenceAccounting.maxMemory(None, None) shouldBe None
-    SequenceAccounting.maxMemory(None, Some(1)) shouldBe Some(1)
-    SequenceAccounting.maxMemory(Some(1), None) shouldBe Some(1)
-    SequenceAccounting.maxMemory(Some(1), Some(2)) shouldBe Some(2)
-    SequenceAccounting.maxMemory(Some(2), Some(1)) shouldBe Some(2)
-    SequenceAccounting.maxMemory(Some(2), Some(2)) shouldBe Some(2)
+    SequenceAccounting.maxResources(None, None) shouldBe None
+    SequenceAccounting.maxResources(None, Some(RuntimeResources.mem(1.B))) shouldBe Some(1)
+    SequenceAccounting.maxResources(Some(RuntimeResources.mem(1.B)), None) shouldBe Some(1)
+    SequenceAccounting.maxResources(Some(RuntimeResources.mem(1.B)), Some(RuntimeResources.mem(2.B))) shouldBe Some(2)
+    SequenceAccounting.maxResources(Some(RuntimeResources.mem(2.B)), Some(RuntimeResources.mem(1.B))) shouldBe Some(2)
+    SequenceAccounting.maxResources(Some(RuntimeResources.mem(2.B)), Some(RuntimeResources.mem(2.B))) shouldBe Some(2)
   }
 }

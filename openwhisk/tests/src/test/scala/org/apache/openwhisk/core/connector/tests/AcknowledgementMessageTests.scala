@@ -22,12 +22,8 @@ import org.scalatest.{FlatSpec, Matchers}
 import org.scalatest.junit.JUnitRunner
 import spray.json._
 import org.apache.openwhisk.common.{TransactionId, WhiskInstants}
-import org.apache.openwhisk.core.connector.{
-  AcknowledegmentMessage,
-  CombinedCompletionAndResultMessage,
-  CompletionMessage,
-  ResultMessage
-}
+import org.apache.openwhisk.core.connector.{AcknowledegmentMessage, CombinedCompletionAndResultMessage, CompletionMessage, ResultMessage}
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size.SizeInt
 
@@ -42,7 +38,7 @@ class AcknowledgementMessageTests extends FlatSpec with Matchers with WhiskInsta
 
   behavior of "acknowledgement message"
 
-  val defaultUserMemory: ByteSize = 1024.MB
+  val defaultResources: RuntimeResources = RuntimeResources(1.0, 1024.MB, 512.MB)
   val activation = WhiskActivation(
     namespace = EntityPath("ns"),
     name = EntityName("a"),
@@ -51,7 +47,7 @@ class AcknowledgementMessageTests extends FlatSpec with Matchers with WhiskInsta
     start = nowInMillis(),
     end = nowInMillis(),
     response = ActivationResponse.success(Some(JsObject("res" -> JsNumber(1)))),
-    annotations = Parameters("limits", ActionLimits(TimeLimit(1.second), MemoryLimit(128.MB), LogLimit(1.MB)).toJson),
+    annotations = Parameters("limits", ActionLimits(TimeLimit(1.second), ResourceLimit(RuntimeResources(1.0, 128.MB, 512.MB)), LogLimit(1.MB)).toJson),
     duration = Some(123))
 
   it should "serialize and deserialize a Result message with Left result" in {
@@ -76,7 +72,7 @@ class AcknowledgementMessageTests extends FlatSpec with Matchers with WhiskInsta
       TransactionId.testing,
       ActivationId.generate(),
       Some(false),
-      InvokerInstanceId(0, userMemory = defaultUserMemory))
+      InvokerInstanceId(0, resources = defaultResources))
     m.isSlotFree should not be empty
     m.serialize shouldBe m.toJson.compactPrint
     AcknowledegmentMessage.parse(m.serialize) shouldBe Success(m)
@@ -87,7 +83,7 @@ class AcknowledgementMessageTests extends FlatSpec with Matchers with WhiskInsta
       val c = CombinedCompletionAndResultMessage(
         TransactionId.testing,
         activation,
-        InvokerInstanceId(0, userMemory = defaultUserMemory))
+        InvokerInstanceId(0, resources = defaultResources))
       c.response shouldBe 'right
       c.isSlotFree should not be empty
       c.isSystemError shouldBe Some(false)
@@ -101,7 +97,7 @@ class AcknowledgementMessageTests extends FlatSpec with Matchers with WhiskInsta
       val c = CombinedCompletionAndResultMessage(
         TransactionId.testing,
         someActivation,
-        InvokerInstanceId(0, userMemory = defaultUserMemory))
+        InvokerInstanceId(0, resources = defaultResources))
       c.response shouldBe 'right
       c.isSlotFree should not be empty
       c.isSystemError shouldBe Some(true)
@@ -113,7 +109,7 @@ class AcknowledgementMessageTests extends FlatSpec with Matchers with WhiskInsta
       val c = CombinedCompletionAndResultMessage(
         TransactionId.testing,
         activation,
-        InvokerInstanceId(0, userMemory = defaultUserMemory)).shrink
+        InvokerInstanceId(0, resources = defaultResources)).shrink
       c.response shouldBe 'left
       c.isSlotFree should not be empty
       c.isSystemError shouldBe Some(false)
@@ -127,7 +123,7 @@ class AcknowledgementMessageTests extends FlatSpec with Matchers with WhiskInsta
       val c = CombinedCompletionAndResultMessage(
         TransactionId.testing,
         someActivation,
-        InvokerInstanceId(0, userMemory = defaultUserMemory)).shrink
+        InvokerInstanceId(0, resources = defaultResources)).shrink
       c.response shouldBe 'left
       c.isSlotFree should not be empty
       c.isSystemError shouldBe Some(true)

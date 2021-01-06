@@ -390,7 +390,7 @@ object Activation extends DefaultJsonProtocol {
         a.annotations.getAs[Boolean](WhiskActivation.conductorAnnotation).getOrElse(false),
         a.annotations
           .getAs[ActionLimits](WhiskActivation.limitsAnnotation)
-          .map(_.memory.megabytes)
+          .map(_.resources.limits.mem.toMB.toInt)
           .getOrElse(0),
         a.annotations.getAs[String](WhiskActivation.causedByAnnotation).toOption,
         a.response.size,

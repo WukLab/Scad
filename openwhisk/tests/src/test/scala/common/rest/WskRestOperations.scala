@@ -23,7 +23,6 @@ import java.security.KeyStore
 import java.security.cert.X509Certificate
 import java.time.Instant
 import java.util.Base64
-
 import akka.actor.ActorSystem
 import akka.http.scaladsl.{Http, HttpsConnectionContext}
 import akka.http.scaladsl.model.HttpMethods.{DELETE, GET, POST, PUT}
@@ -35,19 +34,13 @@ import akka.stream.ActorMaterializer
 import akka.util.ByteString
 import com.typesafe.sslconfig.akka.AkkaSSLConfig
 import common.TestUtils.{ANY_ERROR_EXIT, DONTCARE_EXIT, RunResult, SUCCESS_EXIT}
-import common.{
-  DeleteFromCollectionOperations,
-  HasActivation,
-  ListOrGetFromCollectionOperations,
-  WaitFor,
-  WhiskProperties,
-  WskProps,
-  _
-}
+import common.{DeleteFromCollectionOperations, HasActivation, ListOrGetFromCollectionOperations, WaitFor, WhiskProperties, WskProps, _}
+
 import javax.net.ssl._
 import org.apache.commons.io.{FileUtils, FilenameUtils}
 import org.apache.openwhisk.common.Https.HttpsConfig
 import org.apache.openwhisk.common.{AkkaLogging, TransactionId}
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.entity.ByteSize
 import org.apache.openwhisk.utils.retry
 import org.scalatest.Matchers
@@ -257,25 +250,25 @@ class RestActionOperations(implicit val actorSystem: ActorSystem)
    * if the code is anything but DONTCARE_EXIT, assert the code is as expected
    */
   override def create(
-    name: String,
-    artifact: Option[String],
-    kind: Option[String] = None, // one of docker, copy, sequence or none for autoselect else an explicit type
-    main: Option[String] = None,
-    docker: Option[String] = None,
-    parameters: Map[String, JsValue] = Map.empty,
-    annotations: Map[String, JsValue] = Map.empty,
-    delAnnotations: Array[String] = Array(),
-    parameterFile: Option[String] = None,
-    annotationFile: Option[String] = None,
-    timeout: Option[Duration] = None,
-    memory: Option[ByteSize] = None,
-    logsize: Option[ByteSize] = None,
-    concurrency: Option[Int] = None,
-    shared: Option[Boolean] = None,
-    update: Boolean = false,
-    web: Option[String] = None,
-    websecure: Option[String] = None,
-    expectedExitCode: Int = OK.intValue)(implicit wp: WskProps): RestResult = {
+                       name: String,
+                       artifact: Option[String],
+                       kind: Option[String] = None, // one of docker, copy, sequence or none for autoselect else an explicit type
+                       main: Option[String] = None,
+                       docker: Option[String] = None,
+                       parameters: Map[String, JsValue] = Map.empty,
+                       annotations: Map[String, JsValue] = Map.empty,
+                       delAnnotations: Array[String] = Array(),
+                       parameterFile: Option[String] = None,
+                       annotationFile: Option[String] = None,
+                       timeout: Option[Duration] = None,
+                       resources: Option[RuntimeResources] = None,
+                       logsize: Option[ByteSize] = None,
+                       concurrency: Option[Int] = None,
+                       shared: Option[Boolean] = None,
+                       update: Boolean = false,
+                       web: Option[String] = None,
+                       websecure: Option[String] = None,
+                       expectedExitCode: Int = OK.intValue)(implicit wp: WskProps): RestResult = {
 
     val (namespace, actionName) = getNamespaceEntityName(name)
     val (paramsInput, annosInput) = getParamsAnnos(parameters, annotations, parameterFile, annotationFile, web = web)
@@ -345,7 +338,7 @@ class RestActionOperations(implicit val actorSystem: ActorSystem)
     val limits: Map[String, JsValue] = {
       timeout.map(t => Map("timeout" -> t.toMillis.toJson)).getOrElse(Map.empty) ++
         logsize.map(log => Map("logs" -> log.toMB.toJson)).getOrElse(Map.empty) ++
-        memory.map(m => Map("memory" -> m.toMB.toJson)).getOrElse(Map.empty) ++
+        resources.map(m => Map("resources" -> m.toJson)).getOrElse(Map.empty) ++
         concurrency.map(c => Map("concurrency" -> c.toJson)).getOrElse(Map.empty)
     }
 

@@ -31,18 +31,15 @@ import scala.concurrent.Await
 import scala.concurrent.Future
 import scala.concurrent.duration._
 import org.apache.openwhisk.common.TransactionId
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
-import org.apache.openwhisk.core.containerpool.{
-  ContainerAddress,
-  ContainerArgsConfig,
-  ContainerId,
-  RuntimesRegistryConfig
-}
+import org.apache.openwhisk.core.containerpool.{ContainerAddress, ContainerArgsConfig, ContainerId, RuntimesRegistryConfig}
 import org.apache.openwhisk.core.containerpool.docker.DockerApiWithFileAccess
 import org.apache.openwhisk.core.containerpool.docker.DockerContainerFactory
 import org.apache.openwhisk.core.containerpool.docker.DockerContainerFactoryConfig
 import org.apache.openwhisk.core.containerpool.docker.RuncApi
-import org.apache.openwhisk.core.entity.{ByteSize, ExecManifest, InvokerInstanceId}
+import org.apache.openwhisk.core.entity.InvokerInstanceId
+import org.apache.openwhisk.core.entity.ExecManifest
 import org.apache.openwhisk.core.entity.size._
 import pureconfig._
 import pureconfig.generic.auto._
@@ -64,7 +61,7 @@ class DockerContainerFactoryTests
 
   behavior of "DockerContainerFactory"
 
-  val defaultUserMemory: ByteSize = 1024.MB
+  val defaultUserResources: RuntimeResources = RuntimeResources(1.0, 1024.MB, 512.MB)
 
   it should "set the docker run args based on ContainerArgsConfig" in {
 
@@ -127,7 +124,7 @@ class DockerContainerFactoryTests
 
     val factory =
       new DockerContainerFactory(
-        InvokerInstanceId(0, userMemory = defaultUserMemory),
+        InvokerInstanceId(0, resources = defaultUserResources),
         Map.empty,
         ContainerArgsConfig(
           "net1",

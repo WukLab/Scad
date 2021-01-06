@@ -21,9 +21,9 @@ import akka.http.scaladsl.model.StatusCodes.NotFound
 import akka.http.scaladsl.model.StatusCodes.OK
 import akka.http.scaladsl.model.StatusCodes.BadRequest
 import akka.http.scaladsl.model.StatusCodes.Conflict
+
 import java.time.Instant
 import java.time.Clock
-
 import scala.language.postfixOps
 import scala.concurrent.duration.DurationInt
 import scala.util.Random
@@ -42,6 +42,7 @@ import spray.json._
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size.SizeInt
 import TestJsonArgs._
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.http.Messages
 
 /**
@@ -273,7 +274,7 @@ class WskRestBasicUsageTests extends TestHelpers with WskTestHelpers with WskAct
   it should "write the action-path and the limits to the annotations" in withAssetCleaner(wskprops) {
     (wp, assetHelper) =>
       val name = "annotations"
-      val memoryLimit = 512 MB
+      val resourceLimit = RuntimeResources(1.0, 512 MB, 512 MB)
       val logLimit = 1 MB
       val timeLimit = 60 seconds
 
@@ -281,7 +282,7 @@ class WskRestBasicUsageTests extends TestHelpers with WskTestHelpers with WskAct
         action.create(
           name,
           Some(TestUtils.getTestActionFilename("helloAsync.js")),
-          memory = Some(memoryLimit),
+          resources = Some(resourceLimit),
           timeout = Some(timeLimit),
           logsize = Some(logLimit))
       }
@@ -293,7 +294,7 @@ class WskRestBasicUsageTests extends TestHelpers with WskTestHelpers with WskAct
 
         val limitsObj = JsObject(
           "key" -> JsString("limits"),
-          "value" -> ActionLimits(TimeLimit(timeLimit), MemoryLimit(memoryLimit), LogLimit(logLimit)).toJson)
+          "value" -> ActionLimits(TimeLimit(timeLimit), ResourceLimit(resourceLimit), LogLimit(logLimit)).toJson)
 
         val path = annotations.find {
           _.fields("key").convertTo[String] == "path"

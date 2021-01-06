@@ -768,7 +768,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
       Some(
         ActionLimitsOption(
           Some(action.limits.timeout),
-          Some(action.limits.memory),
+          Some(action.limits.resources),
           Some(action.limits.logs),
           Some(action.limits.concurrency))))
     Put(s"$collectionPath/${action.name}", content) ~> Route.seal(routes(creds)) ~> check {
@@ -804,7 +804,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
           Some(
             ActionLimitsOption(
               Some(action.limits.timeout),
-              Some(action.limits.memory),
+              Some(action.limits.resources),
               Some(action.limits.logs),
               Some(action.limits.concurrency))))
 
@@ -909,7 +909,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
           Some(
             ActionLimitsOption(
               Some(action.limits.timeout),
-              Some(action.limits.memory),
+              Some(action.limits.resources),
               Some(action.limits.logs),
               Some(action.limits.concurrency))))
         val cacheKey = s"${CacheKey(action)}".replace("(", "\\(").replace(")", "\\)")
@@ -1000,7 +1000,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
       Some(
         ActionLimitsOption(
           Some(action.limits.timeout),
-          Some(action.limits.memory),
+          Some(action.limits.resources),
           Some(action.limits.logs),
           Some(action.limits.concurrency))))
     val name = action.name
@@ -1086,7 +1086,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
           Some(
             ActionLimitsOption(
               Some(action.limits.timeout),
-              Some(action.limits.memory),
+              Some(action.limits.resources),
               Some(action.limits.logs),
               Some(action.limits.concurrency))))
         val name = action.name
@@ -1134,7 +1134,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
       Some(
         ActionLimitsOption(
           Some(action.limits.timeout),
-          Some(action.limits.memory),
+          Some(action.limits.resources),
           Some(action.limits.logs),
           Some(action.limits.concurrency))))
     val name = action.name
@@ -1193,7 +1193,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
           Some(
             ActionLimitsOption(
               Some(action.limits.timeout),
-              Some(action.limits.memory),
+              Some(action.limits.resources),
               Some(action.limits.logs),
               Some(action.limits.concurrency))))
         val name = action.name
@@ -1260,7 +1260,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
       Some(
         ActionLimitsOption(
           Some(actionOldSchema.limits.timeout),
-          Some(actionOldSchema.limits.memory),
+          Some(actionOldSchema.limits.resources),
           Some(actionOldSchema.limits.logs),
           Some(actionOldSchema.limits.concurrency))))
     val expectedPutLog =
@@ -1338,7 +1338,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
       Some(
         ActionLimitsOption(
           Some(TimeLimit(TimeLimit.MAX_DURATION)),
-          Some(MemoryLimit(MemoryLimit.MAX_MEMORY)),
+          Some(ResourceLimit(ResourceLimit.MAX_RESOURCES)),
           Some(LogLimit(LogLimit.MAX_LOGSIZE)),
           Some(ConcurrencyLimit(ConcurrencyLimit.MAX_CONCURRENT)))))
     put(entityStore, action)
@@ -1357,7 +1357,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
           content.parameters.get,
           ActionLimits(
             content.limits.get.timeout.get,
-            content.limits.get.memory.get,
+            content.limits.get.resources.get,
             content.limits.get.logs.get,
             content.limits.get.concurrency.get),
           version = action.version.upPatch,

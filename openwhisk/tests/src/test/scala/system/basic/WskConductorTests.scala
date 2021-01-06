@@ -27,6 +27,7 @@ import spray.json._
 import spray.json.DefaultJsonProtocol._
 import org.apache.openwhisk.core.entity.size.SizeInt
 import org.apache.openwhisk.core.WhiskConfig
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.http.Messages._
 
 @RunWith(classOf[JUnitRunner])
@@ -130,7 +131,7 @@ class WskConductorTests extends TestHelpers with WskTestHelpers with JsHelpers w
 
     val step = "step" // step action with higher memory limit than conductor to test max memory computation
     assetHelper.withCleaner(wsk.action, step) { (action, _) =>
-      action.create(step, Some(TestUtils.getTestActionFilename("step.js")), memory = Some(257 MB))
+      action.create(step, Some(TestUtils.getTestActionFilename("step.js")), memory = Some(RuntimeResources(0, 257 MB, 0.B)))
     }
 
     // dynamically invoke step action
@@ -197,7 +198,7 @@ class WskConductorTests extends TestHelpers with WskTestHelpers with JsHelpers w
 
     val step = "step" // step action with lower memory limit than conductor to test max memory computation
     assetHelper.withCleaner(wsk.action, step) { (action, _) =>
-      action.create(step, Some(TestUtils.getTestActionFilename("step.js")), memory = Some(255 MB))
+      action.create(step, Some(TestUtils.getTestActionFilename("step.js")), memory = Some(RuntimeResources(0, 255 MB, 0.B)))
     }
 
     // invoke nested conductor with single step

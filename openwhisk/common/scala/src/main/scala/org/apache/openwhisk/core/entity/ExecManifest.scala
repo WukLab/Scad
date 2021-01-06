@@ -28,6 +28,7 @@ import org.apache.openwhisk.core.entity.Attachments._
 import org.apache.openwhisk.core.entity.Attachments.Attached._
 import fastparse._
 import NoWhitespace._
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 
 import scala.concurrent.duration.{Duration, FiniteDuration}
 
@@ -139,11 +140,11 @@ protected[core] object ExecManifest {
    * A stemcell configuration read from the manifest for a container image to be initialized by the container pool.
    *
    * @param initialCount  the initial number of stemcell containers to create
-   * @param memory the max memory this stemcell will allocate
+   * @param resources the max memory this stemcell will allocate
    * @param reactive the reactive prewarming prewarmed config, which is disabled by default
    */
   protected[entity] case class StemCell(initialCount: Int,
-                                        memory: ByteSize,
+                                        resources: RuntimeResources,
                                         reactive: Option[ReactivePrewarmingConfig] = None) {
     require(initialCount > 0, "initialCount must be positive")
   }
@@ -389,7 +390,7 @@ protected[core] object ExecManifest {
     ReactivePrewarmingConfig.apply)
 
   protected[entity] implicit val stemCellSerdes = new RootJsonFormat[StemCell] {
-    import org.apache.openwhisk.core.entity.size.serdes
+    import org.apache.openwhisk.core.containerpool.RuntimeResources.serdes
     val defaultSerdes = jsonFormat3(StemCell.apply)
     override def read(value: JsValue): StemCell = {
       val fields = value.asJsObject.fields
@@ -398,16 +399,16 @@ protected[core] object ExecManifest {
           .get("initialCount")
           .orElse(fields.get("count"))
           .map(_.convertTo[Int])
-      val memory: Option[ByteSize] = fields.get("memory").map(_.convertTo[ByteSize])
+      val resources: Option[RuntimeResources] = fields.get("resources").map(_.convertTo[RuntimeResources])
       val config = fields.get("reactive").map(_.convertTo[ReactivePrewarmingConfig])
 
-      (initialCount, memory) match {
+      (initialCount, resources) match {
         case (Some(c), Some(m)) => StemCell(c, m, config)
         case (Some(c), None) =>
-          throw new IllegalArgumentException(s"memory is required, just provide initialCount: ${c}")
+          throw new IllegalArgumentException(s"resources is required, just provide initialCount: ${c}")
         case (None, Some(m)) =>
-          throw new IllegalArgumentException(s"initialCount is required, just provide memory: ${m.toString}")
-        case _ => throw new IllegalArgumentException("both initialCount and memory are required")
+          throw new IllegalArgumentException(s"initialCount is required, just provide resources: ${m.toString}")
+        case _ => throw new IllegalArgumentException("both initialCount and resources are required")
       }
     }
 

@@ -34,7 +34,7 @@ import scala.util.Try
 case class InvokerInstanceId(val instance: Int,
                              uniqueName: Option[String] = None,
                              displayedName: Option[String] = None,
-                             val userMemory: ByteSize)
+                             val resources: RuntimeResources)
     extends InstanceId {
   def toInt: Int = instance
 
@@ -63,22 +63,6 @@ class TopSchedInstanceId(override val asString: String) extends ControllerInstan
   override val instanceType = "topsched"
 }
 
-class RackSchedInstanceId(instance: Int, var resources: RuntimeResources, val uniqueName: Option[String] = None, val displayName: Option[String] = None) extends InstanceId {
-  override val instanceType = "racksched"
-
-  def toInt: Int = instance
-
-  override val source = s"$instanceType.$instance"
-
-  override val toString: String = (Seq("racksched" + instance) ++ uniqueName ++ displayName).mkString("/")
-
-  override val toJson: JsValue = RackSchedInstanceId.serdes.write(this)
-
-  def updateResources(runtimeResources: RuntimeResources): Unit = {
-    resources = runtimeResources
-  }
-}
-
 object InvokerInstanceId extends DefaultJsonProtocol {
   def parse(c: String): Try[InvokerInstanceId] = Try(serdes.read(c.parseJson))
 
@@ -86,7 +70,7 @@ object InvokerInstanceId extends DefaultJsonProtocol {
     override def write(i: InvokerInstanceId): JsValue = {
       val fields = new ListBuffer[(String, JsValue)]
       fields ++= List("instance" -> JsNumber(i.instance))
-      fields ++= List("userMemory" -> JsString(i.userMemory.toString))
+      fields ++= List("resources" -> i.resources.toJson)
       fields ++= List("instanceType" -> JsString(i.instanceType))
       i.uniqueName.foreach(uniqueName => fields ++= List("uniqueName" -> JsString(uniqueName)))
       i.displayedName.foreach(displayedName => fields ++= List("displayedName" -> JsString(displayedName)))
@@ -97,16 +81,31 @@ object InvokerInstanceId extends DefaultJsonProtocol {
       val instance = fromField[Int](json, "instance")
       val uniqueName = fromField[Option[String]](json, "uniqueName")
       val displayedName = fromField[Option[String]](json, "displayedName")
-      val userMemory = fromField[String](json, "userMemory")
+      val resources = RuntimeResources.serdes.read(json.asJsObject.fields("resources"))
       val instanceType = fromField[String](json, "instanceType")
 
       if (instanceType == "invoker") {
-        new InvokerInstanceId(instance, uniqueName, displayedName, ByteSize.fromString(userMemory))
+        new InvokerInstanceId(instance, uniqueName, displayedName, resources)
       } else {
         deserializationError("could not read InvokerInstanceId")
       }
     }
   }
+}
+
+case class RackSchedInstanceId(val instance: Int,
+                               val resources: RuntimeResources,
+                               val uniqueName: Option[String] = None,
+                               val displayName: Option[String] = None) extends InstanceId {
+  override val instanceType = "racksched"
+
+  def toInt: Int = instance
+
+  override val source = s"$instanceType.$instance"
+
+  override val toString: String = (Seq("racksched" + instance) ++ uniqueName ++ displayName).mkString("/")
+
+  override val toJson: JsValue = RackSchedInstanceId.serdes.write(this)
 }
 
 object RackSchedInstanceId extends DefaultJsonProtocol {
@@ -127,7 +126,7 @@ object RackSchedInstanceId extends DefaultJsonProtocol {
       val instance = fromField[Int](json, "instance")
       val uniqueName = fromField[Option[String]](json, "uniqueName")
       val displayName = fromField[Option[String]](json, "displayName")
-      val resources = fromField[RuntimeResources](json, "resources")
+      val resources = RuntimeResources.serdes.read(json.asJsObject.fields("resources"))
       val instanceType = fromField[String](json, "instanceType")
 
       if (instanceType == "racksched") {

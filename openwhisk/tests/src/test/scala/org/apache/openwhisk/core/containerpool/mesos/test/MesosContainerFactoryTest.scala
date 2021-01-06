@@ -51,6 +51,7 @@ import org.apache.openwhisk.core.WhiskConfig
 import org.apache.openwhisk.core.WhiskConfig._
 import org.apache.openwhisk.core.containerpool.ContainerArgsConfig
 import org.apache.openwhisk.core.containerpool.ContainerPoolConfig
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.containerpool.logging.DockerToActivationLogStore
 import org.apache.openwhisk.core.entity.ExecManifest.ImageName
 import org.apache.openwhisk.core.entity.size._
@@ -84,8 +85,8 @@ class MesosContainerFactoryTest
   }
 
   // 80 slots, each 265MB
-  val poolConfig = ContainerPoolConfig(21200.MB, 0.5, false, 1.minute, None, 100)
-  val actionMemory = 265.MB
+  val poolConfig = ContainerPoolConfig(RuntimeResources(128, 21200.MB, 4096.MB), 0.5, false, 1.minute, None, 100)
+  val actionMemory = RuntimeResources(1, 265.MB, 512.MB)
   val mesosCpus = poolConfig.cpuShare(actionMemory) / 1024.0
 
   val containerArgsConfig =
@@ -170,7 +171,7 @@ class MesosContainerFactoryTest
       "mesosContainer",
       ImageName("fakeImage"),
       false,
-      actionMemory,
+      actionMemory.mem,
       poolConfig.cpuShare(actionMemory))
 
     expectMsg(
@@ -179,7 +180,7 @@ class MesosContainerFactoryTest
         "mesosContainer",
         "fakeImage",
         mesosCpus,
-        actionMemory.toMB.toInt,
+        actionMemory.mem.toMB.toInt,
         List(8080),
         None,
         false,
@@ -217,7 +218,7 @@ class MesosContainerFactoryTest
       "mesosContainer",
       ImageName("fakeImage"),
       false,
-      actionMemory,
+      actionMemory.mem,
       poolConfig.cpuShare(actionMemory))
     probe.expectMsg(
       SubmitTask(TaskDef(
@@ -225,7 +226,7 @@ class MesosContainerFactoryTest
         "mesosContainer",
         "fakeImage",
         mesosCpus,
-        actionMemory.toMB.toInt,
+        actionMemory.mem.toMB.toInt,
         List(8080),
         None,
         false,
@@ -291,7 +292,7 @@ class MesosContainerFactoryTest
       "mesosContainer",
       ImageName("fakeImage"),
       false,
-      actionMemory,
+      actionMemory.mem,
       poolConfig.cpuShare(actionMemory))
 
     probe.expectMsg(
@@ -300,7 +301,7 @@ class MesosContainerFactoryTest
         "mesosContainer",
         "fakeImage",
         mesosCpus,
-        actionMemory.toMB.toInt,
+        actionMemory.mem.toMB.toInt,
         List(8080),
         None,
         false,
@@ -329,7 +330,7 @@ class MesosContainerFactoryTest
     implicit val tid = TransactionId.testing
     implicit val m = ActorMaterializer()
     val logs = container
-      .logs(actionMemory, false)
+      .logs(actionMemory.mem, false)
       .via(DockerToActivationLogStore.toFormattedString)
       .runWith(Sink.seq)
     await(logs)(0) should endWith

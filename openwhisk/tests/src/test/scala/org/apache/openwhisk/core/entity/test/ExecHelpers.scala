@@ -22,6 +22,7 @@ import org.scalatest.Suite
 import common.StreamLogging
 import common.WskActorSystem
 import org.apache.openwhisk.core.WhiskConfig
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.ArgNormalizer.trim
 import org.apache.openwhisk.core.entity.ExecManifest._
@@ -33,7 +34,7 @@ trait ExecHelpers extends Matchers with WskActorSystem with StreamLogging {
   self: Suite =>
 
   private val config = new WhiskConfig(ExecManifest.requiredProperties)
-  ExecManifest.initialize(config) should be a 'success
+  ExecManifest.initialize(config) should be a Symbol("success")
 
   protected val NODEJS10 = "nodejs:10"
   protected val SWIFT4 = "swift:4.2"
@@ -52,7 +53,7 @@ trait ExecHelpers extends Matchers with WskActorSystem with StreamLogging {
         imageName(NODEJS10),
         default = Some(true),
         deprecated = Some(false),
-        stemCells = Some(List(StemCell(2, 256.MB)))),
+        stemCells = Some(List(StemCell(2, RuntimeResources(1.0, 256.MB, 512.MB))))),
       trim(code),
       main.map(_.trim))
   }
@@ -75,7 +76,7 @@ trait ExecHelpers extends Matchers with WskActorSystem with StreamLogging {
         imageName(NODEJS10),
         default = Some(true),
         deprecated = Some(false),
-        stemCells = Some(List(StemCell(2, 256.MB)))),
+        stemCells = Some(List(StemCell(2, RuntimeResources(1.0, 256.MB, 0.B))))),
       binary,
       main.map(_.trim))
   }
@@ -123,6 +124,6 @@ trait ExecHelpers extends Matchers with WskActorSystem with StreamLogging {
     BlackBoxExecMetaData(ExecManifest.ImageName(trim(image)), main, false, binary)
   }
 
-  protected def actionLimits(memory: ByteSize, concurrency: Int): ActionLimits =
-    ActionLimits(memory = MemoryLimit(memory), concurrency = ConcurrencyLimit(concurrency))
+  protected def actionLimits(memory: RuntimeResources, concurrency: Int): ActionLimits =
+    ActionLimits(resources = ResourceLimit(memory), concurrency = ConcurrencyLimit(concurrency))
 }

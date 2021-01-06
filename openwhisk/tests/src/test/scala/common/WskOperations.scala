@@ -21,11 +21,11 @@ import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
 import java.time.Instant
-
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.duration.Duration
 import scala.language.postfixOps
 import TestUtils._
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import spray.json._
 import org.apache.openwhisk.core.entity.ByteSize
 
@@ -238,7 +238,7 @@ trait ActionOperations extends DeleteFromCollectionOperations with ListOrGetFrom
              parameterFile: Option[String] = None,
              annotationFile: Option[String] = None,
              timeout: Option[Duration] = None,
-             memory: Option[ByteSize] = None,
+             memory: Option[RuntimeResources] = None,
              logsize: Option[ByteSize] = None,
              concurrency: Option[Int] = None,
              shared: Option[Boolean] = None,

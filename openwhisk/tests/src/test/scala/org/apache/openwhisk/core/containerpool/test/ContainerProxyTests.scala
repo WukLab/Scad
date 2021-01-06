@@ -74,14 +74,14 @@ class ContainerProxyTests
   val timeout = 5.seconds
   val pauseGrace = timeout + 1.minute
   val log = logging
-  val defaultUserMemory: ByteSize = 1024.MB
+  val defaultUserResources: RuntimeResources = RuntimeResources(16.0, 1024.MB, 128.MB)
 
   // Common entities to pass to the tests. We don't really care what's inside
   // those for the behavior testing here, as none of the contents will really
   // reach a container anyway. We merely assert that passing and extraction of
   // the values is done properly.
   val exec = CodeExecAsString(RuntimeManifest("actionKind", ImageName("testImage")), "testCode", None)
-  val memoryLimit = 256.MB
+  val resourceLimit = RuntimeResources(4.0, 256.MB, 128.MB)
 
   val invocationNamespace = EntityName("invocationSpace")
   val action = ExecutableWhiskAction(EntityPath("actionSpace"), EntityName("actionName"), exec)
@@ -142,7 +142,7 @@ class ContainerProxyTests
 
   /** Pre-warms the given state-machine, assumes good cases */
   def preWarm(machine: ActorRef) = {
-    machine ! Start(exec, memoryLimit)
+    machine ! Start(exec, resourceLimit)
     expectMsg(Transition(machine, Uninitialized, Starting))
     expectPreWarmed(exec.kind)
     expectMsg(Transition(machine, Starting, Started))
@@ -276,7 +276,7 @@ class ContainerProxyTests
     (transid: TransactionId, activation: WhiskActivation, isBlockingActivation: Boolean, context: UserContext) =>
       Future.successful(())
   }
-  val poolConfig = ContainerPoolConfig(2.MB, 0.5, false, 1.minute, None, 100)
+  val poolConfig = ContainerPoolConfig(RuntimeResources(128, 4096.MB, 4096.MB), 0.5, false, 1.minute, None, 100)
   def healthchecksConfig(enabled: Boolean = false) = ContainerProxyHealthCheckConfig(enabled, 100.milliseconds, 2)
   val filterEnvVar = (k: String) => Character.isUpperCase(k.charAt(0))
 
@@ -324,7 +324,7 @@ class ContainerProxyTests
             createAcker(),
             store,
             createCollector(),
-            InvokerInstanceId(0, Some("myname"), userMemory = defaultUserMemory),
+            InvokerInstanceId(0, Some("myname"), resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace))
@@ -335,7 +335,7 @@ class ContainerProxyTests
     val (tid, name, _, _, memory, cpuShares, _) = factory.calls(0)
     tid shouldBe TransactionId.invokerWarmup
     name should fullyMatch regex """wskmyname\d+_\d+_prewarm_actionKind"""
-    memory shouldBe memoryLimit
+    memory shouldBe resourceLimit
   }
 
   it should "run a container which has been started before, write an active ack, write to the store, pause and remove the container" in within(
@@ -354,7 +354,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace))
@@ -399,7 +399,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace))
@@ -463,7 +463,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace))
@@ -514,7 +514,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace))
@@ -555,7 +555,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace))
@@ -594,7 +594,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace))
@@ -651,7 +651,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecks,
             pauseGrace = pauseGrace,
@@ -778,7 +778,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace))
@@ -822,7 +822,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace)
@@ -937,7 +937,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace)
@@ -1007,7 +1007,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace)
@@ -1075,7 +1075,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace)
@@ -1136,7 +1136,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace)
@@ -1193,7 +1193,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace)
@@ -1251,7 +1251,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace)
@@ -1304,7 +1304,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace)
@@ -1365,7 +1365,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = timeout))
@@ -1442,7 +1442,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace))
@@ -1488,7 +1488,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace))
@@ -1541,7 +1541,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace))
@@ -1580,7 +1580,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace))
@@ -1618,7 +1618,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace))
@@ -1660,7 +1660,7 @@ class ContainerProxyTests
             acker,
             store,
             createCollector(),
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace))
@@ -1712,7 +1712,7 @@ class ContainerProxyTests
             acker,
             store,
             createCollector(),
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace))
@@ -1764,7 +1764,7 @@ class ContainerProxyTests
             acker,
             store,
             createCollector(),
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace))
@@ -1803,7 +1803,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(true),
             pauseGrace = pauseGrace))
@@ -1843,7 +1843,7 @@ class ContainerProxyTests
             acker,
             store,
             createCollector(),
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace))
@@ -1890,7 +1890,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace))
@@ -1950,7 +1950,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace))
@@ -1999,7 +1999,7 @@ class ContainerProxyTests
             acker,
             store,
             collector,
-            InvokerInstanceId(0, userMemory = defaultUserMemory),
+            InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
             pauseGrace = pauseGrace))
@@ -2032,11 +2032,11 @@ class ContainerProxyTests
       case WarmingColdData(message.user.namespace.name, action, _, 1) =>
     }
 
-    val memData = MemoryData(new RuntimeResources(1, action.limits.memory.megabytes.MB, 0.B))
+    val memData = ResourceData(action.limits.resources.limits)
     memData.nextRun(Run(action, message)) should matchPattern {
       case WarmingColdData(message.user.namespace.name, action, _, 1) =>
     }
-    val pwData = PreWarmedData(new TestContainer(), action.exec.kind, new RuntimeResources(0, action.limits.memory.megabytes.MB, 0.B))
+    val pwData = PreWarmedData(new TestContainer(), action.exec.kind,action.limits.resources.limits)
     pwData.nextRun(Run(action, message)) should matchPattern {
       case WarmingData(pwData.container, message.user.namespace.name, action, _, 1) =>
     }

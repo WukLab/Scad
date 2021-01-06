@@ -18,9 +18,9 @@
 package org.apache.openwhisk.core.loadBalancer
 
 import akka.actor.ActorRef
+
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.LongAdder
-
 import akka.actor.ActorSystem
 import akka.event.Logging.InfoLevel
 import akka.stream.ActorMaterializer
@@ -30,10 +30,11 @@ import pureconfig.generic.auto._
 import org.apache.openwhisk.common.LoggingMarkers._
 import org.apache.openwhisk.common._
 import org.apache.openwhisk.core.connector._
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.entity._
-import org.apache.openwhisk.core.entity.size._
 import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
 
+import java.util.concurrent.atomic.AtomicReference
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future, Promise}
@@ -62,20 +63,20 @@ abstract class CommonLoadBalancer(config: WhiskConfig,
     TrieMap[ActivationId, Promise[Either[ActivationId, WhiskActivation]]]()
   protected val activationsPerNamespace = TrieMap[UUID, LongAdder]()
   protected val totalActivations = new LongAdder()
-  protected val totalBlackBoxActivationMemory = new LongAdder()
-  protected val totalManagedActivationMemory = new LongAdder()
+  protected val totalBlackBoxActivationResources = new AtomicReference[RuntimeResources](RuntimeResources.none())
+  protected val totalManagedActivationResources = new AtomicReference[RuntimeResources](RuntimeResources.none())
 
   protected def emitMetrics() = {
     MetricEmitter.emitGaugeMetric(LOADBALANCER_ACTIVATIONS_INFLIGHT(controllerInstance), totalActivations.longValue)
     MetricEmitter.emitGaugeMetric(
       LOADBALANCER_MEMORY_INFLIGHT(controllerInstance, ""),
-      totalBlackBoxActivationMemory.longValue + totalManagedActivationMemory.longValue)
+      (totalBlackBoxActivationResources.get().mem + totalManagedActivationResources.get().mem).toMB)
     MetricEmitter.emitGaugeMetric(
       LOADBALANCER_MEMORY_INFLIGHT(controllerInstance, "Blackbox"),
-      totalBlackBoxActivationMemory.longValue)
+      totalBlackBoxActivationResources.get().mem.toMB)
     MetricEmitter.emitGaugeMetric(
       LOADBALANCER_MEMORY_INFLIGHT(controllerInstance, "Managed"),
-      totalManagedActivationMemory.longValue)
+      totalManagedActivationResources.get().mem.toMB)
   }
 
   actorSystem.scheduler.schedule(10.seconds, 10.seconds)(emitMetrics())
@@ -120,9 +121,9 @@ abstract class CommonLoadBalancer(config: WhiskConfig,
     // Needed for emitting metrics.
     totalActivations.increment()
     val isBlackboxInvocation = action.exec.pull
-    val totalActivationMemory =
-      if (isBlackboxInvocation) totalBlackBoxActivationMemory else totalManagedActivationMemory
-    totalActivationMemory.add(action.limits.memory.megabytes)
+    val totalActivationResources =
+      if (isBlackboxInvocation) totalBlackBoxActivationResources else totalManagedActivationResources
+    totalActivationResources.getAndUpdate(a => a + action.limits.resources.limits)
 
     activationsPerNamespace.getOrElseUpdate(msg.user.namespace.uuid, new LongAdder()).increment()
 
@@ -156,7 +157,7 @@ abstract class CommonLoadBalancer(config: WhiskConfig,
           msg.activationId,
           msg.user.namespace.uuid,
           instance,
-          action.limits.memory.megabytes.MB,
+          action.limits.resources.limits,
           action.limits.timeout.duration,
           action.limits.concurrency.maxConcurrent,
           action.fullyQualifiedName(true),
@@ -283,9 +284,9 @@ abstract class CommonLoadBalancer(config: WhiskConfig,
     activationSlots.remove(aid) match {
       case Some(entry) =>
         totalActivations.decrement()
-        val totalActivationMemory =
-          if (entry.isBlackbox) totalBlackBoxActivationMemory else totalManagedActivationMemory
-        totalActivationMemory.add(entry.memoryLimit.toMB * (-1))
+        val totalActivationResources =
+          if (entry.isBlackbox) totalBlackBoxActivationResources else totalManagedActivationResources
+        totalActivationResources.getAndUpdate(a => a + (entry.resourceLimit * (-1)))
         activationsPerNamespace.get(entry.namespaceId).foreach(_.decrement())
 
         invoker.foreach(releaseInvoker(_, entry))
@@ -310,7 +311,7 @@ abstract class CommonLoadBalancer(config: WhiskConfig,
           val completionAckTimeout = calculateCompletionAckTimeout(entry.timeLimit)
           logging.warn(
             this,
-            s"forced completion ack for '$aid', action '${entry.fullyQualifiedEntityName}' ($actionType), $blockingType, mem limit ${entry.memoryLimit.toMB} MB, time limit ${entry.timeLimit.toMillis} ms, completion ack timeout $completionAckTimeout from $instance")(
+            s"forced completion ack for '$aid', action '${entry.fullyQualifiedEntityName}' ($actionType), $blockingType, resource limit ${entry.resourceLimit}, time limit ${entry.timeLimit.toMillis} ms, completion ack timeout $completionAckTimeout from $instance")(
             tid)
 
           MetricEmitter.emitCounterMetric(LOADBALANCER_COMPLETION_ACK_FORCED)

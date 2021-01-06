@@ -19,17 +19,16 @@ package org.apache.openwhisk.core.controller.actions
 
 import java.time.{Clock, Instant}
 import java.util.concurrent.atomic.AtomicReference
-
 import akka.actor.ActorSystem
 import spray.json._
 import spray.json.DefaultJsonProtocol._
 import org.apache.openwhisk.common.{Logging, TransactionId, UserEvents}
 import org.apache.openwhisk.core.connector.{EventMessage, MessagingProvider}
 import org.apache.openwhisk.core.containerpool.Interval
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.controller.WhiskServices
 import org.apache.openwhisk.core.database.{ActivationStore, NoDocumentException, UserContext}
 import org.apache.openwhisk.core.entity._
-import org.apache.openwhisk.core.entity.size.SizeInt
 import org.apache.openwhisk.core.entity.types._
 import org.apache.openwhisk.http.Messages._
 import org.apache.openwhisk.spi.SpiLoader
@@ -39,7 +38,6 @@ import spray.json._
 import scala.collection._
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
-import scala.language.postfixOps
 import scala.util.{Failure, Success}
 
 protected[actions] trait SequenceActions {
@@ -205,10 +203,10 @@ protected[actions] trait SequenceActions {
                                      end: Instant)(implicit transid: TransactionId): WhiskActivation = {
 
     // compute max memory
-    val sequenceLimits = accounting.maxMemory map { maxMemoryAcrossActionsInSequence =>
+    val sequenceLimits = accounting.maxResources map { maxMemoryAcrossActionsInSequence =>
       Parameters(
         WhiskActivation.limitsAnnotation,
-        ActionLimits(action.limits.timeout, MemoryLimit(maxMemoryAcrossActionsInSequence MB), action.limits.logs).toJson)
+        ActionLimits(action.limits.timeout, ResourceLimit(maxMemoryAcrossActionsInSequence), action.limits.logs).toJson)
     }
 
     // set causedBy if not topmost sequence
@@ -416,7 +414,7 @@ protected[actions] trait SequenceActions {
  * @param logs a mutable buffer that is appended with new activation ids as the sequence unfolds
  * @param duration the "user" time so far executing the sequence (sum of durations for
  *        all actions invoked so far which is different from the total time spent executing the sequence)
- * @param maxMemory the maximum memory annotation observed so far for the
+ * @param maxResources the maximum memory annotation observed so far for the
  *        components (needed to annotate the sequence with GB-s)
  * @param shortcircuit when true, stops the execution of the next component in the sequence
  */
@@ -424,7 +422,7 @@ protected[actions] case class SequenceAccounting(atomicActionCnt: Int,
                                                  previousResponse: AtomicReference[ActivationResponse],
                                                  logs: mutable.Buffer[ActivationId],
                                                  duration: Long = 0,
-                                                 maxMemory: Option[Int] = None,
+                                                 maxResources: Option[RuntimeResources] = None,
                                                  shortcircuit: Boolean = false) {
 
   /** @return the ActivationLogs data structure for this sequence invocation */
@@ -440,10 +438,10 @@ protected[actions] case class SequenceAccounting(atomicActionCnt: Int,
       incrDuration = activation.duration,
       newResponse = activation.response,
       newActivationId = activation.activationId,
-      newMemoryLimit = activation.annotations.get("limits") map { limitsAnnotation => // we have a limits annotation
-        limitsAnnotation.asJsObject.getFields("memory") match {
-          case Seq(JsNumber(memory)) =>
-            Some(memory.toInt) // we have a numerical "memory" field in the "limits" annotation
+      newResourceLimit = activation.annotations.get("limits") map { limitsAnnotation => // we have a limits annotation
+        limitsAnnotation.asJsObject.getFields("resources") match {
+          case Seq(resources) =>
+            Some(RuntimeResources.serdes.read(resources))
         }
       } getOrElse { None })
   }
@@ -495,8 +493,15 @@ protected[actions] case class SequenceAccounting(atomicActionCnt: Int,
  */
 protected[actions] object SequenceAccounting {
 
-  def maxMemory(prevMemoryLimit: Option[Int], newMemoryLimit: Option[Int]): Option[Int] = {
-    (prevMemoryLimit ++ newMemoryLimit).reduceOption(Math.max)
+  // todo(zac) come up with a better implementation/ordering scheme
+  def maxResources(prevResourceLimit: Option[RuntimeResources], newResourceLimit: Option[RuntimeResources]): Option[RuntimeResources] = {
+    (prevResourceLimit ++ newResourceLimit).reduceOption((a1, a2) => {
+      if (a1.mem > a2.mem) {
+        a1
+      } else {
+        a2
+      }
+    })
   }
 
   // constructor for successful invocations, or error'ing ones (where shortcircuit = true)
@@ -505,11 +510,11 @@ protected[actions] object SequenceAccounting {
             incrDuration: Option[Long],
             newResponse: ActivationResponse,
             newActivationId: ActivationId,
-            newMemoryLimit: Option[Int],
+            newResourceLimit: Option[RuntimeResources],
             shortcircuit: Boolean): SequenceAccounting = {
 
     // compute the new max memory
-    val newMaxMemory = maxMemory(prev.maxMemory, newMemoryLimit)
+    val newMaxResources = maxResources(prev.maxResources, newResourceLimit)
 
     // append log entry
     prev.logs += newActivationId
@@ -519,7 +524,7 @@ protected[actions] object SequenceAccounting {
       previousResponse = new AtomicReference(newResponse),
       logs = prev.logs,
       duration = incrDuration map { prev.duration + _ } getOrElse { prev.duration },
-      maxMemory = newMaxMemory,
+      maxResources = newMaxResources,
       shortcircuit = shortcircuit)
   }
 
