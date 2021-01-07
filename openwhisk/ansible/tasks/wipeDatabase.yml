@@ -29,6 +29,7 @@
     dbName: "{{ db.whisk.actions }}"
     readers:
     - "{{ db.credentials.controller.user }}"
+    - "{{ db.credentials.racksched.user }}"
     - "{{ db.credentials.invoker.user }}"
     writers:
     - "{{ db.credentials.controller.user }}"
@@ -42,9 +43,11 @@
     dbName: "{{ db.whisk.activations }}"
     readers:
     - "{{ db.credentials.controller.user }}"
+    - "{{ db.credentials.racksched.user }}"
     - "{{ db.credentials.invoker.user }}"
     writers:
     - "{{ db.credentials.controller.user }}"
+    - "{{ db.credentials.racksched.user }}"
     - "{{ db.credentials.invoker.user }}"
 
 - include_tasks: recreateViews.yml
