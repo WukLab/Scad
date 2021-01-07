@@ -157,9 +157,9 @@ RackSched(val instance: RackSchedInstanceId,
  */
 object RackSched {
 
-  protected val protocol: String = loadConfigOrThrow[String]("whisk.racksched.protocol")
-  protected val interface: String = loadConfigOrThrow[String]("whisk.racksched.interface")
-  protected val readinessThreshold: Result[Double] = loadConfig[Double]("whisk.racksched.readiness-fraction")
+  protected val protocol: String = loadConfigOrThrow[String]("whisk.rackloadbalancer.protocol")
+  protected val interface: String = loadConfigOrThrow[String]("whisk.rackloadbalancer.interface")
+  protected val readinessThreshold: Result[Double] = loadConfig[Double]("whisk.rackloadbalancer.readiness-fraction")
 
   // requiredProperties is a Map whose keys define properties that must be bound to
   // a value, and whose values are default values.   A null value in the Map means there is
@@ -262,7 +262,7 @@ object RackSched {
           logger)
 
 //        val httpsConfig =
-//          if (RackSched.protocol == "https") Some(loadConfigOrThrow[HttpsConfig]("whisk.racksched.https")) else None
+//          if (RackSched.protocol == "https") Some(loadConfigOrThrow[HttpsConfig]("whisk.rackloadbalancer.https")) else None
 //
 //        BasicHttpService.startHttpService(racksched.route, port, httpsConfig, interface)(
 //          actorSystem,
