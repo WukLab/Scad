@@ -48,6 +48,9 @@ import scala.concurrent.duration.DurationInt
 import scala.concurrent.Await
 import scala.concurrent.ExecutionContextExecutor
 import scala.util.{Failure, Success}
+import scala.util.Try
+
+case class CmdLineArgs(uniqueName: Option[String] = None, id: Option[Int] = None, displayedName: Option[String] = None)
 
 /**
  * The RackSched is the service that provides coarse-grained scheduling and Rest APIs
@@ -212,13 +215,12 @@ object RackSched {
 
     // if deploying multiple instances (scale out), must pass the instance number as the
     require(args.length >= 1, "racksched instance required")
-    val id = args(0).toInt
-    if (id < 0) {
-      throw new RuntimeException(s"Rack scheduler instance ID must be > 0. Got id number ${id}")
+
+    /** Returns Some(s) if the string is not empty with trimmed whitespace, None otherwise. */
+    def nonEmptyString(s: String): Option[String] = {
+      val trimmed = s.trim
+      if (trimmed.nonEmpty) Some(trimmed) else None
     }
-    val instance = new RackSchedInstanceId(args(0).toInt,
-      new RuntimeResources(0, ByteSize.fromString("0B"), ByteSize.fromString("0B")),
-      None, None)
 
     def abort(message: String) = {
       logger.error(this, message)
@@ -226,6 +228,38 @@ object RackSched {
       Await.result(actorSystem.whenTerminated, 30.seconds)
       sys.exit(1)
     }
+
+    def parse(ls: List[String], c: CmdLineArgs): CmdLineArgs = {
+      ls match {
+        case "--uniqueName" :: uniqueName :: tail =>
+          parse(tail, c.copy(uniqueName = nonEmptyString(uniqueName)))
+        case "--displayedName" :: displayedName :: tail =>
+          parse(tail, c.copy(displayedName = nonEmptyString(displayedName)))
+        case "--id" :: id :: tail if Try(id.toInt).isSuccess =>
+          parse(tail, c.copy(id = Some(id.toInt)))
+        case Nil => c
+        case _   => abort(s"Error processing command line arguments $ls")
+      }
+    }
+    
+    val cmdLineArgs = parse(args.toList, CmdLineArgs())
+    logger.info(this, "Command line arguments parsed to yield " + cmdLineArgs)
+    
+    val id = cmdLineArgs match {
+      // --id is defined with a valid value, use this id directly.
+      case CmdLineArgs(_, Some(id), _) =>
+        logger.info(this, s"rackschedReg: using proposedRackschedId $id")
+        id
+
+      case _ => abort(s"--id must be configured with correct values")
+    }
+    
+    if (id < 0) {
+      throw new RuntimeException(s"Rack scheduler instance ID must be > 0. Got id number ${id}")
+    }
+    val instance = new RackSchedInstanceId(id,
+      new RuntimeResources(0, ByteSize.fromString("0B"), ByteSize.fromString("0B")),
+      None, None)
 
     if (!config.isValid) {
       abort("Bad configuration, cannot start.")
