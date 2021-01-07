@@ -262,7 +262,7 @@
 
       "CONFIG_whisk_spi_LogStoreProvider": "{{ userLogs.spi }}"
       "CONFIG_whisk_spi_LoadBalancerProvider":
-        "{{ controller.loadbalancer.spi }}"
+        "{{ controller.topbalancer.spi }}"
       "CONFIG_whisk_spi_EntitlementSpiProvider": "{{ controller.entitlement.spi }}"
 
       "CONFIG_whisk_spi_AuthenticationDirectiveProvider": "{{ controller.authentication.spi }}"

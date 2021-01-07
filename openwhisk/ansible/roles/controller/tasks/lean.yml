@@ -17,6 +17,21 @@
 ---
 # This plugin will  provide controller with Lean Controller parameters
 
+- name: set inventory_hostname to racksched and save controllers data that can be changed by racksched task
+  set_fact:
+    controller_env: "{{ env }}"
+    inventory_hostname: "racksched0"
+    racksched_index_base: 0
+    name_prefix: "racksched"
+    host_group: "{{ groups['rackscheds'] }}"
+
+- name: include racksched data
+  include_tasks: "../racksched/tasks/deploy.yml"
+
+- name: save racksched volumes
+  set_fact:
+    racksched_volumes: "{{ volumes.split(',') | reject('search','/logs') | reject('search','/conf') | reject('search','/coverage') | list }}"
+
 - name: set inventory_hostname to invoker and save controllers data that can be changed by invoker task
   set_fact:
     controller_env: "{{ env }}"
@@ -36,6 +51,7 @@
   set_fact:
     controller_volumes: >-
       {{ invoker_volumes }} +
+      {{ racksched_volumes }} +
       {{ controller_volumes }}
 
 - name: populate environment variables for LEAN controller
