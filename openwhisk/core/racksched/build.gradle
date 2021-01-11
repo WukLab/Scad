@@ -45,5 +45,5 @@ dependencies {
     compile project(':core:controller')
 }
 
-mainClassName = "org.apache.openwhisk.core.sched.racksched"
+mainClassName = "org.apache.openwhisk.core.sched.RackSched"
 applicationDefaultJvmArgs = ["-Djava.security.egd=file:/dev/./urandom"]

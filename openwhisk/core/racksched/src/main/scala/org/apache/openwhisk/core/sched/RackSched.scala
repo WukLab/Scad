@@ -17,17 +17,20 @@
 
 package org.apache.openwhisk.core.sched
 
-import akka.actor.ActorSystem
+import akka.Done
+import akka.actor.{ActorSystem, CoordinatedShutdown}
 import akka.event.Logging.InfoLevel
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
 import akka.http.scaladsl.model.StatusCodes._
 import akka.http.scaladsl.server.Route
 import akka.stream.ActorMaterializer
+import kamon.Kamon
 import pureconfig._
 import pureconfig.generic.auto._
 import spray.json.DefaultJsonProtocol._
 import spray.json._
-import org.apache.openwhisk.common.{AkkaLogging, Logging, LoggingMarkers, Scheduler, TransactionId}
+import org.apache.openwhisk.common.Https.HttpsConfig
+import org.apache.openwhisk.common.{AkkaLogging, ConfigMXBean, Logging, LoggingMarkers, Scheduler, TransactionId}
 import org.apache.openwhisk.core.WhiskConfig
 import org.apache.openwhisk.core.WhiskConfig.kafkaHosts
 import org.apache.openwhisk.core.connector.{MessagingProvider, PingRackMessage}
@@ -40,14 +43,18 @@ import org.apache.openwhisk.core.entity.ActivationId.ActivationIdGenerator
 import org.apache.openwhisk.core.entity.ExecManifest.Runtimes
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.loadBalancer.InvokerState
-import org.apache.openwhisk.http.BasicRasService
+import org.apache.openwhisk.http.{BasicHttpService, BasicRasService}
 import org.apache.openwhisk.spi.SpiLoader
 import pureconfig.ConfigReader.Result
 
+import scala.concurrent.ExecutionContext.Implicits
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.Await
 import scala.concurrent.ExecutionContextExecutor
 import scala.util.{Failure, Success}
+import scala.util.Try
+
+case class CmdLineArgs(uniqueName: Option[String] = None, id: Option[Int] = None, displayedName: Option[String] = None)
 
 /**
  * The RackSched is the service that provides coarse-grained scheduling and Rest APIs
@@ -157,9 +164,9 @@ RackSched(val instance: RackSchedInstanceId,
  */
 object RackSched {
 
-  protected val protocol: String = loadConfigOrThrow[String]("whisk.racksched.protocol")
-  protected val interface: String = loadConfigOrThrow[String]("whisk.racksched.interface")
-  protected val readinessThreshold: Result[Double] = loadConfig[Double]("whisk.racksched.readiness-fraction")
+  protected val protocol: String = loadConfigOrThrow[String]("whisk.rackloadbalancer.protocol")
+  protected val interface: String = loadConfigOrThrow[String]("whisk.rackloadbalancer.interface")
+  protected val readinessThreshold: Result[Double] = loadConfig[Double]("whisk.rackloadbalancer.readiness-fraction")
 
   // requiredProperties is a Map whose keys define properties that must be bound to
   // a value, and whose values are default values.   A null value in the Map means there is
@@ -206,19 +213,27 @@ object RackSched {
   }
 
   def start(args: Array[String])(implicit actorSystem: ActorSystem, logger: Logging): Unit = {
+    ConfigMXBean.register()
+    Kamon.init()
+
+    // Prepare Kamon shutdown
+    CoordinatedShutdown(actorSystem).addTask(CoordinatedShutdown.PhaseActorSystemTerminate, "shutdownKamon") { () =>
+      logger.info(this, s"Shutting down Kamon with coordinated shutdown")
+      Kamon.stopModules().map(_ => Done)(Implicits.global)
+    }
+
     // extract configuration data from the environment
     val config = new WhiskConfig(requiredProperties)
-    val port = config.servicePort.toInt + 10
+    val port = config.servicePort.toInt
 
     // if deploying multiple instances (scale out), must pass the instance number as the
     require(args.length >= 1, "racksched instance required")
-    val id = args(0).toInt
-    if (id < 0) {
-      throw new RuntimeException(s"Rack scheduler instance ID must be > 0. Got id number ${id}")
+
+    /** Returns Some(s) if the string is not empty with trimmed whitespace, None otherwise. */
+    def nonEmptyString(s: String): Option[String] = {
+      val trimmed = s.trim
+      if (trimmed.nonEmpty) Some(trimmed) else None
     }
-    val instance = new RackSchedInstanceId(args(0).toInt,
-      new RuntimeResources(0, ByteSize.fromString("0B"), ByteSize.fromString("0B")),
-      None, None)
 
     def abort(message: String) = {
       logger.error(this, message)
@@ -226,6 +241,38 @@ object RackSched {
       Await.result(actorSystem.whenTerminated, 30.seconds)
       sys.exit(1)
     }
+
+    def parse(ls: List[String], c: CmdLineArgs): CmdLineArgs = {
+      ls match {
+        case "--uniqueName" :: uniqueName :: tail =>
+          parse(tail, c.copy(uniqueName = nonEmptyString(uniqueName)))
+        case "--displayedName" :: displayedName :: tail =>
+          parse(tail, c.copy(displayedName = nonEmptyString(displayedName)))
+        case "--id" :: id :: tail if Try(id.toInt).isSuccess =>
+          parse(tail, c.copy(id = Some(id.toInt)))
+        case Nil => c
+        case _   => abort(s"Error processing command line arguments $ls")
+      }
+    }
+    
+    val cmdLineArgs = parse(args.toList, CmdLineArgs())
+    logger.info(this, "Command line arguments parsed to yield " + cmdLineArgs)
+    
+    val id = cmdLineArgs match {
+      // --id is defined with a valid value, use this id directly.
+      case CmdLineArgs(_, Some(id), _) =>
+        logger.info(this, s"rackschedReg: using proposedRackschedId $id")
+        id
+
+      case _ => abort(s"--id must be configured with correct values")
+    }
+    
+    if (id < 0) {
+      throw new RuntimeException(s"Rack scheduler instance ID must be > 0. Got id number ${id}")
+    }
+    val instance = new RackSchedInstanceId(id,
+      new RuntimeResources(0, ByteSize.fromString("0B"), ByteSize.fromString("0B")),
+      None, None)
 
     if (!config.isValid) {
       abort("Bad configuration, cannot start.")
@@ -261,12 +308,12 @@ object RackSched {
           ActorMaterializer.create(actorSystem),
           logger)
 
-//        val httpsConfig =
-//          if (RackSched.protocol == "https") Some(loadConfigOrThrow[HttpsConfig]("whisk.racksched.https")) else None
-//
-//        BasicHttpService.startHttpService(racksched.route, port, httpsConfig, interface)(
-//          actorSystem,
-//          racksched.materializer)
+       val httpsConfig =
+         if (RackSched.protocol == "https") Some(loadConfigOrThrow[HttpsConfig]("whisk.rackloadbalancer.https")) else None
+
+       BasicHttpService.startHttpService(racksched.route, port, httpsConfig, interface)(
+         actorSystem,
+         racksched.materializer)
 
       case Failure(t) =>
         abort(s"Invalid runtimes manifest: $t")
