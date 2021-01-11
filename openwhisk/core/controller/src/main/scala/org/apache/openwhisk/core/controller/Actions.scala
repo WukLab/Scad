@@ -219,7 +219,8 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
         onComplete(checkAdditionalPrivileges) {
           case Success(_) =>
             putEntity(WhiskAction, entityStore, entityName.toDocId, overwrite, update(user, request) _, () => {
-              make(user, entityName, request)
+              val x: Future[WhiskAction] = make(user, entityName, request)
+              x
             })
           case Failure(f) =>
             super.handleEntitlementFailure(f)
@@ -447,7 +448,7 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
     val limits = content.limits map { l =>
       ActionLimits(
         l.timeout getOrElse TimeLimit(),
-        l.memory getOrElse MemoryLimit(),
+        l.resources getOrElse ResourceLimit(),
         l.logs getOrElse LogLimit(),
         l.concurrency getOrElse ConcurrencyLimit())
     } getOrElse ActionLimits()
@@ -539,7 +540,7 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
     val limits = content.limits map { l =>
       ActionLimits(
         l.timeout getOrElse action.limits.timeout,
-        l.memory getOrElse action.limits.memory,
+        l.resources getOrElse action.limits.resources,
         l.logs getOrElse action.limits.logs,
         l.concurrency getOrElse action.limits.concurrency)
     } getOrElse action.limits
@@ -637,7 +638,7 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
     // then traverses all actions in the sequence, inlining any that are sequences
     val future = if (components.size > actionSequenceLimit) {
       Future.failed(TooManyActionsInSequence())
-    } else if (components.size == 0) {
+    } else if (components.isEmpty) {
       Future.failed(NoComponentInSequence())
     } else {
       // resolve the action document id (if it's in a package/binding);

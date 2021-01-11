@@ -30,7 +30,11 @@
                 "stemCells": [
                     {
                         "initialCount": 2,
-                        "memory": "256 MB",
+                        "resources": {
+                            "cpu": 1.0,
+                            "mem": "256MB",
+                            "storage": "256MB"
+                        },
                         "reactive": {
                             "minCount": 1,
                             "maxCount": 4,

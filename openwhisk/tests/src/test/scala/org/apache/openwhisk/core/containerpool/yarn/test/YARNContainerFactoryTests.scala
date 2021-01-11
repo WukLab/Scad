@@ -23,6 +23,7 @@ import org.apache.openwhisk.common.TransactionId
 import org.apache.openwhisk.core.WhiskConfig
 import org.apache.openwhisk.core.WhiskConfig._
 import org.apache.openwhisk.core.containerpool.ContainerArgsConfig
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.entity.ExecManifest.ImageName
 import org.apache.openwhisk.core.entity.{ByteSize, ExecManifest, InvokerInstanceId, SizeUnits}
 import org.apache.openwhisk.core.yarn.{YARNConfig, YARNContainerFactory, YARNRESTUtil, YARNTask}
@@ -99,8 +100,8 @@ class YARNContainerFactoryTests
       "default",
       "256",
       1)
-  val instance0 = new InvokerInstanceId(0, Some("invoker0"), Some("invoker0"), ByteSize(0, SizeUnits.BYTE))
-  val instance1 = new InvokerInstanceId(1, Some("invoker1"), Some("invoker1"), ByteSize(0, SizeUnits.BYTE))
+  val instance0 = new InvokerInstanceId(0, Some("invoker0"), Some("invoker0"), RuntimeResources.none())
+  val instance1 = new InvokerInstanceId(1, Some("invoker1"), Some("invoker1"), RuntimeResources.none())
   val serviceName0 = yarnConfig.serviceName + "-0"
   val serviceName1 = yarnConfig.serviceName + "-1"
   val properties: Map[String, Set[String]] = Map[String, Set[String]]()

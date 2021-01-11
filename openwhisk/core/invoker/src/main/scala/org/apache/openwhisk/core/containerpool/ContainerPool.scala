@@ -22,7 +22,6 @@ import org.apache.openwhisk.common.{Logging, LoggingMarkers, MetricEmitter, Tran
 import org.apache.openwhisk.core.connector.MessageFeed
 import org.apache.openwhisk.core.entity.ExecManifest.ReactivePrewarmingConfig
 import org.apache.openwhisk.core.entity._
-import org.apache.openwhisk.core.entity.size._
 
 import scala.annotation.tailrec
 import scala.collection.immutable
@@ -33,7 +32,7 @@ sealed trait WorkerState
 case object Busy extends WorkerState
 case object Free extends WorkerState
 
-case class ColdStartKey(kind: String, memory: ByteSize)
+case class ColdStartKey(kind: String, resources: RuntimeResources)
 
 case class WorkerData(data: ContainerData, state: WorkerState)
 
@@ -66,14 +65,14 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                     prewarmConfig: List[PrewarmingConfig] = List.empty,
                     poolConfig: ContainerPoolConfig)(implicit val logging: Logging)
     extends Actor {
-  import ContainerPool.memoryConsumptionOf
+  import ContainerPool.resourceConsumptionOf
 
   implicit val ec = context.dispatcher
 
   var freePool = immutable.Map.empty[ActorRef, ContainerData]
   var busyPool = immutable.Map.empty[ActorRef, ContainerData]
   var prewarmedPool = immutable.Map.empty[ActorRef, PreWarmedData]
-  var prewarmStartingPool = immutable.Map.empty[ActorRef, (String, ByteSize)]
+  var prewarmStartingPool = immutable.Map.empty[ActorRef, (String, RuntimeResources)]
   // If all memory slots are occupied and if there is currently no container to be removed, than the actions will be
   // buffered here to keep order of computation.
   // Otherwise actions with small memory-limits could block actions with large memory limits.
@@ -133,7 +132,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
         }
         val createdContainer =
           // Is there enough space on the invoker for this action to be executed.
-          if (hasPoolSpaceFor(busyPool, r.action.limits.memory.megabytes.MB)) {
+          if (hasPoolSpaceFor(busyPool, r.action.limits.resources.limits)) {
             // Schedule a job to a warm container
             ContainerPool
               .schedule(r.action, r.msg.user.namespace.name, freePool)
@@ -142,20 +141,20 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                 // There was no warm/warming/warmingCold container. Try to take a prewarm container or a cold container.
 
                 // Is there enough space to create a new container or do other containers have to be removed?
-                if (hasPoolSpaceFor(busyPool ++ freePool, r.action.limits.memory.megabytes.MB)) {
+                if (hasPoolSpaceFor(busyPool ++ freePool, r.action.limits.resources.limits)) {
                   takePrewarmContainer(r.action)
                     .map(container => (container, "prewarmed"))
                     .orElse {
-                      val container = Some(createContainer(r.action.limits.memory.megabytes.MB), "cold")
-                      incrementColdStartCount(r.action.exec.kind, r.action.limits.memory.megabytes.MB)
+                      val container = Some(createContainer(r.action.limits.resources.limits), "cold")
+                      incrementColdStartCount(r.action.exec.kind, r.action.limits.resources.limits)
                       container
                     }
                 } else None)
               .orElse(
                 // Remove a container and create a new one for the given job
                 ContainerPool
-                // Only free up the amount, that is really needed to free up
-                  .remove(freePool, Math.min(r.action.limits.memory.megabytes, memoryConsumptionOf(freePool)).MB)
+                // Only free up the amount, of resources that is really needed
+                  .remove(freePool, r.action.limits.resources.limits)
                   .map(removeContainer)
                   // If the list had at least one entry, enough containers were removed to start the new container. After
                   // removing the containers, we are not interested anymore in the containers that have been removed.
@@ -164,8 +163,8 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                     takePrewarmContainer(r.action)
                       .map(container => (container, "recreatedPrewarm"))
                       .getOrElse {
-                        val container = (createContainer(r.action.limits.memory.megabytes.MB), "recreated")
-                        incrementColdStartCount(r.action.exec.kind, r.action.limits.memory.megabytes.MB)
+                        val container = (createContainer(r.action.limits.resources.limits), "recreated")
+                        incrementColdStartCount(r.action.exec.kind, r.action.limits.resources.limits)
                         container
                     }))
 
@@ -214,11 +213,11 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
               logging.warn(
                 this,
                 s"Rescheduling Run message, too many message in the pool, " +
-                  s"freePoolSize: ${freePool.size} containers and ${memoryConsumptionOf(freePool)} MB, " +
-                  s"busyPoolSize: ${busyPool.size} containers and ${memoryConsumptionOf(busyPool)} MB, " +
-                  s"maxContainersMemory ${poolConfig.userMemory.toMB} MB, " +
+                  s"freePoolSize: ${freePool.size} containers and ${resourceConsumptionOf(freePool)}, " +
+                  s"busyPoolSize: ${busyPool.size} containers and ${resourceConsumptionOf(busyPool)}, " +
+                  s"maxContainersResources ${poolConfig.resources}, " +
                   s"userNamespace: ${r.msg.user.namespace.name}, action: ${r.action}, " +
-                  s"needed memory: ${r.action.limits.memory.megabytes} MB, " +
+                  s"needed resources: ${r.action.limits.resources.limits}, " +
                   s"waiting messages: ${runBuffer.size}")(r.msg.transid)
               MetricEmitter.emitCounterMetric(LoggingMarkers.CONTAINER_POOL_RESCHEDULED_ACTIVATION)
               Some(logMessageInterval.fromNow)
@@ -239,7 +238,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
     // Container is free to take more work
     case NeedWork(warmData: WarmedData) =>
-      val oldData = freePool.get(sender()).getOrElse(busyPool(sender()))
+      val oldData = freePool.getOrElse(sender(), busyPool(sender()))
       val newData =
         warmData.copy(lastUsed = oldData.lastUsed, activeActivationCount = oldData.activeActivationCount - 1)
       if (newData.activeActivationCount < 0) {
@@ -340,7 +339,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       coldStartCount foreach { coldStart =>
         val coldStartKey = coldStart._1
         MetricEmitter.emitCounterMetric(
-          LoggingMarkers.CONTAINER_POOL_PREWARM_COLDSTART(coldStartKey.memory.toString, coldStartKey.kind))
+          LoggingMarkers.CONTAINER_POOL_PREWARM_COLDSTART(coldStartKey.resources.toString, coldStartKey.kind))
       }
     }
     //fill in missing prewarms (replaces any deletes)
@@ -352,7 +351,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
         val desiredCount = c._2._2
         if (currentCount < desiredCount) {
           (currentCount until desiredCount).foreach { _ =>
-            prewarmContainer(config.exec, config.memoryLimit, config.reactive.map(_.ttl))
+            prewarmContainer(config.exec, config.resources, config.reactive.map(_.ttl))
           }
         }
       }
@@ -363,28 +362,28 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   }
 
   /** Creates a new container and updates state accordingly. */
-  def createContainer(memoryLimit: ByteSize): (ActorRef, ContainerData) = {
+  def createContainer(resources: RuntimeResources): (ActorRef, ContainerData) = {
     val ref = childFactory(context)
-    val data = MemoryData(new RuntimeResources(1, memoryLimit, 0.B))
+    val data = ResourceData(resources)
     freePool = freePool + (ref -> data)
     ref -> data
   }
 
   /** Creates a new prewarmed container */
-  def prewarmContainer(exec: CodeExec[_], memoryLimit: ByteSize, ttl: Option[FiniteDuration]): Unit = {
+  def prewarmContainer(exec: CodeExec[_], resources: RuntimeResources, ttl: Option[FiniteDuration]): Unit = {
     val newContainer = childFactory(context)
-    prewarmStartingPool = prewarmStartingPool + (newContainer -> (exec.kind, memoryLimit))
-    newContainer ! Start(exec, memoryLimit, ttl)
+    prewarmStartingPool = prewarmStartingPool + (newContainer -> (exec.kind, resources))
+    newContainer ! Start(exec, resources, ttl)
   }
 
   /** this is only for cold start statistics of prewarm configs, e.g. not blackbox or other configs. */
-  def incrementColdStartCount(kind: String, memoryLimit: ByteSize): Unit = {
+  def incrementColdStartCount(kind: String, resources: RuntimeResources): Unit = {
     prewarmConfig
       .filter { config =>
-        kind == config.exec.kind && memoryLimit == config.memoryLimit
+        kind == config.exec.kind && resources == config.resources
       }
       .foreach { _ =>
-        val coldStartKey = ColdStartKey(kind, memoryLimit)
+        val coldStartKey = ColdStartKey(kind, resources)
         coldStartCount.get(coldStartKey) match {
           case Some(value) => coldStartCount = coldStartCount + (coldStartKey -> (value + 1))
           case None        => coldStartCount = coldStartCount + (coldStartKey -> 1)
@@ -401,12 +400,12 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
    */
   def takePrewarmContainer(action: ExecutableWhiskAction): Option[(ActorRef, ContainerData)] = {
     val kind = action.exec.kind
-    val memory = action.limits.memory.megabytes.MB
+    val resources = action.limits.resources.limits
     val now = Deadline.now
     prewarmedPool.toSeq
       .sortBy(_._2.expires.getOrElse(now))
       .find {
-        case (_, PreWarmedData(_, `kind`, `memory`, _, _)) => true
+        case (_, PreWarmedData(_, `kind`, `resources`, _, _)) => true
         case _                                             => false
       }
       .map {
@@ -420,8 +419,8 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
           //get the appropriate ttl from prewarm configs
           val ttl =
-            prewarmConfig.find(pc => pc.memoryLimit == memory && pc.exec.kind == kind).flatMap(_.reactive.map(_.ttl))
-          prewarmContainer(action.exec, memory, ttl)
+            prewarmConfig.find(pc => pc.resources == resources && pc.exec.kind == kind).flatMap(_.reactive.map(_.ttl))
+          prewarmContainer(action.exec, resources, ttl)
           (ref, data)
       }
   }
@@ -434,14 +433,15 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   }
 
   /**
-   * Calculate if there is enough free memory within a given pool.
+   * Calculate if there is enough free resources within a given pool.
    *
    * @param pool The pool, that has to be checked, if there is enough free memory.
    * @param memory The amount of memory to check.
    * @return true, if there is enough space for the given amount of memory.
    */
-  def hasPoolSpaceFor[A](pool: Map[A, ContainerData], memory: ByteSize): Boolean = {
-    memoryConsumptionOf(pool) + memory.toMB <= poolConfig.userMemory.toMB
+  def hasPoolSpaceFor[A](pool: Map[A, ContainerData], resources: RuntimeResources): Boolean = {
+    val usedResources: RuntimeResources = resourceConsumptionOf(pool) + resources
+    !usedResources.exceedsAnyOf(poolConfig.resources)
   }
 
   /**
@@ -451,20 +451,20 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     MetricEmitter.emitGaugeMetric(LoggingMarkers.CONTAINER_POOL_RUNBUFFER_COUNT, runBuffer.size)
     MetricEmitter.emitGaugeMetric(
       LoggingMarkers.CONTAINER_POOL_RUNBUFFER_SIZE,
-      runBuffer.map(_.action.limits.memory.megabytes).sum)
+      runBuffer.map(_.action.limits.resources.limits.mem.toMB).sum)
     val containersInUse = freePool.filter(_._2.activeActivationCount > 0) ++ busyPool
     MetricEmitter.emitGaugeMetric(LoggingMarkers.CONTAINER_POOL_ACTIVE_COUNT, containersInUse.size)
     MetricEmitter.emitGaugeMetric(
       LoggingMarkers.CONTAINER_POOL_ACTIVE_SIZE,
-      containersInUse.map(_._2.resources.mem.amount.toMB).sum)
+      containersInUse.map(_._2.resources.mem.toMB).sum)
     MetricEmitter.emitGaugeMetric(
       LoggingMarkers.CONTAINER_POOL_PREWARM_COUNT,
       prewarmedPool.size + prewarmStartingPool.size)
     MetricEmitter.emitGaugeMetric(
       LoggingMarkers.CONTAINER_POOL_PREWARM_SIZE,
-      prewarmedPool.map(_._2.resources.mem.amount.toMB).sum + prewarmStartingPool.map(_._2._2.toMB).sum)
+      prewarmedPool.map(_._2.resources.mem.toMB).sum + prewarmStartingPool.map(_._2._2.mem.toMB).sum)
     val unused = freePool.filter(_._2.activeActivationCount == 0)
-    val unusedMB = unused.map(_._2.resources.mem.amount.toMB).sum
+    val unusedMB = unused.map(_._2.resources.mem.toMB).sum
     MetricEmitter.emitGaugeMetric(LoggingMarkers.CONTAINER_POOL_IDLES_COUNT, unused.size)
     MetricEmitter.emitGaugeMetric(LoggingMarkers.CONTAINER_POOL_IDLES_SIZE, unusedMB)
   }
@@ -478,8 +478,8 @@ object ContainerPool {
    * @param pool The pool with the containers.
    * @return The memory consumption of all containers in the pool in Megabytes.
    */
-  protected[containerpool] def memoryConsumptionOf[A](pool: Map[A, ContainerData]): Long = {
-    pool.map(_._2.resources.mem.amount.toMB).sum
+  protected[containerpool] def resourceConsumptionOf[A](pool: Map[A, ContainerData]): RuntimeResources = {
+    pool.map(_._2.resources).foldLeft(RuntimeResources.none())(_ + _)
   }
 
   /**
@@ -527,12 +527,12 @@ object ContainerPool {
    * since this would be picked up earlier in the scheduler and the container reused.
    *
    * @param pool a map of all free containers in the pool
-   * @param memory the amount of memory that has to be freed up
+   * @param resources the amount of resources that has to be freed up
    * @return a list of containers to be removed iff found
    */
   @tailrec
   protected[containerpool] def remove[A](pool: Map[A, ContainerData],
-                                         memory: ByteSize,
+                                         resources: RuntimeResources,
                                          toRemove: List[A] = List.empty): List[A] = {
     // Try to find a Free container that does NOT have any active activations AND is initialized with any OTHER action
     val freeContainers = pool.collect {
@@ -541,15 +541,15 @@ object ContainerPool {
         ref -> w
     }
 
-    if (memory > 0.B && freeContainers.nonEmpty && memoryConsumptionOf(freeContainers) >= memory.toMB) {
+    if (resources.exceedsAnyOf(RuntimeResources.none()) && freeContainers.nonEmpty && resourceConsumptionOf(freeContainers).exceedsAnyOf(resources)) {
       // Remove the oldest container if:
       // - there is more memory required
       // - there are still containers that can be removed
       // - there are enough free containers that can be removed
       val (ref, data) = freeContainers.minBy(_._2.lastUsed)
       // Catch exception if remaining memory will be negative
-      val remainingMemory = Try(memory - data.resources.mem.amount).getOrElse(0.B)
-      remove(freeContainers - ref, remainingMemory, toRemove ++ List(ref))
+      val remainingResources = Try(resources - data.resources).getOrElse(RuntimeResources.none())
+      remove(freeContainers - ref, remainingResources, toRemove ++ List(ref))
     } else {
       // If this is the first call: All containers are in use currently, or there is more memory needed than
       // containers can be removed.
@@ -575,7 +575,7 @@ object ContainerPool {
     val expireds = prewarmConfig
       .flatMap { config =>
         val kind = config.exec.kind
-        val memory = config.memoryLimit
+        val memory = config.resources
         config.reactive
           .map { c =>
             val expiredPrewarmedContainer = prewarmedPool.toSeq
@@ -592,7 +592,7 @@ object ContainerPool {
             if (expiredPrewarmedContainer.nonEmpty) {
               logging.info(
                 this,
-                s"[kind: ${kind} memory: ${memory.toString}] ${expiredPrewarmedContainer.size} expired prewarmed containers")
+                s"[kind: ${kind} resources: ${memory.toString}] ${expiredPrewarmedContainer.size} expired prewarmed containers")
             }
             expiredPrewarmedContainer.map(e => (e._1, e._2.expires.getOrElse(now)))
           }
@@ -628,11 +628,11 @@ object ContainerPool {
                        coldStartCount: Map[ColdStartKey, Int],
                        prewarmConfig: List[PrewarmingConfig],
                        prewarmedPool: Map[ActorRef, PreWarmedData],
-                       prewarmStartingPool: Map[ActorRef, (String, ByteSize)])(
+                       prewarmStartingPool: Map[ActorRef, (String, RuntimeResources)])(
     implicit logging: Logging): Map[PrewarmingConfig, (Int, Int)] = {
     prewarmConfig.map { config =>
       val kind = config.exec.kind
-      val memory = config.memoryLimit
+      val memory = config.resources
 
       val runningCount = prewarmedPool.count {
         // done starting (include expired, since they may not have been removed yet)
@@ -661,7 +661,7 @@ object ContainerPool {
       if (currentCount < desiredCount) {
         logging.info(
           this,
-          s"found ${currentCount} started and ${startingCount} starting; ${if (init) "initing" else "backfilling"} ${desiredCount - currentCount} pre-warms to desired count: ${desiredCount} for kind:${config.exec.kind} mem:${config.memoryLimit.toString}")(
+          s"found ${currentCount} started and ${startingCount} starting; ${if (init) "initing" else "backfilling"} ${desiredCount - currentCount} pre-warms to desired count: ${desiredCount} for kind:${config.exec.kind} resources:${config.resources.toString}")(
           TransactionId.invokerWarmup)
       }
       (config, (currentCount, desiredCount))
@@ -674,14 +674,14 @@ object ContainerPool {
    * @param coldStartCount
    * @param config
    * @param kind
-   * @param memory
+   * @param resources
    * @return the required prewarmed container number
    */
   def getReactiveCold(coldStartCount: Map[ColdStartKey, Int],
                       config: ReactivePrewarmingConfig,
                       kind: String,
-                      memory: ByteSize): Option[Int] = {
-    coldStartCount.get(ColdStartKey(kind, memory)).map { value =>
+                      resources: RuntimeResources): Option[Int] = {
+    coldStartCount.get(ColdStartKey(kind, resources)).map { value =>
       // Let's assume that threshold is `2`, increment is `1` in runtimes.json
       // if cold start number in previous minute is `2`, requireCount is `2/2 * 1 = 1`
       // if cold start number in previous minute is `4`, requireCount is `4/2 * 1 = 2`
@@ -699,5 +699,5 @@ object ContainerPool {
 /** Contains settings needed to perform container prewarming. */
 case class PrewarmingConfig(initialCount: Int,
                             exec: CodeExec[_],
-                            memoryLimit: ByteSize,
+                            resources: RuntimeResources,
                             reactive: Option[ReactivePrewarmingConfig] = None)

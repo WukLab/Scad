@@ -95,16 +95,16 @@ class NestedSemaphore[T](memoryPermits: Int) extends ForcibleSemaphore(memoryPer
    *
    * @param acquires the number of permits to release
    */
-  def releaseConcurrent(actionid: T, maxConcurrent: Int, memoryPermits: Int): Unit = {
-    require(memoryPermits > 0, "cannot release negative or no permits")
+  def releaseConcurrent(actionid: T, maxConcurrent: Int, resourcePermits: Int): Unit = {
+    require(resourcePermits > 0, "cannot release negative or no permits")
     if (maxConcurrent == 1) {
-      super.release(memoryPermits)
+      super.release(resourcePermits)
     } else {
       val concurrentSlots = actionConcurrentSlotsMap(actionid)
       val (memoryRelease, actionRelease) = concurrentSlots.release(1, true)
       //concurrent slots
       if (memoryRelease) {
-        super.release(memoryPermits)
+        super.release(resourcePermits)
       }
       if (actionRelease) {
         actionConcurrentSlotsMap.remove(actionid)

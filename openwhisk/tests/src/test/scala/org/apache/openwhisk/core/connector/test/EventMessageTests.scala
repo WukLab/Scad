@@ -19,13 +19,13 @@ package org.apache.openwhisk.core.connector.test
 
 import java.time.Instant
 import java.util.concurrent.TimeUnit
-
 import org.junit.runner.RunWith
 import org.scalatest.{FlatSpec, Matchers}
 import org.scalatest.junit.JUnitRunner
 import spray.json._
 import spray.json.DefaultJsonProtocol._
 import org.apache.openwhisk.core.connector.Activation
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size._
 
@@ -49,7 +49,7 @@ class EventMessageTests extends FlatSpec with Matchers {
     start = Instant.now(),
     end = Instant.now(),
     response = ActivationResponse.success(Some(JsObject("res" -> JsNumber(1))), Some(42)),
-    annotations = Parameters("limits", ActionLimits(TimeLimit(1.second), MemoryLimit(128.MB), LogLimit(1.MB)).toJson) ++
+    annotations = Parameters("limits", ActionLimits(TimeLimit(1.second), ResourceLimit(RuntimeResources(1.0, 128.MB, 512.MB)), LogLimit(1.MB)).toJson) ++
       Parameters(WhiskActivation.waitTimeAnnotation, 5.toJson) ++
       Parameters(WhiskActivation.initTimeAnnotation, 10.toJson) ++
       Parameters(WhiskActivation.kindAnnotation, "testkind") ++

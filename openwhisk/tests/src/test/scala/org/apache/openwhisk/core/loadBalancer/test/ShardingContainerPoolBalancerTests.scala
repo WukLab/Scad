@@ -23,8 +23,8 @@ import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import akka.testkit.TestProbe
 import common.{StreamLogging, WhiskProperties}
-import java.nio.charset.StandardCharsets
 
+import java.nio.charset.StandardCharsets
 import org.apache.kafka.clients.producer.RecordMetadata
 import org.apache.kafka.common.TopicPartition
 import org.junit.runner.RunWith
@@ -47,6 +47,8 @@ import org.apache.openwhisk.core.connector.Message
 import org.apache.openwhisk.core.connector.MessageConsumer
 import org.apache.openwhisk.core.connector.MessageProducer
 import org.apache.openwhisk.core.connector.MessagingProvider
+import org.apache.openwhisk.core.containerpool.RuntimeResources
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.entity.ActivationId
 import org.apache.openwhisk.core.entity.BasicAuthenticationAuthKey
 import org.apache.openwhisk.core.entity.ControllerInstanceId
@@ -55,7 +57,6 @@ import org.apache.openwhisk.core.entity.EntityPath
 import org.apache.openwhisk.core.entity.ExecManifest
 import org.apache.openwhisk.core.entity.Identity
 import org.apache.openwhisk.core.entity.InvokerInstanceId
-import org.apache.openwhisk.core.entity.MemoryLimit
 import org.apache.openwhisk.core.entity.Namespace
 import org.apache.openwhisk.core.entity.Secret
 import org.apache.openwhisk.core.entity.Subject
@@ -63,6 +64,7 @@ import org.apache.openwhisk.core.entity.UUID
 import org.apache.openwhisk.core.entity.WhiskActionMetaData
 import org.apache.openwhisk.core.entity.test.ExecHelpers
 import org.apache.openwhisk.core.entity.ByteSize
+import org.apache.openwhisk.core.entity.ResourceLimit
 import org.apache.openwhisk.core.entity.size._
 import org.apache.openwhisk.core.entity.test.ExecHelpers
 import org.apache.openwhisk.core.loadBalancer.FeedFactory
@@ -85,15 +87,19 @@ class ShardingContainerPoolBalancerTests
     with MockFactory {
   behavior of "ShardingContainerPoolBalancerState"
 
-  val defaultUserMemory: ByteSize = 1024.MB
+  val defaultUserMemory: RuntimeResources = RuntimeResources(0, 1024.MB, 0.B)
 
-  def healthy(i: Int, memory: ByteSize = defaultUserMemory) =
-    new InvokerHealth(InvokerInstanceId(i, userMemory = memory), Healthy)
-  def unhealthy(i: Int) = new InvokerHealth(InvokerInstanceId(i, userMemory = defaultUserMemory), Unhealthy)
-  def offline(i: Int) = new InvokerHealth(InvokerInstanceId(i, userMemory = defaultUserMemory), Offline)
+  def healthy(i: Int, memory: RuntimeResources = defaultUserMemory) =
+    new InvokerHealth(InvokerInstanceId(i, resources = memory), Healthy)
+  def unhealthy(i: Int) = new InvokerHealth(InvokerInstanceId(i, resources = defaultUserMemory), Unhealthy)
+  def offline(i: Int) = new InvokerHealth(InvokerInstanceId(i, resources = defaultUserMemory), Offline)
 
-  def semaphores(count: Int, max: Int): IndexedSeq[NestedSemaphore[FullyQualifiedEntityName]] =
-    IndexedSeq.fill(count)(new NestedSemaphore[FullyQualifiedEntityName](max))
+  def semaphores(count: Int, max: Int): IndexedSeq[ResourcePermits] =
+    IndexedSeq.fill(count)(ResourcePermits(
+      new NestedSemaphore[FullyQualifiedEntityName](max),
+      new NestedSemaphore[FullyQualifiedEntityName](max),
+      new NestedSemaphore[FullyQualifiedEntityName](max)
+    ))
 
   def lbConfig(blackboxFraction: Double, managedFraction: Option[Double] = None) =
     ShardingContainerPoolBalancerConfig(
@@ -105,7 +111,7 @@ class ShardingContainerPoolBalancerTests
   it should "update invoker's state, growing the slots data and keeping valid old data" in {
     // start empty
     val slots = 10
-    val memoryPerSlot = MemoryLimit.MIN_MEMORY
+    val memoryPerSlot = ResourceLimit.MIN_RESOURCES
     val memory = memoryPerSlot * slots
     val state = ShardingContainerPoolBalancerState()(lbConfig(0.5))
     state.invokers shouldBe 'empty
@@ -123,13 +129,13 @@ class ShardingContainerPoolBalancerTests
     state.blackboxInvokers shouldBe update1 // fallback to at least one
     state.managedInvokers shouldBe update1 // fallback to at least one
     state.invokerSlots should have size update1.size
-    state.invokerSlots.head.availablePermits shouldBe memory.toMB
+    state.invokerSlots.head.mem.availablePermits shouldBe memory.mem.toMB
     state.managedStepSizes shouldBe Seq(1)
     state.blackboxStepSizes shouldBe Seq(1)
 
     // aquire a slot to alter invoker state
-    state.invokerSlots.head.tryAcquire(memoryPerSlot.toMB.toInt)
-    state.invokerSlots.head.availablePermits shouldBe (memory - memoryPerSlot).toMB.toInt
+    state.invokerSlots.head.mem.tryAcquire(memoryPerSlot.mem.toMB.toInt)
+    state.invokerSlots.head.mem.availablePermits shouldBe (memory - memoryPerSlot).mem.toMB.toInt
 
     // apply second update, growing the state
     val update2 =
@@ -140,9 +146,9 @@ class ShardingContainerPoolBalancerTests
     state.managedInvokers shouldBe IndexedSeq(update2.head)
     state.blackboxInvokers shouldBe IndexedSeq(update2.last)
     state.invokerSlots should have size update2.size
-    state.invokerSlots.head.availablePermits shouldBe (memory - memoryPerSlot).toMB.toInt
-    state.invokerSlots(1).tryAcquire(memoryPerSlot.toMB.toInt)
-    state.invokerSlots(1).availablePermits shouldBe memory.toMB * 2 - memoryPerSlot.toMB
+    state.invokerSlots.head.mem.availablePermits shouldBe (memory - memoryPerSlot).mem.toMB.toInt
+    state.invokerSlots(1).mem.tryAcquire(memoryPerSlot.mem.toMB.toInt)
+    state.invokerSlots(1).mem.availablePermits shouldBe memory.mem.toMB * 2 - memoryPerSlot.mem.toMB
     state.managedStepSizes shouldBe Seq(1)
     state.blackboxStepSizes shouldBe Seq(1)
   }
@@ -152,7 +158,7 @@ class ShardingContainerPoolBalancerTests
       val state = ShardingContainerPoolBalancerState()(lbConfig(bf))
 
       (1 to 100).toSeq.foreach { i =>
-        state.updateInvokers((1 to i).map(_ => healthy(1, MemoryLimit.STD_MEMORY)))
+        state.updateInvokers((1 to i).map(_ => healthy(1, ResourceLimit.STD_RESOURCES)))
 
         withClue(s"invoker count $bf $i:") {
           state.managedInvokers.length should be <= i
@@ -178,7 +184,7 @@ class ShardingContainerPoolBalancerTests
 
     val state = ShardingContainerPoolBalancerState()(lbConfig(1.0, Some(1.0)))
     (1 to 100).foreach { i =>
-      state.updateInvokers((1 to i).map(_ => healthy(1, MemoryLimit.STD_MEMORY)))
+      state.updateInvokers((1 to i).map(_ => healthy(1, ResourceLimit.STD_RESOURCES)))
     }
 
     state.managedInvokers should have size 100
@@ -189,53 +195,53 @@ class ShardingContainerPoolBalancerTests
 
   it should "update the cluster size, adjusting the invoker slots accordingly" in {
     val slots = 10
-    val memoryPerSlot = MemoryLimit.MIN_MEMORY
+    val memoryPerSlot = ResourceLimit.MIN_RESOURCES
     val memory = memoryPerSlot * slots
     val state = ShardingContainerPoolBalancerState()(lbConfig(0.5))
     state.updateInvokers(IndexedSeq(healthy(0, memory), healthy(1, memory * 2)))
 
-    state.invokerSlots.head.tryAcquire(memoryPerSlot.toMB.toInt)
-    state.invokerSlots.head.availablePermits shouldBe (memory - memoryPerSlot).toMB
+    state.invokerSlots.head.mem.tryAcquire(memoryPerSlot.mem.toMB.toInt)
+    state.invokerSlots.head.mem.availablePermits shouldBe (memory - memoryPerSlot).mem.toMB
 
-    state.invokerSlots(1).tryAcquire(memoryPerSlot.toMB.toInt)
-    state.invokerSlots(1).availablePermits shouldBe memory.toMB * 2 - memoryPerSlot.toMB
+    state.invokerSlots(1).mem.tryAcquire(memoryPerSlot.mem.toMB.toInt)
+    state.invokerSlots(1).mem.availablePermits shouldBe memory.mem.toMB * 2 - memoryPerSlot.mem.toMB
 
     state.updateCluster(2)
-    state.invokerSlots.head.availablePermits shouldBe memory.toMB / 2 // state reset + divided by 2
-    state.invokerSlots(1).availablePermits shouldBe memory.toMB
+    state.invokerSlots.head.mem.availablePermits shouldBe memory.mem.toMB / 2 // state reset + divided by 2
+    state.invokerSlots(1).mem.availablePermits shouldBe memory.mem.toMB
   }
 
   it should "fallback to a size of 1 (alone) if cluster size is < 1" in {
     val slots = 10
-    val memoryPerSlot = MemoryLimit.MIN_MEMORY
+    val memoryPerSlot = ResourceLimit.MIN_RESOURCES
     val memory = memoryPerSlot * slots
     val state = ShardingContainerPoolBalancerState()(lbConfig(0.5))
     state.updateInvokers(IndexedSeq(healthy(0, memory)))
 
-    state.invokerSlots.head.availablePermits shouldBe memory.toMB
+    state.invokerSlots.head.mem.availablePermits shouldBe memory.mem.toMB
 
     state.updateCluster(2)
-    state.invokerSlots.head.availablePermits shouldBe memory.toMB / 2
+    state.invokerSlots.head.mem.availablePermits shouldBe memory.mem.toMB / 2
 
     state.updateCluster(0)
-    state.invokerSlots.head.availablePermits shouldBe memory.toMB
+    state.invokerSlots.head.mem.availablePermits shouldBe memory.mem.toMB
 
     state.updateCluster(-1)
-    state.invokerSlots.head.availablePermits shouldBe memory.toMB
+    state.invokerSlots.head.mem.availablePermits shouldBe memory.mem.toMB
   }
 
   it should "set the threshold to 1 if the cluster is bigger than there are slots on 1 invoker" in {
     val slots = 10
-    val memoryPerSlot = MemoryLimit.MIN_MEMORY
+    val memoryPerSlot = ResourceLimit.MIN_RESOURCES
     val memory = memoryPerSlot * slots
     val state = ShardingContainerPoolBalancerState()(lbConfig(0.5))
     state.updateInvokers(IndexedSeq(healthy(0, memory)))
 
-    state.invokerSlots.head.availablePermits shouldBe memory.toMB
+    state.invokerSlots.head.mem.availablePermits shouldBe memory.mem.toMB
 
     state.updateCluster(20)
 
-    state.invokerSlots.head.availablePermits shouldBe MemoryLimit.MIN_MEMORY.toMB
+    state.invokerSlots.head.mem.availablePermits shouldBe ResourceLimit.MIN_RESOURCES.mem.toMB
   }
   val namespace = EntityPath("testspace")
   val name = EntityName("testname")
@@ -251,7 +257,7 @@ class ShardingContainerPoolBalancerTests
       fqn,
       IndexedSeq.empty,
       IndexedSeq.empty,
-      MemoryLimit.MIN_MEMORY.toMB.toInt,
+      ResourceLimit.MIN_RESOURCES,
       index = 0,
       step = 2) shouldBe None
   }
@@ -266,7 +272,7 @@ class ShardingContainerPoolBalancerTests
       fqn,
       invokers,
       invokerSlots,
-      MemoryLimit.MIN_MEMORY.toMB.toInt,
+      ResourceLimit.MIN_RESOURCES,
       index = 0,
       step = 2) shouldBe None
   }
@@ -280,7 +286,7 @@ class ShardingContainerPoolBalancerTests
     val expectedResult = Seq(3, 3, 3, 5, 5, 5, 4, 4, 4)
     val result = expectedResult.map { _ =>
       ShardingContainerPoolBalancer
-        .schedule(1, fqn, invokers, invokerSlots, 1, index = 0, step = 2)
+        .schedule(1, fqn, invokers, invokerSlots, RuntimeResources(0, 1.B, 1.B), index = 0, step = 2)
         .get
         ._1
         .toInt
@@ -290,7 +296,7 @@ class ShardingContainerPoolBalancerTests
 
     val bruteResult = (0 to 100).map { _ =>
       ShardingContainerPoolBalancer
-        .schedule(1, fqn, invokers, invokerSlots, 1, index = 0, step = 2)
+        .schedule(1, fqn, invokers, invokerSlots, RuntimeResources(0, 1.B, 1.B), index = 0, step = 2)
         .get
     }
 
@@ -306,7 +312,7 @@ class ShardingContainerPoolBalancerTests
     val expectedResult = Seq(0, 0, 0, 3, 3, 3)
     val result = expectedResult.map { _ =>
       ShardingContainerPoolBalancer
-        .schedule(1, fqn, invokers, invokerSlots, 1, index = 0, step = 1)
+        .schedule(1, fqn, invokers, invokerSlots, RuntimeResources(0, 1.B, 1.B), index = 0, step = 1)
         .get
         ._1
         .toInt
@@ -317,7 +323,7 @@ class ShardingContainerPoolBalancerTests
     // more schedules will result in randomized invokers, but the unhealthy and offline invokers should not be part
     val bruteResult = (0 to 100).map { _ =>
       ShardingContainerPoolBalancer
-        .schedule(1, fqn, invokers, invokerSlots, 1, index = 0, step = 1)
+        .schedule(1, fqn, invokers, invokerSlots, RuntimeResources(0, 1.B, 1.B), index = 0, step = 1)
         .get
     }
 
@@ -334,36 +340,36 @@ class ShardingContainerPoolBalancerTests
 
     // Ask for three slots -> First invoker should be used
     ShardingContainerPoolBalancer
-      .schedule(1, fqn, invokers, invokerSlots, 3, index = 0, step = 1)
+      .schedule(1, fqn, invokers, invokerSlots, RuntimeResources(0, 3.B, 3.B), index = 0, step = 1)
       .get
       ._1
       .toInt shouldBe 0
     // Ask for two slots -> Second invoker should be used
     ShardingContainerPoolBalancer
-      .schedule(1, fqn, invokers, invokerSlots, 2, index = 0, step = 1)
+      .schedule(1, fqn, invokers, invokerSlots, RuntimeResources(0, 2.B, 2.B), index = 0, step = 1)
       .get
       ._1
       .toInt shouldBe 1
     // Ask for 1 slot -> First invoker should be used
     ShardingContainerPoolBalancer
-      .schedule(1, fqn, invokers, invokerSlots, 1, index = 0, step = 1)
+      .schedule(1, fqn, invokers, invokerSlots, RuntimeResources(0, 1.B, 1.B), index = 0, step = 1)
       .get
       ._1
       .toInt shouldBe 0
     // Ask for 4 slots -> Third invoker should be used
     ShardingContainerPoolBalancer
-      .schedule(1, fqn, invokers, invokerSlots, 4, index = 0, step = 1)
+      .schedule(1, fqn, invokers, invokerSlots, RuntimeResources(0, 4.B, 4.B), index = 0, step = 1)
       .get
       ._1
       .toInt shouldBe 2
     // Ask for 2 slots -> Second invoker should be used
     ShardingContainerPoolBalancer
-      .schedule(1, fqn, invokers, invokerSlots, 2, index = 0, step = 1)
+      .schedule(1, fqn, invokers, invokerSlots, RuntimeResources(0, 2.B, 2.B), index = 0, step = 1)
       .get
       ._1
       .toInt shouldBe 1
 
-    invokerSlots.foreach(_.availablePermits shouldBe 0)
+    invokerSlots.foreach(_.mem.availablePermits shouldBe 0)
   }
 
   behavior of "pairwiseCoprimeNumbersUntil"
@@ -396,13 +402,13 @@ class ShardingContainerPoolBalancerTests
       (1 to slots).foreach { s =>
         (1 to concurrency).foreach { c =>
           ShardingContainerPoolBalancer
-            .schedule(concurrency, fqn, invokers, invokerSlots, 1, 0, 1)
+            .schedule(concurrency, fqn, invokers, invokerSlots, RuntimeResources(0, 1.B, 1.B), 0, 1)
             .get
             ._1
             .toInt shouldBe i
           invokerSlots
             .lift(i)
-            .get
+            .get.mem
             .concurrentState(fqn)
             .availablePermits shouldBe concurrency - c
         }
@@ -413,17 +419,17 @@ class ShardingContainerPoolBalancerTests
 
   implicit val am = ActorMaterializer()
   val config = new WhiskConfig(ExecManifest.requiredProperties)
-  val invokerMem = 2000.MB
+  val invokerMem = RuntimeResources(0, 2000.MB, 0.B)
   val concurrencyEnabled = Option(WhiskProperties.getProperty("whisk.action.concurrency")).exists(_.toBoolean)
   val concurrency = if (concurrencyEnabled) 5 else 1
-  val actionMem = 256.MB
+  val actionMem = RuntimeResources(0, 256.MB, 0.B)
   val actionMetaData =
     WhiskActionMetaData(
       namespace,
       name,
       js10MetaData(Some("jsMain"), false),
       limits = actionLimits(actionMem, concurrency))
-  val maxContainers = invokerMem.toMB.toInt / actionMetaData.limits.memory.megabytes
+  val maxContainers = invokerMem.mem.toMB.toInt / actionMetaData.limits.resources.limits.mem.toMB.toInt
   val numInvokers = 3
   val maxActivations = maxContainers * numInvokers * concurrency
 
@@ -484,7 +490,7 @@ class ShardingContainerPoolBalancerTests
       new ShardingContainerPoolBalancer(config, new ControllerInstanceId("0"), feedProbe, invokerPoolProbe, mockMessaging)
 
     val invokers = IndexedSeq.tabulate(numInvokers) { i =>
-      new InvokerHealth(InvokerInstanceId(i, userMemory = invokerMem), Healthy)
+      new InvokerHealth(InvokerInstanceId(i, resources = invokerMem), Healthy)
     }
     balancer.schedulingState.updateInvokers(invokers)
     val invocationNamespace = EntityName("invocationSpace")
@@ -538,7 +544,7 @@ class ShardingContainerPoolBalancerTests
       val remaining = rem(g._1.size)
       val concurrentState = balancer.schedulingState._invokerSlots
         .lift(nextInvoker)
-        .get
+        .get.mem
         .concurrentState(fqn)
       concurrentState.availablePermits shouldBe remaining
       concurrentState.counter shouldBe g._1.size
@@ -557,13 +563,13 @@ class ShardingContainerPoolBalancerTests
     invokers.foreach { i =>
       val concurrentState = balancer.schedulingState._invokerSlots
         .lift(i.id.toInt)
-        .get
+        .get.mem
         .concurrentState
         .get(fqn)
 
       concurrentState shouldBe None
       balancer.schedulingState._invokerSlots.lift(i.id.toInt).map { i =>
-        i.availablePermits shouldBe invokerMem.toMB
+        i.mem.availablePermits shouldBe invokerMem.mem.toMB
       }
 
     }

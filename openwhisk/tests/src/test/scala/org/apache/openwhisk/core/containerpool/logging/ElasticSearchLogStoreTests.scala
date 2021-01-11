@@ -18,7 +18,6 @@
 package org.apache.openwhisk.core.containerpool.logging
 
 import java.time.ZonedDateTime
-
 import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.http.scaladsl.model.HttpMethods.{GET, POST}
@@ -28,6 +27,7 @@ import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.Flow
 import akka.testkit.TestKit
 import common.StreamLogging
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.junit.runner.RunWith
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.junit.JUnitRunner
@@ -104,7 +104,7 @@ class ElasticSearchLogStoreTests
     end = ZonedDateTime.now.toInstant,
     response = ActivationResponse.success(Some(JsObject("res" -> JsNumber(1)))),
     logs = expectedLogs,
-    annotations = Parameters("limits", ActionLimits(TimeLimit(1.second), MemoryLimit(128.MB), LogLimit(1.MB)).toJson))
+    annotations = Parameters("limits", ActionLimits(TimeLimit(1.second), ResourceLimit(RuntimeResources(1.0, 128.MB, 512.MB)), LogLimit(1.MB)).toJson))
 
   override def afterAll(): Unit = {
     TestKit.shutdownActorSystem(system)

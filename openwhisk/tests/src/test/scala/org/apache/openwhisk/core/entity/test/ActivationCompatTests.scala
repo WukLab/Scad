@@ -19,19 +19,9 @@ package org.apache.openwhisk.core.entity.test
 
 import org.apache.openwhisk.common.WhiskInstants
 import org.apache.openwhisk.core.connector.Activation
-import org.apache.openwhisk.core.entity.{
-  ActionLimits,
-  ActivationId,
-  ActivationResponse,
-  EntityName,
-  EntityPath,
-  LogLimit,
-  MemoryLimit,
-  Parameters,
-  Subject,
-  TimeLimit,
-  WhiskActivation
-}
+import org.apache.openwhisk.core.containerpool.RuntimeResources
+import org.apache.openwhisk.core.entity.ResourceLimit
+import org.apache.openwhisk.core.entity.{ActionLimits, ActivationId, ActivationResponse, EntityName, EntityPath, LogLimit, Parameters, Subject, TimeLimit, WhiskActivation}
 import org.junit.runner.RunWith
 import org.scalatest.junit.JUnitRunner
 import org.scalatest.{FlatSpec, Matchers}
@@ -190,7 +180,7 @@ class ActivationCompatTests extends FlatSpec with Matchers with WhiskInstants wi
       start = nowInMillis(),
       end = nowInMillis(),
       response = ActivationResponse.success(Some(JsObject("res" -> JsNumber(1)))),
-      annotations = Parameters("limits", ActionLimits(TimeLimit(1.second), MemoryLimit(128.MB), LogLimit(1.MB)).toJson) ++
+      annotations = Parameters("limits", ActionLimits(TimeLimit(1.second), ResourceLimit(RuntimeResources(0, 128.MB, 0.B)), LogLimit(1.MB)).toJson) ++
         Parameters(WhiskActivation.waitTimeAnnotation, 5.toJson) ++
         Parameters(WhiskActivation.initTimeAnnotation, 10.toJson) ++
         Parameters(WhiskActivation.kindAnnotation, "testkind") ++

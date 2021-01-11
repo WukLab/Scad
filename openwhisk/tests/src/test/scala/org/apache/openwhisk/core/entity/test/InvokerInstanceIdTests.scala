@@ -17,8 +17,9 @@
 
 package org.apache.openwhisk.core.entity.test
 
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.entity.size.SizeInt
-import org.apache.openwhisk.core.entity.{ByteSize, InstanceId, InvokerInstanceId}
+import org.apache.openwhisk.core.entity.{InstanceId, InvokerInstanceId}
 import org.junit.runner.RunWith
 import org.scalatest.junit.JUnitRunner
 import org.scalatest.{FlatSpec, Matchers}
@@ -31,22 +32,22 @@ class InvokerInstanceIdTests extends FlatSpec with Matchers {
 
   behavior of "InvokerInstanceIdTests"
 
-  val defaultUserMemory: ByteSize = 1024.MB
+  val defaultUserMemory: RuntimeResources = RuntimeResources(0, 1024.MB, 0.B)
   it should "serialize and deserialize InvokerInstanceId" in {
-    val i = InvokerInstanceId(0, userMemory = defaultUserMemory)
+    val i = InvokerInstanceId(0, resources = defaultUserMemory)
     i.serialize shouldBe JsObject(
       "instance" -> JsNumber(i.instance),
-      "userMemory" -> JsString(i.userMemory.toString),
+      "userMemory" -> JsString(i.resources.toString),
       "instanceType" -> JsString(i.instanceType)).compactPrint
     i.serialize shouldBe i.toJson.compactPrint
     InstanceId.parse(i.serialize) shouldBe Success(i)
   }
 
   it should "serialize and deserialize InvokerInstanceId with optional field" in {
-    val i1 = InvokerInstanceId(0, uniqueName = Some("uniqueInvoker"), userMemory = defaultUserMemory)
+    val i1 = InvokerInstanceId(0, uniqueName = Some("uniqueInvoker"), resources = defaultUserMemory)
     i1.serialize shouldBe JsObject(
       "instance" -> JsNumber(i1.instance),
-      "userMemory" -> JsString(i1.userMemory.toString),
+      "userMemory" -> JsString(i1.resources.toString),
       "instanceType" -> JsString(i1.instanceType),
       "uniqueName" -> JsString(i1.uniqueName.getOrElse(""))).compactPrint
     i1.serialize shouldBe i1.toJson.compactPrint
@@ -56,10 +57,10 @@ class InvokerInstanceIdTests extends FlatSpec with Matchers {
       0,
       uniqueName = Some("uniqueInvoker"),
       displayedName = Some("displayedInvoker"),
-      userMemory = defaultUserMemory)
+      resources = defaultUserMemory)
     i2.serialize shouldBe JsObject(
       "instance" -> JsNumber(i2.instance),
-      "userMemory" -> JsString(i2.userMemory.toString),
+      "userMemory" -> JsString(i2.resources.toString),
       "instanceType" -> JsString(i2.instanceType),
       "uniqueName" -> JsString(i2.uniqueName.getOrElse("")),
       "displayedName" -> JsString(i2.displayedName.getOrElse(""))).compactPrint

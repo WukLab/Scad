@@ -18,8 +18,8 @@
 package org.apache.openwhisk.core.entity.test
 
 import java.util.concurrent.TimeUnit
-
 import common.{StreamLogging, WskActorSystem}
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.junit.runner.RunWith
 import org.scalatest.junit.JUnitRunner
 import org.scalatest.{FlatSpec, Matchers}
@@ -35,6 +35,14 @@ import scala.util.Success
 
 @RunWith(classOf[JUnitRunner])
 class ExecManifestTests extends FlatSpec with WskActorSystem with StreamLogging with Matchers {
+
+  object Stem {
+    def apply(initialCount: Int,
+              resources: ByteSize,
+              reactive: Option[ReactivePrewarmingConfig] = None): StemCell = {
+      StemCell(initialCount, RuntimeResources(0, resources, 0.B), reactive)
+    }
+  }
 
   behavior of "ExecManifest"
 
@@ -74,7 +82,7 @@ class ExecManifestTests extends FlatSpec with WskActorSystem with StreamLogging 
     val k1 = RuntimeManifest("k1", ImageName("???"))
     val k2 = RuntimeManifest("k2", ImageName("???"), default = Some(true))
     val p1 = RuntimeManifest("p1", ImageName("???"))
-    val s1 = RuntimeManifest("s1", ImageName("???"), stemCells = Some(List(StemCell(2, 256.MB))))
+    val s1 = RuntimeManifest("s1", ImageName("???"), stemCells = Some(List(Stem(2, 256.MB))))
     val mf = manifestFactory(JsObject("ks" -> Set(k1, k2).toJson, "p1" -> Set(p1).toJson, "s1" -> Set(s1).toJson))
     val runtimes = ExecManifest.runtimes(mf, RuntimeManifestConfig()).get
 
@@ -103,7 +111,7 @@ class ExecManifestTests extends FlatSpec with WskActorSystem with StreamLogging 
     val k1 = RuntimeManifest("k1", ImageName("???", None, Some("ppp")))
     val p1 = RuntimeManifest("p1", ImageName("???", None, Some("ppp"), Some("ttt")))
     val q1 = RuntimeManifest("q1", ImageName("???", Some("rrr"), None, Some("ttt")))
-    val s1 = RuntimeManifest("s1", ImageName("???"), stemCells = Some(List(StemCell(2, 256.MB))))
+    val s1 = RuntimeManifest("s1", ImageName("???"), stemCells = Some(List(Stem(2, 256.MB))))
 
     val mf =
       JsObject(
@@ -127,7 +135,7 @@ class ExecManifestTests extends FlatSpec with WskActorSystem with StreamLogging 
     runtimes.resolveDefaultRuntime("q1").get.image.resolveImageName() shouldBe "rrr/???:ttt"
     runtimes.resolveDefaultRuntime("s1").get.image.resolveImageName() shouldBe "???"
     runtimes.resolveDefaultRuntime("s1").get.stemCells.get(0).initialCount shouldBe 2
-    runtimes.resolveDefaultRuntime("s1").get.stemCells.get(0).memory shouldBe 256.MB
+    runtimes.resolveDefaultRuntime("s1").get.stemCells.get(0).resources shouldBe 256.MB
   }
 
   it should "read a valid configuration with blackbox images but without default registry, prefix or tag" in {
@@ -239,17 +247,17 @@ class ExecManifestTests extends FlatSpec with WskActorSystem with StreamLogging 
   }
 
   it should "de/serialize stem cell configuration" in {
-    val cell = StemCell(3, 128.MB)
+    val cell = Stem(3, 128.MB)
     val cellAsJson = JsObject("initialCount" -> JsNumber(3), "memory" -> JsString("128 MB"))
     stemCellSerdes.write(cell) shouldBe cellAsJson
     stemCellSerdes.read(cellAsJson) shouldBe cell
 
     an[IllegalArgumentException] shouldBe thrownBy {
-      StemCell(-1, 128.MB)
+      Stem(-1, 128.MB)
     }
 
     an[IllegalArgumentException] shouldBe thrownBy {
-      StemCell(0, 128.MB)
+      Stem(0, 128.MB)
     }
 
     an[IllegalArgumentException] shouldBe thrownBy {
@@ -325,13 +333,13 @@ class ExecManifestTests extends FlatSpec with WskActorSystem with StreamLogging 
       "nodejs:10",
       ImageName("nodejsaction"),
       default = Some(true),
-      stemCells = Some(List(StemCell(1, 128.MB), StemCell(1, 256.MB))))
+      stemCells = Some(List(Stem(1, 128.MB), Stem(1, 256.MB))))
     val js12 = RuntimeManifest(
       "nodejs:12",
       ImageName("nodejsaction"),
       deprecated = Some(true),
-      stemCells = Some(List(StemCell(1, 128.MB))))
-    val py = RuntimeManifest("python", ImageName("pythonaction"), stemCells = Some(List(StemCell(2, 256.MB))))
+      stemCells = Some(List(Stem(1, 128.MB))))
+    val py = RuntimeManifest("python", ImageName("pythonaction"), stemCells = Some(List(Stem(2, 256.MB))))
     val sw = RuntimeManifest("swift", ImageName("swiftaction"), stemCells = Some(List.empty))
     val ph = RuntimeManifest("php", ImageName("phpaction"))
     val mf = ExecManifest.runtimes(json, RuntimeManifestConfig()).get
@@ -350,7 +358,7 @@ class ExecManifestTests extends FlatSpec with WskActorSystem with StreamLogging 
     mf.stemcells.flatMap {
       case (m, cells) =>
         cells.map { c =>
-          (m.kind, m.image, c.initialCount, c.memory)
+          (m.kind, m.image, c.initialCount, c.resources)
         }
     }.toList should contain theSameElementsAs List(
       (js10.kind, js10.image, 1, 128.MB),
@@ -448,13 +456,13 @@ class ExecManifestTests extends FlatSpec with WskActorSystem with StreamLogging 
       "nodejs:10",
       ImageName("nodejsaction"),
       default = Some(true),
-      stemCells = Some(List(StemCell(1, 128.MB, reactive), StemCell(1, 256.MB, reactive))))
+      stemCells = Some(List(Stem(1, 128.MB, reactive), Stem(1, 256.MB, reactive))))
     val js12 = RuntimeManifest(
       "nodejs:12",
       ImageName("nodejsaction"),
       deprecated = Some(true),
-      stemCells = Some(List(StemCell(1, 128.MB, reactive))))
-    val py = RuntimeManifest("python", ImageName("pythonaction"), stemCells = Some(List(StemCell(2, 256.MB, reactive))))
+      stemCells = Some(List(Stem(1, 128.MB, reactive))))
+    val py = RuntimeManifest("python", ImageName("pythonaction"), stemCells = Some(List(Stem(2, 256.MB, reactive))))
     val sw = RuntimeManifest("swift", ImageName("swiftaction"), stemCells = Some(List.empty))
     val ph = RuntimeManifest("php", ImageName("phpaction"))
     val mf = ExecManifest.runtimes(json, RuntimeManifestConfig()).get
@@ -473,7 +481,7 @@ class ExecManifestTests extends FlatSpec with WskActorSystem with StreamLogging 
     mf.stemcells.flatMap {
       case (m, cells) =>
         cells.map { c =>
-          (m.kind, m.image, c.initialCount, c.memory)
+          (m.kind, m.image, c.initialCount, c.resources)
         }
     }.toList should contain theSameElementsAs List(
       (js10.kind, js10.image, 1, 128.MB),

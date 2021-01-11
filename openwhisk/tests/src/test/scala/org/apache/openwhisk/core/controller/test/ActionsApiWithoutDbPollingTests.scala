@@ -72,7 +72,7 @@ class ActionsApiWithoutDbPollingTests extends ControllerTestCommon with WhiskAct
       jsDefault("??"),
       limits = ActionLimits(
         TimeLimit(controllerActivationConfig.maxWaitForBlockingActivation - 1.second),
-        MemoryLimit(),
+        ResourceLimit(),
         LogLimit()))
 
     put(entityStore, action)

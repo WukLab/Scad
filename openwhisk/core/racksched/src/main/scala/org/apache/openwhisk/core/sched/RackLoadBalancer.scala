@@ -30,11 +30,11 @@ import org.apache.openwhisk.core.WhiskConfig.wskApiHost
 import org.apache.openwhisk.core.connector.AcknowledegmentMessage
 import org.apache.openwhisk.core.connector.{ActivationMessage, MessageFeed, MessageProducer, MessagingProvider}
 import org.apache.openwhisk.core.containerpool.ContainerPoolConfig
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.entity.ControllerInstanceId
-import org.apache.openwhisk.core.entity.MemoryLimit
+import org.apache.openwhisk.core.entity.ResourceLimit
 import org.apache.openwhisk.core.entity.WhiskActionMetaData
 import org.apache.openwhisk.core.entity.WhiskEntityStore
-import org.apache.openwhisk.core.entity.size.SizeInt
 import org.apache.openwhisk.core.entity.{ActivationEntityLimit, ActivationId, ExecManifest, ExecutableWhiskActionMetaData, InstanceId, InvokerInstanceId, RackSchedInstanceId, TimeLimit, UUID, WhiskActivation}
 import org.apache.openwhisk.core.loadBalancer.{ActivationEntry, FeedFactory, InvocationFinishedMessage, InvocationFinishedResult, InvokerHealth, ShardingContainerPoolBalancerConfig}
 import org.apache.openwhisk.spi.Spi
@@ -55,6 +55,7 @@ import org.apache.openwhisk.core.loadBalancer.ShardingContainerPoolBalancer
 import org.apache.openwhisk.core.loadBalancer.ShardingContainerPoolBalancerState
 
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.atomic.AtomicReference
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.ExecutionContext
 import scala.concurrent.{Future, Promise}
@@ -166,8 +167,8 @@ class RackSimpleBalancer(config: WhiskConfig,
     TrieMap[ActivationId, Promise[Either[ActivationId, WhiskActivation]]]()
   protected val activationsPerNamespace: TrieMap[UUID, LongAdder] = TrieMap[UUID, LongAdder]()
   protected val totalActivations = new LongAdder()
-  protected val totalBlackBoxActivationMemory = new LongAdder()
-  protected val totalManagedActivationMemory = new LongAdder()
+  protected val totalBlackBoxActivationMemory = new AtomicReference[RuntimeResources](RuntimeResources.none())
+  protected val totalManagedActivationMemory = new AtomicReference[RuntimeResources](RuntimeResources.none())
 
   val lbConfig: ShardingContainerPoolBalancerConfig =
     loadConfigOrThrow[ShardingContainerPoolBalancerConfig](ConfigKeys.loadbalancer)
@@ -254,7 +255,7 @@ class RackSimpleBalancer(config: WhiskConfig,
       sendActivationToInvoker,
       Some(monitor))
 
-  val invokerName: InvokerInstanceId = InvokerInstanceId(0, None, None, poolConfig.userMemory)
+  val invokerName: InvokerInstanceId = InvokerInstanceId(0, None, None, poolConfig.resources)
 
   /** 1. Publish a message to the rackLoadBalancer */
   override def publish(action: ExecutableWhiskActionMetaData, msg: ActivationMessage)(
@@ -274,7 +275,7 @@ class RackSimpleBalancer(config: WhiskConfig,
         action.fullyQualifiedName(true),
         invokersToUse,
         schedulingState.invokerSlots,
-        action.limits.memory.megabytes,
+        action.limits.resources.limits,
         homeInvoker,
         stepSize)
       invoker.foreach {
@@ -295,13 +296,13 @@ class RackSimpleBalancer(config: WhiskConfig,
     chosen
       .map { invoker =>
         // MemoryLimit() and TimeLimit() return singletons - they should be fast enough to be used here
-        val memoryLimit = action.limits.memory
-        val memoryLimitInfo = if (memoryLimit == MemoryLimit()) { "std" } else { "non-std" }
+        val resourceLimit = action.limits.resources
+        val resourceLimitInfo = if (resourceLimit == ResourceLimit()) { "std" } else { "non-std" }
         val timeLimit = action.limits.timeout
         val timeLimitInfo = if (timeLimit == TimeLimit()) { "std" } else { "non-std" }
         logging.info(
           this,
-          s"scheduled activation ${msg.activationId}, action '${msg.action.asString}' ($actionType), ns '${msg.user.namespace.name.asString}', mem limit ${memoryLimit.megabytes} MB (${memoryLimitInfo}), time limit ${timeLimit.duration.toMillis} ms (${timeLimitInfo}) to ${invoker}")
+          s"scheduled activation ${msg.activationId}, action '${msg.action.asString}' ($actionType), ns '${msg.user.namespace.name.asString}', resource limit ${resourceLimit} (${resourceLimitInfo}), time limit ${timeLimit.duration.toMillis} ms (${timeLimitInfo}) to ${invoker}")
         val activationResult = setupActivation(msg, action, invoker)
         sendActivationToInvoker(messageProducer, msg, invoker).map(_ => activationResult)
       }
@@ -355,9 +356,10 @@ class RackSimpleBalancer(config: WhiskConfig,
     // Needed for emitting metrics.
     totalActivations.increment()
     val isBlackboxInvocation = action.exec.pull
-    val totalActivationMemory =
+    val totalActivationResources =
       if (isBlackboxInvocation) totalBlackBoxActivationMemory else totalManagedActivationMemory
-    totalActivationMemory.add(action.limits.memory.megabytes)
+    totalActivationResources.getAndUpdate(a => a + action.limits.resources.limits)
+
 
     activationsPerNamespace.getOrElseUpdate(msg.user.namespace.uuid, new LongAdder()).increment()
 
@@ -391,7 +393,7 @@ class RackSimpleBalancer(config: WhiskConfig,
           msg.activationId,
           msg.user.namespace.uuid,
           instance,
-          action.limits.memory.megabytes.MB,
+          action.limits.resources.limits,
           action.limits.timeout.duration,
           action.limits.concurrency.maxConcurrent,
           action.fullyQualifiedName(true),
@@ -485,7 +487,7 @@ class RackSimpleBalancer(config: WhiskConfig,
         totalActivations.decrement()
         val totalActivationMemory =
           if (entry.isBlackbox) totalBlackBoxActivationMemory else totalManagedActivationMemory
-        totalActivationMemory.add(entry.memoryLimit.toMB * (-1))
+        totalActivationMemory.getAndUpdate(a => a - entry.resourceLimit)
         activationsPerNamespace.get(entry.namespaceId).foreach(_.decrement())
 
         invoker.foreach(releaseInvoker(_, entry))
@@ -510,7 +512,7 @@ class RackSimpleBalancer(config: WhiskConfig,
           val completionAckTimeout = calculateCompletionAckTimeout(entry.timeLimit)
           logging.warn(
             this,
-            s"forced completion ack for '$aid', action '${entry.fullyQualifiedEntityName}' ($actionType), $blockingType, mem limit ${entry.memoryLimit.toMB} MB, time limit ${entry.timeLimit.toMillis} ms, completion ack timeout $completionAckTimeout from $instance")(
+            s"forced completion ack for '$aid', action '${entry.fullyQualifiedEntityName}' ($actionType), $blockingType, resource limit ${entry.resourceLimit}, time limit ${entry.timeLimit.toMillis} ms, completion ack timeout $completionAckTimeout from $instance")(
             tid)
 
           MetricEmitter.emitCounterMetric(RACKSCHED_COMPLETION_ACK_FORCED)
@@ -580,7 +582,7 @@ class RackSimpleBalancer(config: WhiskConfig,
     // Currently do nothing
     schedulingState.invokerSlots
       .lift(invoker.toInt)
-      .foreach(_.releaseConcurrent(entry.fullyQualifiedEntityName, entry.maxConcurrent, entry.memoryLimit.toMB.toInt))
+      .foreach(_.releaseConcurrent(entry.fullyQualifiedEntityName, entry.maxConcurrent, entry.resourceLimit))
   }
 
   /** Gets the number of in-flight activations for a specific user. */

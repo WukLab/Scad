@@ -18,7 +18,6 @@
 package org.apache.openwhisk.core.controller.actions
 
 import java.time.{Clock, Instant}
-
 import akka.actor.ActorSystem
 import akka.event.Logging.InfoLevel
 import spray.json.DefaultJsonProtocol._
@@ -31,18 +30,17 @@ import org.apache.openwhisk.core.database.{ActivationStore, NoDocumentException,
 import org.apache.openwhisk.core.entitlement.{Resource, _}
 import org.apache.openwhisk.core.entity.ActivationResponse.ERROR_FIELD
 import org.apache.openwhisk.core.entity._
-import org.apache.openwhisk.core.entity.size.SizeInt
 import org.apache.openwhisk.core.entity.types.EntityStore
 import org.apache.openwhisk.http.Messages._
 import org.apache.openwhisk.spi.SpiLoader
 import org.apache.openwhisk.utils.ExecutionContextFactory.FutureExtensions
 import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.containerpool.Interval
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 
 import scala.collection.mutable.Buffer
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future, Promise}
-import scala.language.postfixOps
 import scala.util.{Failure, Success}
 import pureconfig._
 import pureconfig.generic.auto._
@@ -235,7 +233,7 @@ protected[actions] trait PrimitiveActions {
    * @param cause the cause of the composition (activationId of the enclosing sequence or composition if any)
    * @param duration the "user" time so far executing the composition (sum of durations for
    *        all actions invoked so far which is different from the total time spent executing the composition)
-   * @param maxMemory the maximum memory annotation observed so far for the conductor action and components
+   * @param maxResources the maximum memory annotation observed so far for the conductor action and components
    * @param state the json state object to inject in the parameter object of the next conductor invocation
    * @param accounting the global accounting object used to abort compositions requiring too many action invocations
    * @param logs a mutable buffer that is appended with new activation ids as the composition unfolds
@@ -246,7 +244,7 @@ protected[actions] trait PrimitiveActions {
                              action: ExecutableWhiskActionMetaData,
                              cause: Option[ActivationId],
                              var duration: Long,
-                             var maxMemory: ByteSize,
+                             var maxResources: RuntimeResources,
                              var state: Option[JsObject],
                              accounting: CompositionAccounting,
                              logs: Buffer[ActivationId])
@@ -283,7 +281,7 @@ protected[actions] trait PrimitiveActions {
       action,
       cause,
       duration = 0,
-      maxMemory = action.limits.memory.megabytes MB,
+      maxResources = action.limits.resources.limits,
       state = None,
       accounting = accounting.getOrElse(CompositionAccounting()), // share accounting with caller
       logs = Buffer.empty)
@@ -526,9 +524,9 @@ protected[actions] trait PrimitiveActions {
           // end - start is a sensible default but not the correct value for sequences and compositions
           session.duration += activation.duration.getOrElse(activation.end.toEpochMilli - activation.start.toEpochMilli)
           activation.annotations.get("limits").foreach { limitsAnnotation =>
-            limitsAnnotation.asJsObject.getFields("memory") match {
-              case Seq(JsNumber(memory)) =>
-                session.maxMemory = Math.max(session.maxMemory.toMB.toInt, memory.toInt) MB
+            limitsAnnotation.asJsObject.getFields("resources") match {
+              case Seq(value) =>
+                session.maxResources = RuntimeResources.serdes.read(value)
             }
           }
           Right(activation)
@@ -552,7 +550,7 @@ protected[actions] trait PrimitiveActions {
     // compute max memory
     val sequenceLimits = Parameters(
       WhiskActivation.limitsAnnotation,
-      ActionLimits(session.action.limits.timeout, MemoryLimit(session.maxMemory), session.action.limits.logs).toJson)
+      ActionLimits(session.action.limits.timeout, ResourceLimit(session.maxResources), session.action.limits.logs).toJson)
 
     // set causedBy if not topmost
     val causedBy = session.cause.map { _ =>

@@ -30,9 +30,9 @@ import org.apache.openwhisk.core.entity.DocRevision
 import org.apache.openwhisk.core.entity.EntityName
 import org.apache.openwhisk.core.entity.ExecManifest
 import org.apache.openwhisk.core.entity.Identity
-import org.apache.openwhisk.core.entity.MemoryLimit
 import org.apache.openwhisk.core.entity.Namespace
 import org.apache.openwhisk.core.entity.RackSchedInstanceId
+import org.apache.openwhisk.core.entity.ResourceLimit
 import org.apache.openwhisk.core.entity.Secret
 import org.apache.openwhisk.core.entity.Subject
 import org.apache.openwhisk.core.entity.TopSchedInstanceId
@@ -254,7 +254,7 @@ object RackPool {
         namespace = healthActionIdentity.namespace.name.toPath,
         name = EntityName(s"rackHealthTestAction${i.asString}"),
         exec = CodeExecAsString(manifest, """function main(params) { return params; }""", None),
-        limits = ActionLimits(memory = MemoryLimit(MemoryLimit.MIN_MEMORY)))
+        limits = ActionLimits(resources = ResourceLimit(ResourceLimit.MIN_RESOURCES)))
     }
 }
 

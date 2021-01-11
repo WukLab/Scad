@@ -197,7 +197,7 @@ class InvokerPool(childFactory: (ActorRefFactory, InvokerInstanceId) => ActorRef
     status = padToIndexed(
       status,
       instanceId.toInt + 1,
-      i => new InvokerHealth(InvokerInstanceId(i, userMemory = instanceId.userMemory), Offline))
+      i => new InvokerHealth(InvokerInstanceId(i, resources = instanceId.resources), Offline))
     status = status.updated(instanceId.toInt, new InvokerHealth(instanceId, Offline))
 
     val ref = childFactory(context, instanceId)
@@ -273,7 +273,7 @@ object InvokerPool {
         namespace = healthActionIdentity.namespace.name.toPath,
         name = EntityName(s"invokerHealthTestAction${i.asString}"),
         exec = CodeExecAsString(manifest, """function main(params) { return params; }""", None),
-        limits = ActionLimits(memory = MemoryLimit(MemoryLimit.MIN_MEMORY)))
+        limits = ActionLimits(resources = ResourceLimit(ResourceLimit.MIN_RESOURCES)))
     }
 }
 

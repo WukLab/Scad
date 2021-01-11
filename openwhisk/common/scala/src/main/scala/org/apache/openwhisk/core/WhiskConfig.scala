@@ -206,6 +206,7 @@ object ConfigKeys {
   val kafkaTopics = s"$kafka.topics"
 
   val memory = "whisk.memory"
+  val resource = "whisk.resources"
   val timeLimit = "whisk.time-limit"
   val logLimit = "whisk.log-limit"
   val concurrencyLimit = "whisk.concurrency-limit"

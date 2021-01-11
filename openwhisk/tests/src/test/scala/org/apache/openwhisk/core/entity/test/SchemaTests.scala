@@ -18,7 +18,6 @@
 package org.apache.openwhisk.core.entity.test
 
 import java.util.Base64
-
 import scala.concurrent.duration.DurationInt
 import scala.language.postfixOps
 import scala.util.Failure
@@ -31,6 +30,7 @@ import org.scalatest.junit.JUnitRunner
 import spray.json._
 import spray.json.DefaultJsonProtocol._
 import org.apache.openwhisk.common.TransactionId
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.controller.test.WhiskAuthHelpers
 import org.apache.openwhisk.core.entitlement.Privilege
 import org.apache.openwhisk.core.entity.ExecManifest.{ImageName, RuntimeManifest}
@@ -846,37 +846,37 @@ class SchemaTests extends FlatSpec with BeforeAndAfter with ExecHelpers with Mat
   it should "reject bad limit values" in {
     an[IllegalArgumentException] should be thrownBy ActionLimits(
       TimeLimit(TimeLimit.MIN_DURATION - 1.millisecond),
-      MemoryLimit(),
+      ResourceLimit(),
       LogLimit())
     an[IllegalArgumentException] should be thrownBy ActionLimits(
       TimeLimit(),
-      MemoryLimit(MemoryLimit.MIN_MEMORY - 1.B),
+      ResourceLimit(ResourceLimit.MIN_RESOURCES - RuntimeResources(0, 1.B, 0.B)),
       LogLimit())
     an[IllegalArgumentException] should be thrownBy ActionLimits(
       TimeLimit(),
-      MemoryLimit(),
+      ResourceLimit(),
       LogLimit(LogLimit.MIN_LOGSIZE - 1.B))
     an[IllegalArgumentException] should be thrownBy ActionLimits(
       TimeLimit(),
-      MemoryLimit(),
+      ResourceLimit(),
       LogLimit(),
       ConcurrencyLimit(ConcurrencyLimit.MIN_CONCURRENT - 1))
 
     an[IllegalArgumentException] should be thrownBy ActionLimits(
       TimeLimit(TimeLimit.MAX_DURATION + 1.millisecond),
-      MemoryLimit(),
+      ResourceLimit(),
       LogLimit())
     an[IllegalArgumentException] should be thrownBy ActionLimits(
       TimeLimit(),
-      MemoryLimit(MemoryLimit.MAX_MEMORY + 1.B),
+      ResourceLimit(ResourceLimit.MAX_RESOURCES + RuntimeResources(0, 1.B, 0.B)),
       LogLimit())
     an[IllegalArgumentException] should be thrownBy ActionLimits(
       TimeLimit(),
-      MemoryLimit(),
+      ResourceLimit(),
       LogLimit(LogLimit.MAX_LOGSIZE + 1.B))
     an[IllegalArgumentException] should be thrownBy ActionLimits(
       TimeLimit(),
-      MemoryLimit(),
+      ResourceLimit(),
       LogLimit(),
       ConcurrencyLimit(ConcurrencyLimit.MAX_CONCURRENT + 1))
   }

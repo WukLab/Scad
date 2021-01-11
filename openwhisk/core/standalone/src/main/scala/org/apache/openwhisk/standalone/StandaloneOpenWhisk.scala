@@ -194,7 +194,11 @@ object StandaloneOpenWhisk extends SLF4JLogging {
      |        "stemCells": [
      |          {
      |            "count": 1,
-     |            "memory": "256 MB"
+     |            "resources": {
+     |              "cpu": 4.0,
+     |              "mem": "256MB",
+     |              "storage": "256MB"
+     |            }
      |          }
      |        ]
      |      }

@@ -30,7 +30,11 @@
                 },
                 "stemCells": [{
                     "count": 2,
-                    "memory": "256 MB"
+                    "resources": {
+                        "cpu": 1.0,
+                        "mem": "256MB",
+                        "storage": "256MB"
+                    }
                 }]
             }
         ]

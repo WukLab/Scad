@@ -176,7 +176,7 @@ object Invoker {
 
     val maxMessageBytes = Some(ActivationEntityLimit.MAX_ACTIVATION_LIMIT)
     val invokerInstance =
-      InvokerInstanceId(assignedInvokerId, cmdLineArgs.uniqueName, cmdLineArgs.displayedName, poolConfig.userMemory)
+      InvokerInstanceId(assignedInvokerId, cmdLineArgs.uniqueName, cmdLineArgs.displayedName, poolConfig.resources)
 
     val msgProvider = SpiLoader.get[MessagingProvider]
     if (msgProvider
@@ -192,7 +192,7 @@ object Invoker {
       case e: Exception => abort(s"Failed to initialize reactive invoker: ${e.getMessage}")
     }
 
-    val port = config.servicePort.toInt
+    val port = config.servicePort.toInt + 11
     val httpsConfig =
       if (Invoker.protocol == "https") Some(loadConfigOrThrow[HttpsConfig]("whisk.invoker.https")) else None
 

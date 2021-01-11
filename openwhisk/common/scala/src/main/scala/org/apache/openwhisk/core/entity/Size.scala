@@ -18,12 +18,13 @@
 package org.apache.openwhisk.core.entity
 
 import java.nio.charset.StandardCharsets
-
 import com.typesafe.config.ConfigValue
 import pureconfig._
 import pureconfig.generic.auto._
 import spray.json._
 import ByteSize.formatError
+
+import scala.util.{Failure, Success, Try}
 
 object SizeUnits extends Enumeration {
 
@@ -115,7 +116,7 @@ case class ByteSize(size: Long, unit: SizeUnits.Unit) extends Ordered[ByteSize] 
   }
 }
 
-object ByteSize {
+object ByteSize extends DefaultJsonProtocol {
   private val regex = """(?i)\s?(\d+)\s?(GB|MB|KB|B|G|M|K)\s?""".r.pattern
   protected[entity] val formatError = """Size Unit not supported. Only "B", "K[B]", "M[B]" and "G[B]" are supported."""
 
@@ -134,6 +135,20 @@ object ByteSize {
     } else {
       throw new IllegalArgumentException(formatError)
     }
+  }
+
+  implicit val serdes = new RootJsonFormat[ByteSize] {
+    override def write(obj: ByteSize): JsValue = JsString(obj.toString)
+
+    override def read(json: JsValue): ByteSize =
+      Try {
+        val JsString(v) = json
+        ByteSize.fromString(v)
+      } match {
+       case Success(s) => s
+       case Failure(t) => deserializationError(t.getMessage)
+
+      }
   }
 }
 

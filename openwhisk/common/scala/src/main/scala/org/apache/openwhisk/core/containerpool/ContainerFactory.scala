@@ -20,7 +20,8 @@ package org.apache.openwhisk.core.containerpool
 import akka.actor.ActorSystem
 import org.apache.openwhisk.common.{Logging, TransactionId}
 import org.apache.openwhisk.core.WhiskConfig
-import org.apache.openwhisk.core.entity.{ByteSize, ExecManifest, ExecutableWhiskAction, InvokerInstanceId}
+import org.apache.openwhisk.core.entity.ByteSize
+import org.apache.openwhisk.core.entity.{ExecManifest, ExecutableWhiskAction, InvokerInstanceId}
 import org.apache.openwhisk.spi.Spi
 
 import scala.concurrent.Future
@@ -44,7 +45,7 @@ case class ContainerArgsConfig(network: String,
     }.toMap
 }
 
-case class ContainerPoolConfig(userMemory: ByteSize,
+case class ContainerPoolConfig(resources: RuntimeResources,
                                concurrentPeekFactor: Double,
                                akkaClient: Boolean,
                                prewarmExpirationCheckInterval: FiniteDuration,
@@ -64,8 +65,8 @@ case class ContainerPoolConfig(userMemory: ByteSize,
    */
   private val totalShare = 1024.0 // This is a pre-defined value coming from docker and not our hard-coded value.
   // Grant more CPU to a container if it allocates more memory.
-  def cpuShare(reservedMemory: ByteSize) =
-    max((totalShare / (userMemory.toBytes / reservedMemory.toBytes)).toInt, 2) // The minimum allowed cpu-shares is 2
+  def cpuShare(resources: RuntimeResources): Int =
+    max(Math.round(totalShare * resources.cpu), 2).toInt // The minimum allowed cpu-shares is 2
 }
 
 case class RuntimesRegistryCredentials(user: String, password: String)

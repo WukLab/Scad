@@ -41,7 +41,7 @@ import org.apache.openwhisk.core.entity.types.EntityStore
  * limit optional so that it is convenient to override just one limit at a time.
  */
 case class ActionLimitsOption(timeout: Option[TimeLimit],
-                              memory: Option[MemoryLimit],
+                              resources: Option[ResourceLimit],
                               logs: Option[LogLimit],
                               concurrency: Option[ConcurrencyLimit])
 
