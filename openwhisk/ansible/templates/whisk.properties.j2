@@ -48,11 +48,13 @@ redis.host={{ groups["redis"]|default([""])|first }}
 router.host={{ groups["edge"]|first }}
 zookeeper.hosts={{ zookeeper_connect_string }}
 invoker.hosts={{ groups["invokers"] | map('extract', hostvars, 'ansible_host') | list | join(",") }}
+racksched.hosts={{ groups["rackscheds"] | map('extract', hostvars, 'ansible_host') | list | join(",") }}
 
 edge.host.apiport=443
 kafkaras.host.port={{ kafka.ras.port }}
 redis.host.port={{ redis.port }}
 invoker.hosts.basePort={{ invoker.port }}
+racksched.hosts.basePort={{ racksched.port }}
 
 controller.hosts={{ groups["controllers"] | map('extract', hostvars, 'ansible_host') | list | join(",") }}
 controller.host.basePort={{ controller.basePort }}

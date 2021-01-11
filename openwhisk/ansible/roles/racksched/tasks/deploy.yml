@@ -158,7 +158,7 @@
 
 - name: prepare racksched ports
   set_fact:
-    racksched_ports_to_expose: ["{{ racksched.port + (racksched_index | int) }}:8080"]
+    racksched_ports_to_expose: ["{{ racksched.basePort + (racksched_index | int) }}:8080"]
 
 - name: expose additional ports if jmxremote is enabled
   when: jmx.enabled
@@ -174,11 +174,13 @@
   set_fact:
     env:
       "JAVA_OPTS": "-Xmx{{ racksched.heap }} -XX:+CrashOnOutOfMemoryError -XX:+UseGCOverheadLimit -XX:ErrorFile=/logs/java_error.log"
-      "racksched_OPTS": "{{ racksched_args | default(racksched.arguments) }}"
+      "RACKSCHED_OPTS": "{{ racksched_args | default(racksched.arguments) }}"
       "JMX_REMOTE": "{{ jmx.enabled }}"
       "OPENWHISK_ENCODED_CONFIG": "{{ openwhisk_config }}"
       "PORT": "8080"
       "TZ": "{{ docker.timezone }}"
+      "CONFIG_whisk_info_date": "{{ whisk.version.date }}"
+      "CONFIG_whisk_info_buildNo": "{{ docker.image.tag }}"
       "KAFKA_HOSTS": "{{ kafka_connect_string }}"
       "CONFIG_whisk_kafka_replicationFactor": "{{ kafka.replicationFactor | default() }}"
       "CONFIG_whisk_kafka_topics_racksched_retentionBytes": "{{ kafka_topics_racksched_retentionBytes | default() }}"
@@ -210,16 +212,12 @@
       "WHISK_API_HOST_PROTO": "{{ whisk_api_host_proto | default('https') }}"
       "WHISK_API_HOST_PORT": "{{ whisk_api_host_port | default('443') }}"
       "WHISK_API_HOST_NAME": "{{ whisk_api_host_name | default(groups['edge'] | first) }}"
-      "CONFIG_whisk_containerFactory_runtimesRegistry_url": "{{ runtimes_registry | default('') }}"
-      "CONFIG_whisk_containerFactory_userImagesRegistry_url": "{{ user_images_registry | default('') }}"
       "RUNTIMES_MANIFEST": "{{ runtimesManifest | to_json }}"
       "CONFIG_whisk_runtimes_bypassPullForLocalImages": "{{ runtimes_bypass_pull_for_local_images | default() | lower }}"
       "CONFIG_whisk_runtimes_localImagePrefix": "{{ runtimes_local_image_prefix | default() }}"
-      "CONFIG_whisk_containerFactory_containerArgs_network": "{{ racksched_container_network_name | default('bridge') }}"
       "racksched_CONTAINER_POLICY": "{{ racksched_container_policy_name | default()}}"
       "CONFIG_whisk_containerPool_userMemory": "{{ hostvars[groups['rackscheds'][racksched_index | int]].user_memory | default(racksched.userMemory) }}"
       "CONFIG_whisk_docker_client_parallelRuns": "{{ racksched_parallel_runs | default() }}"
-      "CONFIG_whisk_docker_containerFactory_useRunc": "{{ racksched.useRunc | default(false) | lower }}"
       "WHISK_LOGS_DIR": "{{ whisk_logs_dir }}"
       "METRICS_KAMON": "{{ metrics.kamon.enabled | default(false) | lower }}"
       "METRICS_KAMON_TAGS": "{{ metrics.kamon.tags | default() | lower }}"
@@ -244,7 +242,6 @@
       "CONFIG_whisk_activation_payload_max": "{{ limit_activation_payload | default() }}"
       "CONFIG_whisk_transactions_header": "{{ transactions.header }}"
       "CONFIG_whisk_containerPool_akkaClient": "{{ container_pool_akka_client | default('false') | lower }}"
-      "CONFIG_whisk_containerFactory_containerArgs_extraEnvVars_0": "__OW_ALLOW_CONCURRENT={{ runtimes_enable_concurrency | default('false') }}"
       "CONFIG_whisk_racksched_protocol": "{{ racksched.protocol }}"
       "CONFIG_whisk_racksched_https_keystorePath": "/conf/{{ racksched.ssl.keystore.name }}"
       "CONFIG_whisk_racksched_https_keystorePassword": "{{ racksched.ssl.keystore.password }}"
@@ -257,13 +254,6 @@
         "{{ racksched.timeoutAddon }}"
       "CONFIG_whisk_spi_RackLoadBalancerProvider":
         "{{ racksched.rackloadbalancer.spi }}"
-
-- name: extend racksched dns env
-  set_fact:
-    env: "{{ env | default({}) | combine( {'CONFIG_whisk_containerFactory_containerArgs_dnsServers_' ~ rksch_item.0: rksch_item.1} ) }}"
-  with_indexed_items: "{{ (racksched_container_network_dns_servers | default()).split(' ')}}"
-  loop_control:
-    loop_var: rksch_item
 
 - name: merge extra env variables
   set_fact:
@@ -345,12 +335,12 @@
     env: "{{ env }}"
     volumes: "{{ racksched_volumes }}"
     ports: "{{ racksched_ports_to_expose }}"
-    command: /bin/sh -c "exec /init.sh --id {{ racksched_index }} --uniqueName {{ racksched_index }}"
+    command: /bin/sh -c "exec /init.sh --id {{ racksched_index }} --uniqueName {{ racksched_index }}  >> /logs/{{ racksched_name }}_logs.log 2>&1"
   when: not lean
 
-- name: wait until racksched is up and running
+- name: wait until Racksched is up and running
   uri:
-    url: "{{ racksched.protocol }}://{{ ansible_host }}:{{ racksched.port + (racksched_index | int) }}/ping"
+    url: "{{ racksched.protocol }}://{{ ansible_host }}:{{ racksched.basePort + (racksched_index | int) }}/ping"
     validate_certs: "no"
     client_key: "{{ racksched.confdir }}/{{ racksched_name }}/{{ racksched.ssl.key }}"
     client_cert: "{{ racksched.confdir }}/{{ racksched_name }}/{{ racksched.ssl.cert }}"

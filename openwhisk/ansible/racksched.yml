@@ -37,6 +37,14 @@
     #   groups. Usually 0 if only one group is being deployed, otherwise
     #   something like "{{ groups['firstrackschedgroup']|length }}"
     racksched_index_base: 0
+    #
+    # select which additional capabilities (from the controller role) need
+    #   to be added to the controller.  Plugin will override default
+    #   configuration settings.  (Plugins are found in the
+    #   'roles/controller/tasks' directory for now.)
+    controller_plugins:
+      # Join an akka cluster rather than running standalone akka
+      - "join_akka_cluster"
 
   roles:
     - racksched

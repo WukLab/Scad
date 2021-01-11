@@ -101,8 +101,8 @@ controller:
       bindPort: 2551
       # at this moment all controllers are seed nodes
       seedNodes: "{{ groups['controllers'] | map('extract', hostvars, 'ansible_host') | list }}"
-  loadbalancer:
-    spi: "{{ controller_loadbalancer_spi | default('') }}"
+  topbalancer:
+    spi: "{{ controller_topbalancer_spi | default('') }}"
   authentication:
     spi: "{{ controller_authentication_spi | default('') }}"
   loglevel: "{{ controller_loglevel | default(whisk_loglevel) | default('INFO') }}"
@@ -126,6 +126,8 @@ jmx:
   rmiBasePortController: 16000
   basePortInvoker: 17000
   rmiBasePortInvoker: 18000
+  basePortRackSched: 19000
+  rmiBasePortRackSched: 20000
   user: "{{ jmxuser | default('jmxuser') }}"
   pass: "{{ jmxuser | default('jmxpass') }}"
   jvmCommonArgs: "-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.local.only=false -Dcom.sun.management.jmxremote.authenticate=true -Dcom.sun.management.jmxremote.password.file=/home/owuser/jmxremote.password -Dcom.sun.management.jmxremote.access.file=/home/owuser/jmxremote.access"
@@ -178,6 +180,58 @@ zookeeper_connect_string: "{% set ret = [] %}\
                              {{ ret.append( hostvars[host].ansible_host + ':' + ((zookeeper.port+loop.index-1)|string) ) }}\
                            {% endfor %}\
                            {{ ret | join(',') }}"
+
+rackschedHostnameFromMap: "{{ groups['rackscheds'] | map('extract', hostvars, 'ansible_host') | list | first }}"
+rackschedHostname: "{{ rackschedHostnameFromMap | default(inventory_hostname) }}"
+
+# Moved here to avoid recursions. Please do not use outside of racksched-dict.
+__racksched_ssl_keyPrefix: "racksched-"
+
+racksched:
+  dir:
+    become: "{{ racksched_dir_become | default(false) }}"
+  confdir: "{{ config_root_dir }}/racksched"
+  basePort: 11001
+  heap: "{{ racksched_heap | default('2g') }}"
+  arguments: "{{ racksched_arguments | default('') }}"
+  userMemory: "{{ racksched_user_memory | default('2048m') }}"
+  # Specify if it is allowed to deploy more than 1 racksched on a single machine.
+  allowMultipleInstances: "{{ racksched_allow_multiple_instances | default(false) }}"
+  # Specify if it should use docker-runc or docker to pause/unpause containers
+  timeoutFactor: "{{ racksched_timeout_factor | default(2) }}"
+  timeoutAddon: "{{ racksched_timeout_addon | default('1 m') }}"
+  instances: "{{ groups['rackscheds'] | length }}"
+  akka:
+    provider: cluster
+    cluster:
+      basePort: 7000
+      host: "{{ groups['rackscheds'] | map('extract', hostvars, 'ansible_host') | list }}"
+      bindPort: 1551
+      # at this moment all racksched are seed nodes
+      seedNodes: "{{ groups['rackscheds'] | map('extract', hostvars, 'ansible_host') | list }}"
+  rackloadbalancer:
+    spi: "{{ racksched_rackloadbalancer_spi | default('') }}"
+  authentication:
+    spi: "{{ racksched_authentication_spi | default('') }}"
+  loglevel: "{{ racksched_loglevel | default(whisk_loglevel) | default('INFO') }}"
+  jmxremote:
+    jvmArgs: "{% if inventory_hostname in groups['rackscheds'] %}
+    {{ jmx.jvmCommonArgs }} -Djava.rmi.server.hostname={{ rackschedHostname }} -Dcom.sun.management.jmxremote.rmi.port={{ jmx.rmiBasePortRackSched + groups['rackscheds'].index(inventory_hostname) }} -Dcom.sun.management.jmxremote.port={{ jmx.basePortRackSched + groups['rackscheds'].index(inventory_hostname) }}
+    {% endif %}"
+  extraEnv: "{{ racksched_extraEnv | default({}) }}"
+  entitlement:
+    spi: "{{ racksched_entitlement_spi | default('') }}"
+  protocol: "{{ racksched_protocol | default('https') }}"
+  ssl:
+    cn: "openwhisk-rackscheds"
+    keyPrefix: "{{ __racksched_ssl_keyPrefix }}"
+    storeFlavor: "PKCS12"
+    clientAuth: "{{ racksched_client_auth | default('true') }}"
+    cert: "{{ __racksched_ssl_keyPrefix }}openwhisk-server-cert.pem"
+    key: "{{ __racksched_ssl_keyPrefix }}openwhisk-server-key.pem"
+    keystore:
+      password: "{{ racksched_keystore_password | default('openwhisk') }}"
+      name: "{{ __racksched_ssl_keyPrefix }}openwhisk-keystore.p12"
 
 invokerHostnameFromMap: "{{ groups['invokers'] | map('extract', hostvars, 'ansible_host') | list | first }}"
 invokerHostname: "{{ invokerHostnameFromMap | default(inventory_hostname) }}"
@@ -270,6 +324,9 @@ db:
     controller:
       user: "{{ db_controller_user | default(lookup('ini', 'db_username section=controller file={{ playbook_dir }}/db_local.ini')) }}"
       pass: "{{ db_controller_pass | default(lookup('ini', 'db_password section=controller file={{ playbook_dir }}/db_local.ini')) }}"
+    racksched:
+      user: "{{ db_racksched_user | default(lookup('ini', 'db_username section=racksched file={{ playbook_dir }}/db_local.ini')) }}"
+      pass: "{{ db_racksched_pass | default(lookup('ini', 'db_password section=racksched file={{ playbook_dir }}/db_local.ini')) }}"
     invoker:
       user: "{{ db_invoker_user | default(lookup('ini', 'db_username section=invoker file={{ playbook_dir }}/db_local.ini')) }}"
       pass: "{{ db_invoker_pass | default(lookup('ini', 'db_password section=invoker file={{ playbook_dir }}/db_local.ini')) }}"
