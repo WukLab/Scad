@@ -17,18 +17,20 @@
 
 package org.apache.openwhisk.core.sched
 
-import akka.actor.ActorSystem
+import akka.Done
+import akka.actor.{ActorSystem, CoordinatedShutdown}
 import akka.event.Logging.InfoLevel
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
 import akka.http.scaladsl.model.StatusCodes._
 import akka.http.scaladsl.server.Route
 import akka.stream.ActorMaterializer
+import kamon.Kamon
 import pureconfig._
 import pureconfig.generic.auto._
 import spray.json.DefaultJsonProtocol._
 import spray.json._
 import org.apache.openwhisk.common.Https.HttpsConfig
-import org.apache.openwhisk.common.{AkkaLogging, Logging, LoggingMarkers, Scheduler, TransactionId}
+import org.apache.openwhisk.common.{AkkaLogging, ConfigMXBean, Logging, LoggingMarkers, Scheduler, TransactionId}
 import org.apache.openwhisk.core.WhiskConfig
 import org.apache.openwhisk.core.WhiskConfig.kafkaHosts
 import org.apache.openwhisk.core.connector.{MessagingProvider, PingRackMessage}
@@ -45,6 +47,7 @@ import org.apache.openwhisk.http.{BasicHttpService, BasicRasService}
 import org.apache.openwhisk.spi.SpiLoader
 import pureconfig.ConfigReader.Result
 
+import scala.concurrent.ExecutionContext.Implicits
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.Await
 import scala.concurrent.ExecutionContextExecutor
@@ -210,6 +213,15 @@ object RackSched {
   }
 
   def start(args: Array[String])(implicit actorSystem: ActorSystem, logger: Logging): Unit = {
+    ConfigMXBean.register()
+    Kamon.init()
+
+    // Prepare Kamon shutdown
+    CoordinatedShutdown(actorSystem).addTask(CoordinatedShutdown.PhaseActorSystemTerminate, "shutdownKamon") { () =>
+      logger.info(this, s"Shutting down Kamon with coordinated shutdown")
+      Kamon.stopModules().map(_ => Done)(Implicits.global)
+    }
+
     // extract configuration data from the environment
     val config = new WhiskConfig(requiredProperties)
     val port = config.servicePort.toInt

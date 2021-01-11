@@ -221,7 +221,7 @@ racksched:
   extraEnv: "{{ racksched_extraEnv | default({}) }}"
   entitlement:
     spi: "{{ racksched_entitlement_spi | default('') }}"
-  protocol: "{{ racksched_protocol | default('https') }}"
+  protocol: "{{ racksched_protocol | default('http') }}"
   ssl:
     cn: "openwhisk-rackscheds"
     keyPrefix: "{{ __racksched_ssl_keyPrefix }}"
