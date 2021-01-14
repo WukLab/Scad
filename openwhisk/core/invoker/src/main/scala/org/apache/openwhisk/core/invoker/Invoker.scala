@@ -192,7 +192,7 @@ object Invoker {
       case e: Exception => abort(s"Failed to initialize reactive invoker: ${e.getMessage}")
     }
 
-    val port = config.servicePort.toInt + 11
+    val port = config.servicePort.toInt
     val httpsConfig =
       if (Invoker.protocol == "https") Some(loadConfigOrThrow[HttpsConfig]("whisk.invoker.https")) else None
 
