@@ -54,7 +54,7 @@ edge.host.apiport=443
 kafkaras.host.port={{ kafka.ras.port }}
 redis.host.port={{ redis.port }}
 invoker.hosts.basePort={{ invoker.port }}
-racksched.hosts.basePort={{ racksched.port }}
+racksched.hosts.basePort={{ racksched.basePort }}
 
 controller.hosts={{ groups["controllers"] | map('extract', hostvars, 'ansible_host') | list | join(",") }}
 controller.host.basePort={{ controller.basePort }}
