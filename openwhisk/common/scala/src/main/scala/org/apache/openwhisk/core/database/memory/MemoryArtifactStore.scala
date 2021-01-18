@@ -248,7 +248,7 @@ class MemoryArtifactStore[DocumentAbstraction <: DocumentSerializer](dbName: Str
     }.toList
 
     val f = Future.sequence(r).map(_.flatten)
-    f.foreach(_ => transid.finished(this, start, s"[QUERY] '$dbName' completed: matched ${out.size}"))
+    f.foreach(t => transid.finished(this, start, s"[QUERY] '$dbName' completed: matched ${out.size}"))
     reportFailure(f, start, failure => s"[QUERY] '$dbName' internal error, failure: '${failure.getMessage}'")
 
   }

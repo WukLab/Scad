@@ -713,7 +713,11 @@ trait WhiskWebActionsApi
   private def actionLookup(actionName: FullyQualifiedEntityName)(
     implicit transid: TransactionId): Future[WhiskActionMetaData] = {
     WhiskActionMetaData.resolveActionAndMergeParameters(entityStore, actionName) recoverWith {
-      case _: ArtifactStoreException | DeserializationException(_, _, _) =>
+      case d: DeserializationException =>
+        logging.debug(this, s"failed to lookup action: ${d}")
+        Future.failed(RejectRequest(NotFound))
+      case e: ArtifactStoreException =>
+        logging.debug(this, s"failed to lookup action: ${e}")
         Future.failed(RejectRequest(NotFound))
     }
   }
@@ -723,9 +727,15 @@ trait WhiskWebActionsApi
    */
   private def identityLookup(namespace: EntityName)(implicit transid: TransactionId): Future[Identity] = {
     getIdentity(namespace) recoverWith {
-      case _: ArtifactStoreException | DeserializationException(_, _, _) =>
+
+      case d: DeserializationException =>
+        logging.debug(this, s"Failed to lookup identity: ${d}")
+        Future.failed(RejectRequest(NotFound))
+      case e: ArtifactStoreException =>
+        logging.debug(this, s"Failed to lookup identity: ${e}")
         Future.failed(RejectRequest(NotFound))
       case t =>
+        logging.debug(this, s"other failure looking up identity: ${t}")
         // leak nothing no matter what, failure is already logged so skip here
         Future.failed(RejectRequest(NotFound))
     }

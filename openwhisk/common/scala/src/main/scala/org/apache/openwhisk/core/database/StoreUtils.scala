@@ -59,11 +59,14 @@ private[database] object StoreUtils {
   def deserialize[A <: DocumentAbstraction, DocumentAbstraction](doc: DocInfo, js: JsObject)(
     implicit docReader: DocumentReader,
     ma: Manifest[A],
-    jsonFormat: RootJsonFormat[DocumentAbstraction]): A = {
+    jsonFormat: RootJsonFormat[DocumentAbstraction],
+    logging: Logging): A = {
     val asFormat = try {
       docReader.read(ma, js)
     } catch {
-      case _: Exception => jsonFormat.read(js)
+      case e: Exception =>
+        logging.debug(this, s"Failed to read doc: ${e}")
+        jsonFormat.read(js)
     }
 
     if (asFormat.getClass != ma.runtimeClass) {

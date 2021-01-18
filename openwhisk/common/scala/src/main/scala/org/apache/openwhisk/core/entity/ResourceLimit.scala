@@ -39,7 +39,7 @@ case class ResourceLimitConfig(min: ConfigResources, max: ConfigResources, std: 
  *
  * @param limits the memory limit in megabytes for the action
  */
-protected[entity] class ResourceLimit private (val limits: RuntimeResources) {
+protected[entity] case class ResourceLimit private (val limits: RuntimeResources) {
   override def toString: String = limits.toString
 }
 

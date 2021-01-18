@@ -50,7 +50,9 @@ class WhiskConfig(requiredProperties: Map[String, String],
   override protected def getProperties() = {
     val properties = super.getProperties()
     if (!disableReadFromFile()) {
-      WhiskConfig.readPropertiesFromFile(properties, Option(propertiesFile) getOrElse (WhiskConfig.whiskPropertiesFile))
+      // split line to see result before calling readProperties
+      val f: Option[File] = Option(propertiesFile).orElse(Some(WhiskConfig.whiskPropertiesFile))
+      WhiskConfig.readPropertiesFromFile(properties, f.get)
     }
     properties
   }

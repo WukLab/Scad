@@ -223,9 +223,10 @@ class MessageFeed(description: String,
   private def shouldFillQueue(): Boolean = {
     val occupancy = outstandingMessages.size
     if (occupancy <= pipelineFillThreshold) {
-      logging.debug(
-        this,
-        s"$description pipeline has capacity: $occupancy <= $pipelineFillThreshold ($handlerCapacity)")
+      //spammy logs
+//      logging.debug(
+//        this,
+//        s"$description pipeline has capacity: $occupancy <= $pipelineFillThreshold ($handlerCapacity)")
       true
     } else {
       logging.debug(this, s"$description pipeline must drain: $occupancy > $pipelineFillThreshold")

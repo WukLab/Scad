@@ -46,6 +46,8 @@ import org.apache.openwhisk.core.loadBalancer.LoadBalancerException
 import pureconfig._
 import org.apache.openwhisk.core.ConfigKeys
 
+import java.time.Instant
+
 /**
  * A singleton object which defines the properties that must be present in a configuration
  * in order to implement the actions API.
@@ -210,21 +212,21 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
    */
   override def create(user: Identity, entityName: FullyQualifiedEntityName)(implicit transid: TransactionId) = {
     parameter('overwrite ? false) { overwrite =>
-      entity(as[WhiskActionPut]) { content =>
-        val request = content.resolve(user.namespace)
-        val checkAdditionalPrivileges = entitleReferencedEntities(user, Privilege.READ, request.exec).flatMap {
-          case _ => entitlementProvider.check(user, content.exec)
-        }
+      entity(as[JsValue]) { content =>
 
-        onComplete(checkAdditionalPrivileges) {
-          case Success(_) =>
-            putEntity(WhiskAction, entityStore, entityName.toDocId, overwrite, update(user, request) _, () => {
-              val x: Future[WhiskAction] = make(user, entityName, request)
-              x
-            })
-          case Failure(f) =>
-            super.handleEntitlementFailure(f)
+      try {
+        val wap = WhiskApplicationPut.serdes.read(content)
+        val app = makeApplication(user, entityName, wap)
+        putEntity(WhiskApplication, entityStore, entityName.toDocId, overwrite, (x: WhiskApplication) => app, () => app)
+      } catch {
+        case e: Throwable => {
+          val actionPut = WhiskActionPut.serdes.read(content)
+          putEntity(WhiskAction, entityStore, entityName.toDocId, overwrite, updateAction(user, actionPut) _, () => {
+            val x: Future[WhiskAction] = makeAction(user, entityName, actionPut)
+            x
+          })
         }
+      }
       }
     }
   }
@@ -243,9 +245,9 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
   override def activate(user: Identity, entityName: FullyQualifiedEntityName, env: Option[Parameters])(
     implicit transid: TransactionId) = {
     parameter(
-      'blocking ? false,
-      'result ? false,
-      'timeout.as[FiniteDuration] ? controllerActivationConfig.maxWaitForBlockingActivation) {
+      Symbol("blocking") ? false,
+      Symbol("result") ? false,
+      Symbol("timeout").as[FiniteDuration] ? controllerActivationConfig.maxWaitForBlockingActivation) {
       (blocking, result, waitOverride) =>
         entity(as[Option[JsObject]]) { payload =>
           getEntity(WhiskActionMetaData.resolveActionAndMergeParameters(entityStore, entityName), Some {
@@ -442,7 +444,7 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
   /**
    * Creates a WhiskAction instance from the PUT request.
    */
-  private def makeWhiskAction(content: WhiskActionPut, entityName: FullyQualifiedEntityName)(
+  private def makeWhiskAction(content: WhiskActionPut, entityName: FullyQualifiedEntityName, objNames: Map[String, FullyQualifiedEntityName] = Map.empty, parentFunc: Option[WhiskEntityReference] = None)(
     implicit transid: TransactionId) = {
     val exec = content.exec.get
     val limits = content.limits map { l =>
@@ -463,6 +465,13 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
       case _ => content.parameters getOrElse Parameters()
     }
 
+    val relationships = content.relationships.map { r =>
+      val corun = r.corunning.map(x => WhiskEntityReference(objNames(x)))
+      val deps = r.dependents.map(x => WhiskEntityReference(objNames(x)))
+      val parents = r.parents.map(x => WhiskEntityReference(objNames(x)))
+      WhiskActionRelationship(deps, parents, corun)
+    }
+
     WhiskAction(
       entityName.path,
       entityName.name,
@@ -471,7 +480,9 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
       limits,
       content.version getOrElse SemVer(),
       content.publish getOrElse false,
-      WhiskActionsApi.amendAnnotations(content.annotations getOrElse Parameters(), exec))
+      WhiskActionsApi.amendAnnotations(content.annotations getOrElse Parameters(), exec),
+      relationships = relationships,
+      parentFunc = parentFunc)
   }
 
   /** For a sequence action, gather referenced entities and authorize access. */
@@ -495,25 +506,115 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
     }
   }
 
-  /** Creates a WhiskAction from PUT content, generating default values where necessary. */
-  private def make(user: Identity, entityName: FullyQualifiedEntityName, content: WhiskActionPut)(
-    implicit transid: TransactionId) = {
-    content.exec map {
-      case seq: SequenceExec =>
-        // check that the sequence conforms to max length and no recursion rules
-        checkSequenceActionLimits(entityName, seq.components) map { _ =>
-          makeWhiskAction(content.replace(seq), entityName)
-        }
-      case supportedExec if !supportedExec.deprecated =>
-        Future successful makeWhiskAction(content, entityName)
-      case deprecatedExec =>
-        Future failed RejectRequest(BadRequest, runtimeDeprecated(deprecatedExec))
+ /** Creates a WhiskAction from PUT content, generating default values where necessary. */
+ private def makeAction(user: Identity, entityName: FullyQualifiedEntityName, content: WhiskActionPut)(
+   implicit transid: TransactionId): Future[WhiskAction] = {
+   content.exec map {
+     case seq: SequenceExec =>
+       // check that the sequence conforms to max length and no recursion rules
+       checkSequenceActionLimits(entityName, seq.components) map { _ =>
+         makeWhiskAction(content.replace(seq), entityName)
+       }
+     case supportedExec if !supportedExec.deprecated =>
+       Future successful makeWhiskAction(content, entityName)
+     case deprecatedExec =>
+       Future failed RejectRequest(BadRequest, runtimeDeprecated(deprecatedExec))
 
-    } getOrElse Future.failed(RejectRequest(BadRequest, "exec undefined"))
+   } getOrElse Future.failed(RejectRequest(BadRequest, "exec undefined"))
+ }
+
+  /**
+   * Takes the input of a `WhiskApplicationPut` and all of its child functions and their objects then subsequently,
+   * resolves, serializes and inserts them into the whisk datastore.
+   *
+   * To put an application into the datastore, it needs to resolve all references to its child objects by name into full
+   * `WhiskEntityReferences`. This function will, for each function, resolve the full object names based on the
+   * the fully qualified entityName passed into the function with additional components appended for functions and
+   * objects accordingly.
+   *
+   * Once all simple string names have been resolved, each object resolves its own connections by converting its relationship
+   * model into a `WhiskActionRelationship`, and then converting to a real `WhiskAction` and then serializing
+   * and
+   *
+   *
+   * @param user the user making the initial creation request
+   * @param entityName the name of the application the user is trying to create
+   * @param content the whisk application the user is uploading
+   * @param transid handler transaction id
+   * @return
+   */
+  private def makeApplication(user: Identity, entityName: FullyQualifiedEntityName, content: WhiskApplicationPut)(
+    implicit transid: TransactionId): Future[WhiskApplication] = {
+
+    // first, create a mapping of function name --> FullyQualifiedEntityName
+    val functions: Seq[WhiskFunctionPut] = content.functions
+    val names = functions.map(_.name.get)
+    val funcNames = functions.map(a => a.name.get -> {
+      val ent = entityName.add(EntityName("function")).add(EntityName(a.name.get))
+      WhiskEntityReference(ent.path, ent.name)
+    }).toMap
+
+    // Ensure there are no duplicate names
+    require(names.size == funcNames.size, "function names must not contain duplicates")
+
+
+    val funcs = functions.map(a => {
+      // the current function's reference name to be used by the application.
+      val ref: WhiskEntityReference = funcNames(a.name.get)
+
+      // now map each k/v pair from funcNames into WhiskEntityReferences
+      // for all parent/child of each function
+      // this also requires a put+serialize of the function into the DB
+      // to make sure that they are valid references for the application
+      val newChildren: Option[Seq[WhiskEntityReference]] = a.children.map { c =>
+        c.map(funcNames(_))
+      }
+
+      val newParents: Option[Seq[WhiskEntityReference]] = a.parents.map { p =>
+        p.map(funcNames(_))
+      }
+
+      // In order to properly serialize this function, all of its child objects
+      // need to be serialized and put into a DB first so that it contains valid object references.
+      // They are uploaded with their own user defined names, so it is separate from the funcName map
+      val objNames = a.objects.get.map(_.name.get)
+        .map(a => a.name -> ref.toFQEN().add(EntityName("object")).add(EntityName(a.name))).toMap
+      // ensure no duplicates
+      require(objNames.size == a.objects.get.size, "object names must not contain duplicates")
+
+      // Convert each object into a real WhiskAction by converting its relationship mapping to using
+      // full WhiskEntityReferences, and put them into the DB
+      val objects = a.objects.get.map(a => makeWhiskAction(a, objNames(a.name.get), objNames, Some(ref)))
+      objects foreach { o =>
+        putEntity(WhiskAction, entityStore, o.getReference().toFQEN().toDocId, overwrite = true,
+          (x: WhiskAction) => Future.successful(o), () => Future.successful(o))
+      }
+      val objRefs = objects.map(a => WhiskEntityReference(a.namespace, a.name))
+
+      // return the properly referenced WhiskFunction
+      val wf = a.toWhiskFunction(ref.toFQEN().path, objRefs, Instant.now(), newParents, newChildren, WhiskEntityReference(entityName))
+      putEntity(WhiskFunction, entityStore, wf.fullyQualifiedName(false).toDocId, overwrite = true, (x: WhiskFunction) => Future.successful(wf) , () => Future.successful(wf))
+      Future.successful(wf)
+    })
+
+    // finally, all objects and functions have been serialized and put into the DB, add the application
+    Future.sequence(funcs) map { funcs =>
+      val refs = funcs.map(x => WhiskEntityReference(x.namespace, x.name)).toList
+      val limits = content.limits getOrElse ActionLimits()
+      val parameters = content.parameters getOrElse Parameters()
+      val version = content.version getOrElse SemVer()
+      val annotations = content.annotations getOrElse Parameters()
+      val publish = content.publish getOrElse false
+      val updated = Instant.now()
+      WhiskApplication(entityName.path, entityName.name, refs, parameters, limits, version, publish, annotations, updated)
+    }
   }
 
+
+
+
   /** Updates a WhiskAction from PUT content, merging old action where necessary. */
-  private def update(user: Identity, content: WhiskActionPut)(action: WhiskAction)(implicit transid: TransactionId) = {
+  private def updateAction(user: Identity, content: WhiskActionPut)(action: WhiskAction)(implicit transid: TransactionId): Future[WhiskAction] = {
     content.exec map {
       case seq: SequenceExec =>
         // check that the sequence conforms to max length and no recursion rules

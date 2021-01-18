@@ -48,6 +48,7 @@ abstract class WhiskEntity protected[entity] (en: EntityName, val entityType: St
   val version: SemVer
   val publish: Boolean
   val annotations: Parameters
+  val parents: Option[Seq[WhiskEntityReference]] = None
   val updated = WhiskEntity.currentMillis()
 
   /**

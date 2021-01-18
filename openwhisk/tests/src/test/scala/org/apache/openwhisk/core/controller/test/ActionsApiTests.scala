@@ -18,7 +18,6 @@
 package org.apache.openwhisk.core.controller.test
 
 import java.time.Instant
-
 import scala.concurrent.duration.DurationInt
 import scala.language.postfixOps
 import org.junit.runner.RunWith
@@ -42,6 +41,8 @@ import org.apache.openwhisk.core.connector.ActivationMessage
 import org.apache.openwhisk.core.entity.Attachments.Inline
 import org.apache.openwhisk.core.entity.test.ExecHelpers
 import org.scalatest.{FlatSpec, Matchers}
+
+import java.util.Base64
 
 /**
  * Tests Actions API.
@@ -886,6 +887,22 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
         }
         stream.toString should include(s"invalidating ${CacheKey(action)}")
         stream.reset()
+    }
+  }
+  it should "serialize a WhiskApplicationPut" in {
+    val baseAction = WhiskActionPut.fromWhiskAction(
+      WhiskAction(namespace, aname(),
+        jsDefault(Base64.getEncoder.encodeToString(Array(0x7a)), Some("test")),
+        annotations = Parameters("exec", "javascript"))
+    )
+    val baseFunction = WhiskFunctionPut(objects = Some(List(baseAction)), publish = Some(true), name = Some(aname().name))
+    val baseApplication = WhiskApplicationPut(
+      functions = List(baseFunction),
+      publish = Some(true),
+    )
+    val name = aname()
+    Put(s"$collectionPath/$name", baseApplication) ~> Route.seal(routes(creds)(transid())) ~> check {
+      status should be(OK)
     }
   }
 

@@ -72,7 +72,8 @@ class KafkaProducerConnector(
 
     produced.future.andThen {
       case Success(status) =>
-        logging.debug(this, s"sent message: ${status.topic()}[${status.partition()}][${status.offset()}]")
+        // spammy log
+        //        logging.debug(this, s"sent message: ${status.topic()}[${status.partition()}][${status.offset()}]")
         sentCounter.next()
       case Failure(t) =>
         logging.error(this, s"sending message on topic '$topic' failed: ${t.getMessage}")

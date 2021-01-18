@@ -632,15 +632,15 @@ object ContainerPool {
     implicit logging: Logging): Map[PrewarmingConfig, (Int, Int)] = {
     prewarmConfig.map { config =>
       val kind = config.exec.kind
-      val memory = config.resources
+      val resources = config.resources
 
       val runningCount = prewarmedPool.count {
         // done starting (include expired, since they may not have been removed yet)
-        case (_, p @ PreWarmedData(_, `kind`, `memory`, _, _)) => true
+        case (_, p @ PreWarmedData(_, `kind`, resources, _, _)) => true
         // started but not finished starting (or expired)
         case _ => false
       }
-      val startingCount = prewarmStartingPool.count(p => p._2._1 == kind && p._2._2 == memory)
+      val startingCount = prewarmStartingPool.count(p => p._2._1 == kind && p._2._2 == resources)
       val currentCount = runningCount + startingCount
 
       // determine how many are needed
@@ -650,7 +650,7 @@ object ContainerPool {
           if (scheduled) {
             // scheduled/reactive config backfill
             config.reactive
-              .map(c => getReactiveCold(coldStartCount, c, kind, memory).getOrElse(c.minCount)) //reactive -> desired is either cold start driven, or minCount
+              .map(c => getReactiveCold(coldStartCount, c, kind, resources).getOrElse(c.minCount)) //reactive -> desired is either cold start driven, or minCount
               .getOrElse(config.initialCount) //not reactive -> desired is always initial count
           } else {
             // normal backfill after removal - make sure at least minCount or initialCount is started

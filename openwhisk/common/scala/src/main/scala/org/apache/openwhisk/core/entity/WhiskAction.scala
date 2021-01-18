@@ -21,7 +21,6 @@ import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.nio.charset.StandardCharsets.UTF_8
 import java.time.Instant
 import java.util.Base64
-
 import akka.http.scaladsl.model.ContentTypes
 
 import scala.concurrent.ExecutionContext
@@ -34,7 +33,110 @@ import org.apache.openwhisk.core.database.ArtifactStore
 import org.apache.openwhisk.core.database.DocumentFactory
 import org.apache.openwhisk.core.database.CacheChangeNotification
 import org.apache.openwhisk.core.entity.Attachments._
+import org.apache.openwhisk.core.entity.WhiskActivation.instantSerdes
 import org.apache.openwhisk.core.entity.types.EntityStore
+
+
+object SeqJsonWriter {
+  implicit def seqWriterToWriter[T :JsonWriter] = new JsonWriter[Seq[T]] {
+    def write(list: Seq[T]) = JsArray(list.map(_.toJson).toVector)
+  }
+}
+
+case class WhiskApplication(namespace: EntityPath,
+                            override val name: EntityName,
+                            functions: List[WhiskEntityReference],
+                            parameters: Parameters = Parameters(),
+                            limits: ActionLimits = ActionLimits(),
+                            version: SemVer = SemVer(),
+                            publish: Boolean = false,
+                            annotations: Parameters = Parameters(),
+                            override val updated: Instant = WhiskEntity.currentMillis()
+                           ) extends WhiskEntity(name, "application") {
+  /**
+   * The representation as JSON, e.g. for REST calls. Does not include id/rev.
+   */
+  override def toJson: JsObject = JsObject(
+    "namespace" -> namespace.toJson,
+    "name" -> name.toJson,
+    "functions" -> functions.toJson,
+    "parameters" -> parameters.toJson,
+    "limits" -> limits.toJson,
+    "version" -> version.toJson,
+    "publish" -> publish.toJson,
+    "annotations" -> annotations.toJson,
+    "updated" -> updated.toJson,
+  )
+
+}
+
+object WhiskApplication extends DocumentFactory[WhiskApplication] with WhiskEntityQueries[WhiskApplication] with DefaultJsonProtocol {
+  override val collectionName: String = "applications"
+  override implicit val serdes: RootJsonFormat[WhiskApplication] = jsonFormat(
+    WhiskApplication.apply,
+    "namespace",
+    "name",
+    "functions",
+    "parameters",
+    "limits",
+    "version",
+    "publish",
+    "annotations",
+    "updated"
+  )
+
+}
+
+case class WhiskFunction(namespace: EntityPath,
+                          override val name: EntityName,
+                          objects: List[WhiskEntityReference],
+                          parameters: Parameters = Parameters(),
+                          limits: ActionLimits = ActionLimits(),
+                          version: SemVer = SemVer(),
+                          publish: Boolean = false,
+                          annotations: Parameters = Parameters(),
+                          override val updated: Instant = WhiskEntity.currentMillis(),
+                          override val parents: Option[Seq[WhiskEntityReference]] = None,
+                          children: Option[Seq[WhiskEntityReference]] = None,
+                          parentApp: WhiskEntityReference) extends WhiskEntity(name, "function") {
+  /**
+   * The representation as JSON, e.g. for REST calls. Does not include id/rev.
+   */
+  override def toJson: JsObject = JsObject(
+    "namespace" -> namespace.toJson,
+    "name" -> name.toJson,
+    "objects" -> objects.toJson,
+    "parameters" -> parameters.toJson,
+    "limits" -> limits.toJson,
+    "version" -> version.toJson,
+    "publish" -> publish.toJson,
+    "annotations" -> annotations.toJson,
+    "updated" -> updated.toJson,
+    "parents" -> parents.toJson,
+    "children" -> children.toJson,
+    "parentApp" -> parentApp.toJson,
+  )
+}
+
+object WhiskFunction extends DocumentFactory[WhiskFunction] with WhiskEntityQueries[WhiskFunction]
+  with DefaultJsonProtocol {
+  override val collectionName: String = "functions"
+  override implicit val serdes: RootJsonFormat[WhiskFunction] = jsonFormat(
+    WhiskFunction.apply,
+    "namespace",
+    "name",
+    "objects",
+    "parameters",
+    "limits",
+    "version",
+    "publish",
+    "annotations",
+    "updated",
+    "parents",
+  "children",
+  "parentApp",
+  )
+}
 
 /**
  * ActionLimitsOption mirrors ActionLimits but makes both the timeout and memory
@@ -44,6 +146,45 @@ case class ActionLimitsOption(timeout: Option[TimeLimit],
                               resources: Option[ResourceLimit],
                               logs: Option[LogLimit],
                               concurrency: Option[ConcurrencyLimit])
+
+case class WhiskFunctionPut(objects: Option[List[WhiskActionPut]] = None,
+                            parameters: Option[Parameters] = None,
+                            limits: Option[ActionLimits] = None,
+                            version: Option[SemVer] = None,
+                            publish: Option[Boolean] = None,
+                            annotations: Option[Parameters] = None,
+                            parents: Option[Seq[String]] = None,
+                            children: Option[Seq[String]] = None,
+                            name: Option[String] = None) {
+  def toWhiskFunction(namespace: EntityPath, objects: List[WhiskEntityReference], updated: Instant,
+                      parents: Option[Seq[WhiskEntityReference]], children: Option[Seq[WhiskEntityReference]],
+                      parentApp: WhiskEntityReference): WhiskFunction = {
+    val lims = limits getOrElse ActionLimits()
+    val params = parameters getOrElse Parameters()
+    val ver = version getOrElse SemVer()
+    val annotate = annotations getOrElse Parameters()
+    val pub = publish getOrElse false
+    val updated = Instant.now()
+    WhiskFunction(namespace, EntityName(name.get), objects, params, lims, ver, pub,
+      annotate, updated, parents, children, parentApp = parentApp)
+  }
+}
+
+object WhiskFunctionPut extends DefaultJsonProtocol {
+  implicit val serdes: RootJsonFormat[WhiskFunctionPut] = jsonFormat9(WhiskFunctionPut.apply)
+}
+
+case class WhiskApplicationPut(functions: List[WhiskFunctionPut],
+                               parameters: Option[Parameters] = None,
+                               limits: Option[ActionLimits] = None,
+                               version: Option[SemVer] = None,
+                               publish: Option[Boolean] = None,
+                               annotations: Option[Parameters] = None)
+
+object WhiskApplicationPut extends DefaultJsonProtocol {
+  implicit val serdes: RootJsonFormat[WhiskApplicationPut] = jsonFormat6(WhiskApplicationPut.apply)
+}
+
 
 /**
  * WhiskActionPut is a restricted WhiskAction view that eschews properties
@@ -57,10 +198,12 @@ case class WhiskActionPut(exec: Option[Exec] = None,
                           version: Option[SemVer] = None,
                           publish: Option[Boolean] = None,
                           annotations: Option[Parameters] = None,
-                          delAnnotations: Option[Array[String]] = None) {
+                          delAnnotations: Option[Array[String]] = None,
+                          relationships: Option[WhiskActionRelationshipPut] = None,
+                          name: Option[String] = Some("default")) {
 
   protected[core] def replace(exec: Exec) = {
-    WhiskActionPut(Some(exec), parameters, limits, version, publish, annotations)
+    WhiskActionPut(Some(exec), parameters, limits, version, publish, annotations, relationships = relationships)
   }
 
   /**
@@ -72,7 +215,7 @@ case class WhiskActionPut(exec: Option[Exec] = None,
         val newExec = SequenceExec(components map { c =>
           FullyQualifiedEntityName(c.path.resolveNamespace(userNamespace), c.name)
         })
-        WhiskActionPut(Some(newExec), parameters, limits, version, publish, annotations)
+        WhiskActionPut(Some(newExec), parameters, limits, version, publish, annotations, relationships = relationships)
       case _ => this
     } getOrElse this
   }
@@ -110,6 +253,51 @@ abstract class WhiskActionLikeMetaData(override val name: EntityName) extends Wh
   override def exec: ExecMetaDataBase
 }
 
+case class WhiskEntityReference(namespace: EntityPath, name: EntityName) {
+
+  protected[core] def toFQEN(): FullyQualifiedEntityName = {
+    FullyQualifiedEntityName(namespace, name)
+  }
+}
+
+object WhiskEntityReference extends DefaultJsonProtocol {
+
+  def apply(entityName: FullyQualifiedEntityName): WhiskEntityReference = this(entityName.path, entityName.name)
+
+  implicit val serdes: RootJsonFormat[WhiskEntityReference] = jsonFormat2(WhiskEntityReference.apply)
+}
+
+case class WhiskActionRelationship(
+                                    dependents: Seq[WhiskEntityReference],
+                                    parents: Seq[WhiskEntityReference],
+                                    corunning: Seq[WhiskEntityReference]
+                                  ) {
+  def toRelationshipPut(): WhiskActionRelationshipPut = {
+    WhiskActionRelationshipPut(dependents.map(_.toString), parents.map(_.toString), corunning.map(_.toString))
+  }
+}
+
+object WhiskActionRelationship extends DefaultJsonProtocol {
+  def empty = WhiskActionRelationship(Seq.empty, Seq.empty, Seq.empty)
+
+  implicit val serdes: RootJsonFormat[WhiskActionRelationship] = jsonFormat3(WhiskActionRelationship.apply)
+}
+
+
+// For creation of DAGs, the WhiskAction's name given in the upload can be used here to define
+// the relationships that a particular action (object) may have. They will be converted from String
+// to a WhiskEntityReference upon upload.
+case class WhiskActionRelationshipPut(
+                                       dependents: Seq[String],
+                                       parents: Seq[String],
+                                       corunning: Seq[String]
+                                     )
+
+object WhiskActionRelationshipPut extends DefaultJsonProtocol {
+  implicit val serdes: RootJsonFormat[WhiskActionRelationshipPut] = jsonFormat3(WhiskActionRelationshipPut.apply)
+}
+
+
 /**
  * A WhiskAction provides an abstraction of the meta-data
  * for a whisk action.
@@ -129,15 +317,17 @@ abstract class WhiskActionLikeMetaData(override val name: EntityName) extends Wh
  * @throws IllegalArgumentException if any argument is undefined
  */
 @throws[IllegalArgumentException]
-case class WhiskAction(namespace: EntityPath,
-                       override val name: EntityName,
-                       exec: Exec,
+case class WhiskAction(namespace: EntityPath, //name
+                       override val name: EntityName,//name
+                       exec: Exec, // runtime
                        parameters: Parameters = Parameters(),
                        limits: ActionLimits = ActionLimits(),
                        version: SemVer = SemVer(),
                        publish: Boolean = false,
                        annotations: Parameters = Parameters(),
-                       override val updated: Instant = WhiskEntity.currentMillis())
+                       override val updated: Instant = WhiskEntity.currentMillis(),
+                       relationships: Option[WhiskActionRelationship] = None,
+                       parentFunc: Option[WhiskEntityReference] = None)
     extends WhiskActionLike(name) {
 
   require(exec != null, "exec undefined")
@@ -173,7 +363,7 @@ case class WhiskAction(namespace: EntityPath,
   def toExecutableWhiskAction: Option[ExecutableWhiskAction] = exec match {
     case codeExec: CodeExec[_] =>
       Some(
-        ExecutableWhiskAction(namespace, name, codeExec, parameters, limits, version, publish, annotations)
+        ExecutableWhiskAction(namespace, name, codeExec, parameters, limits, version, publish, annotations, relationships = relationships, parentFunc = parentFunc)
           .revision[ExecutableWhiskAction](rev))
     case _ => None
   }
@@ -193,6 +383,10 @@ case class WhiskAction(namespace: EntityPath,
         ("limits" -> limits.toJson) +
         ("exec" -> JsObject("binary" -> JsBoolean(binary))))
   }
+
+  def getReference(): WhiskEntityReference = {
+    WhiskEntityReference(namespace, name)
+  }
 }
 
 @throws[IllegalArgumentException]
@@ -205,7 +399,9 @@ case class WhiskActionMetaData(namespace: EntityPath,
                                publish: Boolean = false,
                                annotations: Parameters = Parameters(),
                                override val updated: Instant = WhiskEntity.currentMillis(),
-                               binding: Option[EntityPath] = None)
+                               binding: Option[EntityPath] = None,
+                               relationships: Option[WhiskActionRelationship] = None,
+                               parentFunc: Option[WhiskEntityReference] = None)
     extends WhiskActionLikeMetaData(name) {
 
   require(exec != null, "exec undefined")
@@ -244,7 +440,9 @@ case class WhiskActionMetaData(namespace: EntityPath,
           version,
           publish,
           annotations,
-          binding)
+          binding,
+          relationships = relationships,
+          parentFunc = parentFunc)
           .revision[ExecutableWhiskActionMetaData](rev))
     case _ =>
       None
@@ -282,7 +480,10 @@ case class ExecutableWhiskAction(namespace: EntityPath,
                                  version: SemVer = SemVer(),
                                  publish: Boolean = false,
                                  annotations: Parameters = Parameters(),
-                                 binding: Option[EntityPath] = None)
+                                 binding: Option[EntityPath] = None,
+                                 relationships: Option[WhiskActionRelationship] = Some(WhiskActionRelationship.empty),
+                                 parentFunc: Option[WhiskEntityReference] = None
+                                )
     extends WhiskActionLike(name) {
 
   require(exec != null, "exec undefined")
@@ -315,7 +516,7 @@ case class ExecutableWhiskAction(namespace: EntityPath,
   }
 
   def toWhiskAction =
-    WhiskAction(namespace, name, exec, parameters, limits, version, publish, annotations)
+    WhiskAction(namespace, name, exec, parameters, limits, version, publish, annotations, relationships = relationships, parentFunc = parentFunc)
       .revision[WhiskAction](rev)
 }
 
@@ -328,14 +529,17 @@ case class ExecutableWhiskActionMetaData(namespace: EntityPath,
                                          version: SemVer = SemVer(),
                                          publish: Boolean = false,
                                          annotations: Parameters = Parameters(),
-                                         binding: Option[EntityPath] = None)
+                                         binding: Option[EntityPath] = None,
+                                         relationships: Option[WhiskActionRelationship] = None,
+                                         parentFunc: Option[WhiskEntityReference] = None,
+                                         )
     extends WhiskActionLikeMetaData(name) {
 
   require(exec != null, "exec undefined")
   require(limits != null, "limits undefined")
 
   def toWhiskAction =
-    WhiskActionMetaData(namespace, name, exec, parameters, limits, version, publish, annotations, updated)
+    WhiskActionMetaData(namespace, name, exec, parameters, limits, version, publish, annotations, updated, relationships = relationships, parentFunc = parentFunc)
       .revision[WhiskActionMetaData](rev)
 
   /**
@@ -343,7 +547,6 @@ case class ExecutableWhiskActionMetaData(namespace: EntityPath,
    */
   def bindingFullyQualifiedName: Option[FullyQualifiedEntityName] =
     binding.map(ns => FullyQualifiedEntityName(ns, name, None))
-
 }
 
 object WhiskAction extends DocumentFactory[WhiskAction] with WhiskEntityQueries[WhiskAction] with DefaultJsonProtocol {
@@ -355,17 +558,38 @@ object WhiskAction extends DocumentFactory[WhiskAction] with WhiskEntityQueries[
   override val collectionName = "actions"
   override val cacheEnabled = true
 
-  override implicit val serdes = jsonFormat(
-    WhiskAction.apply,
-    "namespace",
-    "name",
-    "exec",
-    "parameters",
-    "limits",
-    "version",
-    "publish",
-    "annotations",
-    "updated")
+  override implicit val serdes = new spray.json.RootJsonFormat[WhiskAction] {
+    override def write(obj: WhiskAction): JsValue = jsonFormat(
+        WhiskAction.apply,
+        "namespace",
+        "name",
+        "exec",
+        "parameters",
+        "limits",
+        "version",
+        "publish",
+        "annotations",
+        "updated",
+       "relationships",
+       "parentFunc").write(obj)
+
+    override def read(json: JsValue): WhiskAction = {
+      WhiskAction(
+        fromField[EntityPath](json, "namespace"),
+        fromField[EntityName](json, "name"),
+        fromField[Exec](json, "exec"),
+        fromField[Parameters](json, "parameters"),
+        fromField[ActionLimits](json, "limits"),
+        fromField[SemVer](json, "version"),
+        fromField[Boolean](json, "publish"),
+        fromField[Parameters](json, "annotations"),
+        fromField[Instant](json, "updated"),
+        fromField[Option[WhiskActionRelationship]](json, "relationships"),
+        fromField[Option[WhiskEntityReference]](json, "parentFunc")
+      )
+    }
+  }
+
 
   // overriden to store attached code
   override def put[A >: WhiskAction](db: ArtifactStore[A], doc: WhiskAction, old: Option[WhiskAction])(
@@ -572,18 +796,39 @@ object WhiskActionMetaData
   override val collectionName = "actions"
   override val cacheEnabled = true
 
-  override implicit val serdes = jsonFormat(
-    WhiskActionMetaData.apply,
-    "namespace",
-    "name",
-    "exec",
-    "parameters",
-    "limits",
-    "version",
-    "publish",
-    "annotations",
-    "updated",
-    "binding")
+  override implicit val serdes = new spray.json.RootJsonFormat[WhiskActionMetaData] {
+    override def write(obj: WhiskActionMetaData): JsValue = jsonFormat(
+      WhiskActionMetaData.apply,
+      "namespace",
+      "name",
+      "exec",
+      "parameters",
+      "limits",
+      "version",
+      "publish",
+      "annotations",
+      "updated",
+      "binding",
+      "relationships",
+      "parentFunc").write(obj)
+
+    override def read(json: JsValue): WhiskActionMetaData = {
+      WhiskActionMetaData(
+        fromField[EntityPath](json, "namespace"),
+        fromField[EntityName](json, "name"),
+        fromField[ExecMetaDataBase](json, "exec"),
+        fromField[Parameters](json, "parameters"),
+        fromField[ActionLimits](json, "limits"),
+        fromField[SemVer](json, "version"),
+        fromField[Boolean](json, "publish"),
+        fromField[Parameters](json, "annotations"),
+        fromField[Instant](json, "updated"),
+        fromField[Option[EntityPath]](json, "binding"),
+        fromField[Option[WhiskActionRelationship]](json, "relationships"),
+        fromField[Option[WhiskEntityReference]](json, "parentFunc"),
+      )
+    }
+  }
 
   /**
    * Resolves an action name if it is contained in a package.
@@ -645,9 +890,18 @@ object WhiskActionMetaData
 }
 
 object ActionLimitsOption extends DefaultJsonProtocol {
-  implicit val serdes = jsonFormat4(ActionLimitsOption.apply)
+  implicit val serdes: RootJsonFormat[ActionLimitsOption] = jsonFormat4(ActionLimitsOption.apply)
+
+  def fromActionLimit(obj: ActionLimits): ActionLimitsOption = {
+    ActionLimitsOption(Some(obj.timeout), Some(obj.resources), Some(obj.logs), Some(obj.concurrency))
+  }
 }
 
 object WhiskActionPut extends DefaultJsonProtocol {
-  implicit val serdes = jsonFormat7(WhiskActionPut.apply)
+  implicit val serdes: RootJsonFormat[WhiskActionPut] = jsonFormat9(WhiskActionPut.apply)
+
+  def fromWhiskAction(obj: WhiskAction): WhiskActionPut = {
+    WhiskActionPut(Some(obj.exec), Some(obj.parameters), Some(ActionLimitsOption.fromActionLimit(obj.limits)),
+      Some(obj.version), Some(obj.publish), Some(obj.annotations), None, obj.relationships.map(_.toRelationshipPut()), name = Some(obj.name.toString()))
+  }
 }
