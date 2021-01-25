@@ -717,7 +717,6 @@ protected[actions] trait PrimitiveActions {
         }
         // Start the first objects of the first functions within the application.
         val objResults = startingFuncs map { func =>
-          val funcId = activationIdFactory.make()
           funcmap(func).lookupObjectMetadata(entityStore) map { objs =>
             // now do something similar as the above to kick off the first objects in this function....
             val objMap = objs.map(o => o.getReference() -> o).toMap
@@ -733,12 +732,7 @@ protected[actions] trait PrimitiveActions {
             startingObjs map { obj =>
               objMap(obj).toExecutableWhiskAction
             } map { obj =>
-              invokeSimpleAction(user, obj.get, payload, waitForResponse, cause, functionId = Some(funcId), appId = Some(appActivationId))
-            }
-          } recoverWith {
-            case t: Throwable => {
-              logging.debug(this, s"failed to recover when launching DAG objects: $t")
-              Future.failed(t)
+              invokeSimpleAction(user, obj.get, payload, waitForResponse, cause)
             }
           }
         }
