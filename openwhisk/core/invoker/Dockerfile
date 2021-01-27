@@ -46,4 +46,6 @@ RUN chmod +x init.sh
 RUN adduser -D -u ${UID} -h /home/${NOT_ROOT_USER} -s /bin/bash ${NOT_ROOT_USER}
 
 EXPOSE 8080
+EXPOSE 8081
+
 CMD ["./init.sh", "0"]

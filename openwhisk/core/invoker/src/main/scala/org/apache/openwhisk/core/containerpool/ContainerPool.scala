@@ -24,7 +24,7 @@ import org.apache.openwhisk.core.entity.ExecManifest.ReactivePrewarmingConfig
 import org.apache.openwhisk.core.entity._
 
 import scala.annotation.tailrec
-import scala.collection.immutable
+import scala.collection._
 import scala.concurrent.duration._
 import scala.util.{Random, Try}
 
@@ -97,6 +97,11 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     .getOrElse(0)
     .seconds
   context.system.scheduler.schedule(2.seconds, interval, self, AdjustPrewarmedContainer)
+
+  // We need to have a actionId, which maps an actionId to activationId
+  // This can happens in both side of the work
+  var activationMap : Map[ActivationId, ActorRef] = Map.empty
+
 
   def logContainerStart(r: Run, containerState: String, activeActivations: Int, container: Option[Container]): Unit = {
     val namespaceName = r.msg.user.namespace.name.asString
@@ -202,6 +207,8 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
               // Try to process the next item in buffer (or get another message from feed, if buffer is now empty)
               processBufferOrFeed()
             }
+            // Add map to the buffer
+            activationMap = activationMap + (r.msg.activationId -> actor)
             actor ! r // forwards the run request to the container
             logContainerStart(r, containerState, newData.activeActivationCount, container)
           case None =>
@@ -292,6 +299,12 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       if (replacePrewarm) {
         adjustPrewarmedContainer(false, false) //in case a prewarm is removed due to health failure or crash
       }
+
+    // Forward messages back to containers
+    case c: LibdActionConfig =>
+      activationMap(c.activationId) ! c
+    case c: LibdTransportConfig =>
+      activationMap(c.activationId) ! c
 
     // This message is received for one of these reasons:
     // 1. Container errored while resuming a warm container, could not process the job, and sent the job back

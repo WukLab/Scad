@@ -208,6 +208,9 @@ case class Start(exec: CodeExec[_], resources: RuntimeResources, ttl: Option[Fin
 case class Run(action: ExecutableWhiskAction, msg: ActivationMessage, retryLogDeadline: Option[Deadline] = None)
 case object Remove
 case class HealthPingEnabled(enabled: Boolean)
+//   Added for communication with libd
+case class LibdActionConfig(activationId: ActivationId, actionName: String, transports: Seq[String])
+case class LibdTransportConfig(activationId: ActivationId, transport: String)
 
 // Events sent by the actor
 case class NeedWork(data: ContainerData)
@@ -594,6 +597,26 @@ class ContainerProxy(factory: (TransactionId,
       } else {
         stay using newData
       }
+  }
+
+  whenUnhandled {
+    case Event(action : LibdActionConfig, data) =>
+      val tidOpt = runBuffer.find(_.msg.activationId == action.activationId).map(_.msg.transid)
+      implicit val tid = tidOpt.get
+
+      val res = data.getContainer
+          .foreach(_.addAction("", action.actionName, action.activationId, Some(action.transports)))
+
+      stay
+
+    case Event(action : LibdTransportConfig, data) =>
+      val tidOpt = runBuffer.find(_.msg.activationId == action.activationId).map(_.msg.transid)
+      implicit val tid = tidOpt.get
+
+      val res = data.getContainer
+          .foreach(_.addTransport(action.activationId, action.transport))
+
+      stay
   }
 
   // Unstash all messages stashed while in intermediate state

@@ -200,6 +200,14 @@ object Invoker {
     BasicHttpService.startHttpService(invokerServer.route, port, httpsConfig)(
       actorSystem,
       ActorMaterializer.create(actorSystem))
+
+    // Start the runtime http service
+    val runtimePort = config.servicePort.toInt + 12
+    val runtimeTopic = s"rackschedDependency${invokerInstance.toInt}"
+    val invokerRuntimeServer = new InvokerRuntimeServer(producer, runtimeTopic)
+    BasicHttpService.startHttpService(invokerRuntimeServer.route, runtimePort, httpsConfig)(
+      actorSystem,
+      ActorMaterializer.create(actorSystem))
   }
 }
 

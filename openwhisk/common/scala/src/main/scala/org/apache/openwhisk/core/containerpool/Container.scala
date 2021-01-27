@@ -21,6 +21,7 @@ import java.time.Instant
 
 import akka.actor.ActorSystem
 import akka.event.Logging.InfoLevel
+import akka.http.scaladsl.model.HttpMethod
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
 import pureconfig._
@@ -69,7 +70,7 @@ object Container {
  * Container manipulation (specifically suspend/resume/destroy) is NOT thread-safe and MUST be synchronized by caller.
  * Container access (specifically run) is thread-safe (e.g. for concurrent activation processing).
  */
-trait Container {
+trait Container extends LibdAPIs[Container] {
 
   implicit protected val as: ActorSystem
   protected val id: ContainerId
@@ -189,6 +190,50 @@ trait Container {
         (result.interval, response)
       }
   }
+
+  /** client libd APIs actions for future usage */
+  def callLibd(method: HttpMethod,
+               body: JsObject,
+               resourcePath: String,
+               timeout: FiniteDuration = Duration(1, SECONDS),
+               maxConcurrent: Int = 1,
+  )(implicit transid: TransactionId): Future[Option[ContainerResponse]] = {
+
+    val start =
+      transid.started(
+        this,
+        LoggingMarkers.INVOKER_CONTAINER_CALL,
+        s"sending arguments to $resourcePath at $id $addr",
+        logLevel = InfoLevel)
+
+    val http = httpConnection.getOrElse {
+      val conn = openConnections(timeout, maxConcurrent)
+      httpConnection = Some(conn)
+      conn
+    }
+
+    val started = Instant.now()
+    http
+      .call(method, resourcePath, body)
+      .map { response =>
+        val finished = Instant.now()
+        RunResult(Interval(started, finished), response)
+      }
+      .andThen { // never fails
+        case Success(r: RunResult) =>
+          transid.finished(
+            this,
+            start.copy(start = r.interval.start),
+            s"container call returns result: ${r.toBriefString}",
+            endTime = r.interval.end,
+            logLevel = InfoLevel)
+        case Failure(t) =>
+          transid.failed(this, start, s"call failed with $t")
+      }
+      .map (_.response.toOption)
+
+  }
+
 
   /**
    * Makes an HTTP request to the container.

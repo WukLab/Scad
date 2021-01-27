@@ -20,18 +20,14 @@ package org.apache.openwhisk.core.containerpool
 import akka.actor.ActorSystem
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
 import akka.http.scaladsl.marshalling.Marshal
-import akka.http.scaladsl.model.HttpMethods
-import akka.http.scaladsl.model.HttpRequest
-import akka.http.scaladsl.model.HttpResponse
-import akka.http.scaladsl.model.MediaTypes
-import akka.http.scaladsl.model.MessageEntity
-import akka.http.scaladsl.model.StatusCodes
+import akka.http.scaladsl.model.{HttpMethod, HttpMethods, HttpRequest, HttpResponse, MediaTypes, MessageEntity, StatusCodes}
 import akka.http.scaladsl.model.headers.Accept
 import akka.http.scaladsl.unmarshalling.Unmarshal
 import akka.stream.StreamTcpException
 import akka.stream.scaladsl.Sink
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
+
 import scala.concurrent.Await
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
@@ -77,6 +73,64 @@ protected class AkkaContainerClient(
     with ContainerClient {
 
   def close() = shutdown()
+
+  /**
+   * method for doing container call with different methods
+   * @param method
+   * @param endpoint
+   * @param body
+   * @param retry
+   * @param tid
+   * @return
+   */
+
+  override def call(method : HttpMethod, endpoint: String, body: JsValue, retry: Boolean = false)(
+    implicit tid: TransactionId): Future[Either[ContainerHttpError, ContainerResponse]] = {
+
+    //create the request
+    val req = Marshal(body).to[MessageEntity].map { b =>
+      HttpRequest(method, endpoint, entity = b)
+        .withHeaders(Accept(MediaTypes.`application/json`))
+    }
+
+    retryingRequest(req, timeout, retry, false, endpoint)
+      .flatMap {
+        case (response, retries) => {
+          if (retries > 0) {
+            logging.debug(this, s"completed request to $endpoint after $retries retries")
+            MetricEmitter.emitHistogramMetric(CONTAINER_CLIENT_RETRIES, retries)
+          }
+
+          response.entity.contentLengthOption match {
+            case Some(contentLength) if response.status != StatusCodes.NoContent =>
+              if (contentLength <= maxResponse.toBytes) {
+                Unmarshal(response.entity.withSizeLimit(maxResponse.toBytes)).to[String].map { o =>
+                  Right(ContainerResponse(response.status.intValue, o, None))
+                }
+              } else {
+                truncated(response.entity.dataBytes).map { s =>
+                  Right(ContainerResponse(response.status.intValue, s, Some(contentLength.B, maxResponse)))
+                }
+              }
+            case _ =>
+              //handle missing Content-Length as NoResponseReceived
+              //also handle 204 as NoResponseReceived, for parity with ApacheBlockingContainerClient client
+              //per https://github.com/akka/akka-http/issues/1459, don't use discardEntityBytes!
+              //(discardEntityBytes was causing failures in WskUnicodeTests)
+              response.entity.dataBytes.runWith(Sink.ignore).map(_ => Left(NoResponseReceived()))
+          }
+        }
+      }
+      .recoverWith {
+        case t: TimeoutException =>
+          Future.successful(Left(Timeout(t)))
+        case t: ContainerHealthError =>
+          //propagate as a failed future; clients can retry at a different container
+          Future.failed(t)
+        case NonFatal(t) =>
+          Future.successful(Left(ConnectionError(t)))
+      }
+  }
 
   /**
    * Posts to hostname/endpoint the given JSON object.
