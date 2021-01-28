@@ -5,6 +5,7 @@ import org.apache.openwhisk.common.TransactionId
 import org.apache.openwhisk.core.entity.ActivationId
 
 import spray.json._
+import DefaultJsonProtocol._
 
 trait LibdAPIs[T <: Container] {
 
@@ -17,9 +18,9 @@ trait LibdAPIs[T <: Container] {
                )(implicit transactionId: TransactionId) = {
 
     val body = JsObject(
-      "server_url" -> JsString(serverUrl),
-      "name" -> JsString(actionName),
-      "activation_id" -> activationId.toJson
+      "server_url"    -> JsString(serverUrl),
+      "name"          -> JsString(actionName),
+      "transports"    -> transports.toJson
     )
 
     callLibd(HttpMethods.POST, body, resourcePath = s"action/${activationId.toString}")
@@ -28,6 +29,21 @@ trait LibdAPIs[T <: Container] {
   def addTransport(activationId: ActivationId, transport : String)(implicit transactionId: TransactionId) = {
     val body = JsObject("transport" -> JsString(transport))
     callLibd(HttpMethods.POST, body, resourcePath = s"action/${activationId.toString}/transport")
+  }
+
+}
+
+object LibdAPIs {
+
+  def mixActions(env: Map[String, JsValue])
+               (serverUrl: String,
+                actionName: String,
+                transports: Option[Seq[String]]): Map[String, JsValue] = {
+    env ++ Map(
+      "server_url" -> JsString(serverUrl),
+      "name"       -> JsString(actionName),
+      "transports" -> transports.toJson
+    )
   }
 
 }

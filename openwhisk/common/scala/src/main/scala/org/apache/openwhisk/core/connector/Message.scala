@@ -457,7 +457,7 @@ object DependencyInvocationMessageContext {
     type DependencyReference = String
 }
 import DependencyInvocationMessageContext._
-case class DependencyInvocationMessage (action: FullyQualifiedEntityName,
+case class DependencyInvocationMessage (action: String,
                                         parallelism: Seq[ParallelismReference],
                                         activationId: ActivationId,
                                         content: Option[JsValue],

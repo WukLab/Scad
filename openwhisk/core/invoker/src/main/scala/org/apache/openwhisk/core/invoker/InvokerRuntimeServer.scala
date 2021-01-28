@@ -52,7 +52,7 @@ class InvokerRuntimeServer(producer: MessageProducer,
               val activationId = ActivationId.parse(_activationId).get
 
               val msg = DependencyInvocationMessage(
-                action = FullyQualifiedEntityName.serdes.read(invoke.action),
+                action = invoke.target,
                 activationId = activationId,
                 content = invoke.value,
                 parallelism = invoke.parallelism.getOrElse(Seq.empty),
