@@ -243,38 +243,102 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
    * - 500 Internal Server Error
    */
   override def activate(user: Identity, entityName: FullyQualifiedEntityName, env: Option[Parameters])(
-    implicit transid: TransactionId) = {
+    implicit transid: TransactionId): RequestContext => Future[RouteResult] = {
     parameter(
       Symbol("blocking") ? false,
       Symbol("result") ? false,
       Symbol("timeout").as[FiniteDuration] ? controllerActivationConfig.maxWaitForBlockingActivation) {
       (blocking, result, waitOverride) =>
         entity(as[Option[JsObject]]) { payload =>
-          getEntity(WhiskActionMetaData.resolveActionAndMergeParameters(entityStore, entityName), Some {
-            act: WhiskActionMetaData =>
-              // resolve the action --- special case for sequences that may contain components with '_' as default package
-              val action = act.resolve(user.namespace)
-              onComplete(entitleReferencedEntitiesMetaData(user, Privilege.ACTIVATE, Some(action.exec))) {
-                case Success(_) =>
-                  val actionWithMergedParams = env.map(action.inherit(_)) getOrElse action
+         val ent = WhiskActionMetaData.resolveActionAndMergeParameters(entityStore, entityName)
+          onComplete(ent) {
+           case Success(entity) =>
+             logging.debug(this, s"[GET] entity success")
+             getEntity(Future.successful(entity), Some {
+               act: WhiskActionMetaData =>
+                 // resolve the action --- special case for sequences that may contain components with '_' as default package
+                 val action = act.resolve(user.namespace)
+                 onComplete(entitleReferencedEntitiesMetaData(user, Privilege.ACTIVATE, Some(action.exec))) {
+                   case Success(_) =>
+                     val actionWithMergedParams = env.map(action.inherit(_)) getOrElse action
 
-                  // incoming parameters may not override final parameters (i.e., parameters with already defined values)
-                  // on an action once its parameters are resolved across package and binding
-                  val allowInvoke = payload
-                    .map(_.fields.keySet.forall(key => !actionWithMergedParams.immutableParameters.contains(key)))
-                    .getOrElse(true)
+                     // incoming parameters may not override final parameters (i.e., parameters with already defined values)
+                     // on an action once its parameters are resolved across package and binding
+                     val allowInvoke = payload
+                       .map(_.fields.keySet.forall(key => !actionWithMergedParams.immutableParameters.contains(key)))
+                       .getOrElse(true)
 
-                  if (allowInvoke) {
-                    doInvoke(user, actionWithMergedParams, payload, blocking, waitOverride, result)
-                  } else {
-                    terminate(BadRequest, Messages.parametersNotAllowed)
-                  }
+                     if (allowInvoke) {
+                       doInvoke(user, actionWithMergedParams, payload, blocking, waitOverride, result)
+                     } else {
+                       terminate(BadRequest, Messages.parametersNotAllowed)
+                     }
 
-                case Failure(f) =>
-                  super.handleEntitlementFailure(f)
-              }
-          })
+                   case Failure(f) =>
+                     super.handleEntitlementFailure(f)
+                 }
+             })
+           case Failure(e: Throwable) =>
+             logging.debug(this, s"[GET] entity for whisk action metadata failed...attempting DAG application")
+             val ent = WhiskApplication.resolveApplication(entityStore, entityName)
+             getEntity(ent, Some { app: WhiskApplication =>
+               val appWithMergedParams = env.map(app.inherit) getOrElse app
+               doDagInvoke(user, appWithMergedParams, payload, blocking, waitOverride, result, entityStore)
+             })
+         }
+
+
         }
+    }
+  }
+
+  private def doDagInvoke(user: Identity,
+                          actionWithMergedParams: WhiskApplication,
+                          payload: Option[JsObject],
+                          blocking: Boolean,
+                          waitOverride: FiniteDuration,
+                          result: Boolean,
+                          entityStore: EntityStore)(implicit transif: TransactionId): RequestContext => Future[RouteResult] = {
+
+    val waitForResponse = if (blocking) Some(waitOverride) else None
+    onComplete(invokeDag(user, actionWithMergedParams, payload, waitForResponse, entityStore, cause = None)) {
+      case Success(Left(activationId)) =>
+        // non-blocking invoke or blocking invoke which got queued instead
+        respondWithActivationIdHeader(activationId) {
+          complete(Accepted, activationId.toJsObject)
+        }
+      case Success(Right(activation)) =>
+        val response = if (result) activation.resultAsJson else activation.toExtendedJson()
+
+        respondWithActivationIdHeader(activation.activationId) {
+          if (activation.response.isSuccess) {
+            complete(OK, response)
+          } else if (activation.response.isApplicationError) {
+            // actions that result is ApplicationError status are considered a 'success'
+            // and will have an 'error' property in the result - the HTTP status is OK
+            // and clients must check the response status if it exists
+            // NOTE: response status will not exist in the JSON object if ?result == true
+            // and instead clients must check if 'error' is in the JSON
+            // PRESERVING OLD BEHAVIOR and will address defect in separate change
+            complete(BadGateway, response)
+          } else if (activation.response.isContainerError) {
+            complete(BadGateway, response)
+          } else {
+            complete(InternalServerError, response)
+          }
+        }
+      case Failure(t: RecordTooLargeException) =>
+        logging.debug(this, s"[POST] action payload was too large")
+        terminate(PayloadTooLarge)
+      case Failure(RejectRequest(code, message)) =>
+        logging.debug(this, s"[POST] action rejected with code $code: $message")
+        terminate(code, message)
+      case Failure(t: LoadBalancerException) =>
+        logging.error(this, s"[POST] failed in loadbalancer: ${t.getMessage}")
+        terminate(ServiceUnavailable)
+      case Failure(t: Throwable) =>
+        logging.error(this, s"[POST] action activation failed: ${t.getMessage}")
+        terminate(InternalServerError)
     }
   }
 
@@ -585,16 +649,14 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
       // Convert each object into a real WhiskAction by converting its relationship mapping to using
       // full WhiskEntityReferences, and put them into the DB
       val objects = a.objects.get.map(a => makeWhiskAction(a, objNames(a.name.get), objNames, Some(ref)))
-      objects foreach { o =>
-        putEntity(WhiskAction, entityStore, o.getReference().toFQEN().toDocId, overwrite = true,
-          (x: WhiskAction) => Future.successful(o), () => Future.successful(o))
+      objects map { o =>
+        WhiskAction.put(entityStore, o, None).flatMap(x => Future.successful(x))
       }
       val objRefs = objects.map(a => WhiskEntityReference(a.namespace, a.name))
 
       // return the properly referenced WhiskFunction
       val wf = a.toWhiskFunction(ref.toFQEN().path, objRefs, Instant.now(), newParents, newChildren, WhiskEntityReference(entityName))
-      putEntity(WhiskFunction, entityStore, wf.fullyQualifiedName(false).toDocId, overwrite = true, (x: WhiskFunction) => Future.successful(wf) , () => Future.successful(wf))
-      Future.successful(wf)
+      WhiskFunction.put(entityStore, wf, None).flatMap(_ => Future.successful(wf))
     })
 
     // finally, all objects and functions have been serialized and put into the DB, add the application

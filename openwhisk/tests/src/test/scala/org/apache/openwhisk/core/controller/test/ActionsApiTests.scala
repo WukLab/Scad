@@ -901,9 +901,28 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
       publish = Some(true),
     )
     val name = aname()
+//    baseApplication.toJson.prettyPrint
     Put(s"$collectionPath/$name", baseApplication) ~> Route.seal(routes(creds)(transid())) ~> check {
       status should be(OK)
     }
+//    val x = entityStore.count(WhiskApplication.collectionName, List.empty, List.empty, StaleParameter.Ok)
+    stream.reset()
+    Post(s"$collectionPath/${name}") ~> Route.seal(routes(creds)(transid())) ~> check {
+      //Loading action with attachment concurrently should load only attachment once
+      println(stream.toString)
+//      val logs = stream.toString
+//      withClue(s"db logs $logs") {
+//        StringUtils.countMatches(logs, "entity for whisk action metadata failed") shouldBe 1
+//      }
+//      stream.reset()
+      status should be(Accepted)
+      val response = responseAs[JsObject]
+      response.fields("activationId") should not be None
+      headers should contain(RawHeader(ActivationIdHeader, response.fields("activationId").convertTo[String]))
+    }
+
+
+
   }
 
   it should "put and then get an action with attachment from cache" in {

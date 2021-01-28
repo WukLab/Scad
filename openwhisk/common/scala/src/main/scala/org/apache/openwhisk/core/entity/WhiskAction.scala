@@ -68,6 +68,21 @@ case class WhiskApplication(namespace: EntityPath,
     "updated" -> updated.toJson,
   )
 
+
+  /**
+   * Merges parameters (usually from package) with existing action parameters.
+   * Existing parameters supersede those in p.
+   */
+  def inherit(p: Parameters): WhiskApplication = copy(parameters = p ++ parameters).revision[WhiskApplication](rev)
+
+  def inherit(p: Parameters, binding: Option[EntityPath] = None) =
+    copy(parameters = p ++ parameters).revision[WhiskApplication](rev)
+
+  def lookupFunctions(entityStore: EntityStore)(implicit transid: TransactionId, ec: ExecutionContext): Future[List[WhiskFunction]] = {
+    Future.sequence(functions map { func =>
+      WhiskFunction.get(entityStore, func.toFQEN().toDocId)
+    })
+  }
 }
 
 object WhiskApplication extends DocumentFactory[WhiskApplication] with WhiskEntityQueries[WhiskApplication] with DefaultJsonProtocol {
@@ -85,6 +100,29 @@ object WhiskApplication extends DocumentFactory[WhiskApplication] with WhiskEnti
     "updated"
   )
 
+  protected[core] def resolveApplication(entityStore: EntityStore, fullyQualifiedName: FullyQualifiedEntityName)(
+    implicit ec: ExecutionContext,
+    transid: TransactionId): Future[WhiskApplication] = {
+    // first check that there is a package to be resolved
+    val entityPath = fullyQualifiedName.path
+    if (entityPath.defaultPackage) {
+      // this is the default package, nothing to resolve
+      WhiskApplication.get(entityStore, fullyQualifiedName.toDocId)
+    } else {
+      // there is a package to be resolved
+      val pkgDocid = fullyQualifiedName.path.toDocId
+      val actionName = fullyQualifiedName.name
+      val wp = WhiskPackage.resolveBinding(entityStore, pkgDocid, mergeParameters = true)
+      wp flatMap { resolvedPkg =>
+        // fully resolved name for the action
+        val fqnAction = resolvedPkg.fullyQualifiedName(withVersion = false).add(actionName)
+        // get the whisk action associate with it and inherit the parameters from the package/binding
+        WhiskApplication.get(entityStore, fqnAction.toDocId) map {
+          _.inherit(resolvedPkg.parameters)
+        }
+      }
+    }
+  }
 }
 
 case class WhiskFunction(namespace: EntityPath,
@@ -116,6 +154,16 @@ case class WhiskFunction(namespace: EntityPath,
     "children" -> children.toJson,
     "parentApp" -> parentApp.toJson,
   )
+
+  def getReference(): WhiskEntityReference = {
+    WhiskEntityReference(namespace, name)
+  }
+
+  def lookupObjectMetadata(entityStore: EntityStore)(implicit transid: TransactionId, ec: ExecutionContext): Future[List[WhiskActionMetaData]] = {
+    Future.sequence(objects map { func =>
+      WhiskActionMetaData.get(entityStore, func.toFQEN().toDocId)
+    })
+  }
 }
 
 object WhiskFunction extends DocumentFactory[WhiskFunction] with WhiskEntityQueries[WhiskFunction]
@@ -247,6 +295,10 @@ abstract class WhiskActionLike(override val name: EntityName) extends WhiskEntit
       "version" -> version.toJson,
       "publish" -> publish.toJson,
       "annotations" -> annotations.toJson)
+
+  def getReference(): WhiskEntityReference = {
+    WhiskEntityReference(namespace, name)
+  }
 }
 
 abstract class WhiskActionLikeMetaData(override val name: EntityName) extends WhiskActionLike(name) {
@@ -382,10 +434,6 @@ case class WhiskAction(namespace: EntityPath, //name
       super.summaryAsJson.fields +
         ("limits" -> limits.toJson) +
         ("exec" -> JsObject("binary" -> JsBoolean(binary))))
-  }
-
-  def getReference(): WhiskEntityReference = {
-    WhiskEntityReference(namespace, name)
   }
 }
 

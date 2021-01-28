@@ -59,7 +59,10 @@ case class ActivationMessage(override val transid: TransactionId,
                              initArgs: Set[String] = Set.empty,
                              lockedArgs: Map[String, String] = Map.empty,
                              cause: Option[ActivationId] = None,
-                             traceContext: Option[Map[String, String]] = None)
+                             traceContext: Option[Map[String, String]] = None,
+                             appActivationId: Option[ActivationId] = None,
+                             functionActivationId: Option[ActivationId] = None
+                            )
     extends Message {
 
   override def serialize = ActivationMessage.serdes.write(this).compactPrint
@@ -172,7 +175,7 @@ object ActivationMessage extends DefaultJsonProtocol {
   def parse(msg: String) = Try(serdes.read(msg.parseJson))
 
   private implicit val fqnSerdes = FullyQualifiedEntityName.serdes
-  implicit val serdes = jsonFormat12(ActivationMessage.apply)
+  implicit val serdes = jsonFormat14(ActivationMessage.apply)
 }
 
 object CombinedCompletionAndResultMessage extends DefaultJsonProtocol {

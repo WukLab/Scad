@@ -152,7 +152,9 @@ protected[actions] trait PrimitiveActions {
     action: ExecutableWhiskActionMetaData,
     payload: Option[JsObject],
     waitForResponse: Option[FiniteDuration],
-    cause: Option[ActivationId])(implicit transid: TransactionId): Future[Either[ActivationId, WhiskActivation]] = {
+    cause: Option[ActivationId],
+    functionId: Option[ActivationId] = None,
+    appId: Option[ActivationId] = None)(implicit transid: TransactionId): Future[Either[ActivationId, WhiskActivation]] = {
 
     // merge package parameters with action (action parameters supersede), then merge in payload
     val args = action.parameters merge payload
@@ -179,7 +181,9 @@ protected[actions] trait PrimitiveActions {
       action.parameters.initParameters,
       action.parameters.lockedParameters(payload.map(_.fields.keySet).getOrElse(Set.empty)),
       cause = cause,
-      WhiskTracerProvider.tracer.getTraceContext(transid))
+      WhiskTracerProvider.tracer.getTraceContext(transid),
+      functionActivationId = functionId,
+      appActivationId = appId)
 
     val postedFuture = loadBalancer.publish(action, message)
 
@@ -686,6 +690,82 @@ protected[actions] trait PrimitiveActions {
   protected val controllerActivationConfig =
     loadConfigOrThrow[ControllerActivationConfig](ConfigKeys.controllerActivation)
 
+
+  protected[controller] def invokeDag(
+                                       user: Identity,
+                                       application: WhiskApplication,
+                                       payload: Option[JsObject],
+                                       waitForResponse: Option[FiniteDuration],
+                                       entityStore: EntityStore,
+                                       cause: Option[ActivationId]
+                                     )(implicit transid: TransactionId): Future[Either[ActivationId, WhiskActivation]] = {
+    application.lookupFunctions(entityStore) flatMap { funcs =>
+        // The ID used to track the success of the entire sequence of DAG invocations. Each object underneath this
+        // should get its own activation ID, but on the final object execution, the result should be posted to the activation
+        // ID for the entire application.
+        val appActivationId = activationIdFactory.make()
+
+        // First, map of all the functions in this application
+        val funcmap = funcs.map(f => f.getReference() -> f).toMap
+        // Find which applications are the starting points of the DAG
+        val startingFuncs: scala.collection.mutable.Set[WhiskEntityReference] = funcmap.keySet.to[scala.collection.mutable.Set]
+        funcmap.values.foreach { f =>
+          f.children.map(wf => startingFuncs --= wf)
+        }
+        if (startingFuncs.size <= 0) {
+          return Future.failed(new RuntimeException("Application not a DAG"));
+        }
+        // Start the first objects of the first functions within the application.
+        val objResults = startingFuncs map { func =>
+          val funcId = activationIdFactory.make()
+          funcmap(func).lookupObjectMetadata(entityStore) map { objs =>
+            // now do something similar as the above to kick off the first objects in this function....
+            val objMap = objs.map(o => o.getReference() -> o).toMap
+            val startingObjs = objMap.keySet.to[collection.mutable.Set]
+            objMap.values.foreach { o =>
+              o.relationships map { r =>
+                startingObjs --= r.dependents
+              }
+            }
+            if (startingObjs.size <= 0) {
+              return Future.failed(new RuntimeException("Object Application not a DAG"))
+            }
+            startingObjs map { obj =>
+              objMap(obj).toExecutableWhiskAction
+            } map { obj =>
+              invokeSimpleAction(user, obj.get, payload, waitForResponse, cause, functionId = Some(funcId), appId = Some(appActivationId))
+            }
+          } recoverWith {
+            case t: Throwable => {
+              logging.debug(this, s"failed to recover when launching DAG objects: $t")
+              Future.failed(t)
+            }
+          }
+        }
+      val context = UserContext(user)
+      val result = Promise[Either[ActivationId, WhiskActivation]]
+      val docid = new DocId(WhiskEntity.qualifiedName(user.namespace.name.toPath, appActivationId))
+      // fast poll
+      pollActivation(docid, context, result, i => 1.seconds + (2.seconds * i), maxRetries = 4)
+      // slow poll
+      pollActivation(docid, context, result, _ => 15.seconds)
+      // 3. Timeout forces a fallback to activationId
+      waitForResponse map { finiteDuration =>
+        val timeout = actorSystem.scheduler.scheduleOnce(finiteDuration)(result.trySuccess(Left(appActivationId)))
+
+        result.future.andThen {
+          case _ => timeout.cancel()
+        }
+      } getOrElse {
+        // no, return the activation id
+        Future.successful(Left(appActivationId))
+      }
+    } recoverWith {
+      case t: Throwable =>
+        logging.debug(this, s"failed to lookup funcs: $t")
+        Future.failed(t)
+    }
+  }
 }
 
 case class ControllerActivationConfig(pollingFromDb: Boolean, maxWaitForBlockingActivation: FiniteDuration)
