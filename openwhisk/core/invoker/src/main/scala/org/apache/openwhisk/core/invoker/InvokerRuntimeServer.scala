@@ -76,8 +76,8 @@ class InvokerRuntimeServer(producer: MessageProducer,
     val res = producer.send(topic = topic, msg).value
     res.getOrElse(Left("Fail")) match {
       case Failure(exception) =>
-        val err = s"posted action ${msg.activationId} to ${msg.action}, ${exception.toString()}"
-        logging.info(this, err)
+        val err = s"failed to post action dependency ${msg.activationId}, ${msg.toString} , ${exception.toString()}"
+        logging.error(this, err)
         Left(err)
 
       case Success(value)     =>

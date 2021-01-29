@@ -101,6 +101,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   // We need to have a actionId, which maps an actionId to activationId
   // This can happens in both side of the work
   var activationMap : Map[ActivationId, ActorRef] = Map.empty
+  val addressBook = new CorunningAddressBook(self)
 
 
   def logContainerStart(r: Run, containerState: String, activeActivations: Int, container: Option[Container]): Unit = {
@@ -207,9 +208,17 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
               // Try to process the next item in buffer (or get another message from feed, if buffer is now empty)
               processBufferOrFeed()
             }
-            // Add map to the buffer
+
+            // Pre run actions, Add map to the buffer
             activationMap = activationMap + (r.msg.activationId -> actor)
+            // For all transports, post a wait; if we get a returned value, we should be able to get the address
+            // We also log this into the run message
+
+
             actor ! r // forwards the run request to the container
+
+            // Post run actions
+
             logContainerStart(r, containerState, newData.activeActivationCount, container)
           case None =>
             // this can also happen if createContainer fails to start a new container, or
@@ -305,6 +314,13 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       activationMap(c.activationId) ! c
     case c: LibdTransportConfig =>
       activationMap(c.activationId) ! c
+
+    case TransportReady(activationId, transport, transportAddress) =>
+      val config = transportAddress.config
+                                   .map { case (k,v) => s"$k,$v;" }
+                                   .mkString("")
+
+      activationMap(activationId) ! LibdTransportConfig(activationId, s"$transport:$config")
 
     // This message is received for one of these reasons:
     // 1. Container errored while resuming a warm container, could not process the job, and sent the job back
