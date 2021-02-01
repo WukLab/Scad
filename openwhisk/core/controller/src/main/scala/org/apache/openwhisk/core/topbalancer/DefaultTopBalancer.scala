@@ -45,6 +45,7 @@ import org.apache.openwhisk.core.entity.TopSchedInstanceId
 import org.apache.openwhisk.core.entity.UUID
 import org.apache.openwhisk.core.entity.WhiskActivation
 import org.apache.openwhisk.core.entity.WhiskEntityStore
+import org.apache.openwhisk.core.entity.types.EntityStore
 import org.apache.openwhisk.core.loadBalancer.ClusterConfig
 import org.apache.openwhisk.core.loadBalancer.FeedFactory
 import org.apache.openwhisk.core.loadBalancer.LoadBalancerException
@@ -64,13 +65,13 @@ import scala.util.Success
 
 class DefaultTopBalancer(config: WhiskConfig,
                          feedFactory: FeedFactory,
-                         val rackPoolFactory: RackPoolFactory)(implicit actorSystem: ActorSystem,
+                         val rackPoolFactory: RackPoolFactory,
+                         val instance: TopSchedInstanceId)(implicit actorSystem: ActorSystem,
                            logging: Logging,
                            materializer: ActorMaterializer,
                            implicit val messagingProvider: MessagingProvider = SpiLoader.get[MessagingProvider])
                            extends TopBalancer {
   protected implicit val executionContext: ExecutionContext = actorSystem.dispatcher
-
   /** Build a cluster of all loadbalancers */
   private val cluster: Option[Cluster] = if (loadConfigOrThrow[ClusterConfig](ConfigKeys.cluster).useClusterBootstrap) {
     AkkaManagement(actorSystem).start()
@@ -131,6 +132,9 @@ class DefaultTopBalancer(config: WhiskConfig,
     messageProducer,
     sendActivationToRack,
     Some(monitor))
+
+  implicit val entityStore: EntityStore = WhiskEntityStore.datastore()
+  val dependencyScheduler: DependencyForwarding = new DependencyForwarding(config, this)
 
   // TODO(zac): setup a feed for DAG completions from racks
   /** Subscribes to ack messages from the invokers (result / completion) and registers a handler for these messages. */
@@ -258,6 +262,8 @@ class DefaultTopBalancer(config: WhiskConfig,
   /** Gets the number of in-flight activations in the system. */
   override def totalActiveActivations: Future[Int] = { Future.successful(0) }
 
+  def id: TopSchedInstanceId = instance
+
 }
 
 case class TopBalancerState(
@@ -366,6 +372,6 @@ object DefaultTopBalancer extends TopBalancerProvider {
             monitor))
       }
     }
-    new DefaultTopBalancer(whiskConfig, createFeedFactory(whiskConfig, instance), rackPoolFactory)
+    new DefaultTopBalancer(whiskConfig, createFeedFactory(whiskConfig, instance), rackPoolFactory, instance)
   }
 }

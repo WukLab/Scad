@@ -310,6 +310,14 @@ case class WhiskEntityReference(namespace: EntityPath, name: EntityName) {
   protected[core] def toFQEN(): FullyQualifiedEntityName = {
     FullyQualifiedEntityName(namespace, name)
   }
+
+  protected[core] def getDocId(): DocId = {
+    toFQEN().toDocId
+  }
+
+  override def toString(): String = {
+    namespace + EntityPath.PATHSEP + name
+  }
 }
 
 object WhiskEntityReference extends DefaultJsonProtocol {
