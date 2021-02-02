@@ -332,4 +332,6 @@ class DegenerateLoadBalancerService(config: WhiskConfig)(implicit ec: ExecutionC
   }
 
   override def rackHealth() = Future.successful(IndexedSeq.empty)
+
+  override def id: TopSchedInstanceId = new TopSchedInstanceId("asdhalksd")
 }

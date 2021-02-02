@@ -24,7 +24,7 @@ import spray.json.DefaultJsonProtocol._
 import spray.json._
 import org.apache.openwhisk.common.tracing.WhiskTracerProvider
 import org.apache.openwhisk.common.{Logging, LoggingMarkers, TransactionId, UserEvents}
-import org.apache.openwhisk.core.connector.{ActivationMessage, EventMessage, MessagingProvider}
+import org.apache.openwhisk.core.connector.{ActivationMessage, EventMessage, MessagingProvider, RunningActivation}
 import org.apache.openwhisk.core.controller.WhiskServices
 import org.apache.openwhisk.core.database.{ActivationStore, NoDocumentException, UserContext}
 import org.apache.openwhisk.core.entitlement.{Resource, _}
@@ -37,6 +37,7 @@ import org.apache.openwhisk.utils.ExecutionContextFactory.FutureExtensions
 import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.containerpool.Interval
 import org.apache.openwhisk.core.containerpool.RuntimeResources
+import org.apache.openwhisk.core.topbalancer.DagExecutor
 
 import scala.collection.mutable.Buffer
 import scala.concurrent.duration._
@@ -154,7 +155,8 @@ protected[actions] trait PrimitiveActions {
     waitForResponse: Option[FiniteDuration],
     cause: Option[ActivationId],
     functionId: Option[ActivationId] = None,
-    appId: Option[ActivationId] = None)(implicit transid: TransactionId): Future[Either[ActivationId, WhiskActivation]] = {
+    appId: Option[ActivationId] = None,
+    corunning: Option[Seq[RunningActivation]] = None)(implicit transid: TransactionId): Future[Either[ActivationId, WhiskActivation]] = {
 
     // merge package parameters with action (action parameters supersede), then merge in payload
     val args = action.parameters merge payload
@@ -182,6 +184,7 @@ protected[actions] trait PrimitiveActions {
       action.parameters.lockedParameters(payload.map(_.fields.keySet).getOrElse(Set.empty)),
       cause = cause,
       WhiskTracerProvider.tracer.getTraceContext(transid),
+      siblings = corunning,
       functionActivationId = functionId,
       appActivationId = appId)
 
@@ -717,30 +720,12 @@ protected[actions] trait PrimitiveActions {
         }
         // Start the first objects of the first functions within the application.
         val objResults = startingFuncs map { func =>
-          val funcId = activationIdFactory.make()
-          funcmap(func).lookupObjectMetadata(entityStore) map { objs =>
-            // now do something similar as the above to kick off the first objects in this function....
-            val objMap = objs.map(o => o.getReference() -> o).toMap
-            val startingObjs = objMap.keySet.to[collection.mutable.Set]
-            objMap.values.foreach { o =>
-              o.relationships map { r =>
-                startingObjs --= r.dependents
-              }
-            }
-            if (startingObjs.size <= 0) {
-              return Future.failed(new RuntimeException("Object Application not a DAG"))
-            }
-            startingObjs map { obj =>
-              objMap(obj).toExecutableWhiskAction
-            } map { obj =>
-              invokeSimpleAction(user, obj.get, payload, waitForResponse, cause, functionId = Some(funcId), appId = Some(appActivationId))
-            }
-          } recoverWith {
-            case t: Throwable => {
-              logging.debug(this, s"failed to recover when launching DAG objects: $t")
-              Future.failed(t)
-            }
-          }
+          DagExecutor.executeFunction(funcmap(func), entityStore,
+            (obj, funcid, corunning) =>
+              invokeSimpleAction(user, obj, payload, waitForResponse, cause,
+                functionId = Some(funcid),
+                appId = Some(appActivationId),
+                corunning = Some(corunning.toSeq.map(x => RunningActivation(x, None)))))
         }
       val context = UserContext(user)
       val result = Promise[Either[ActivationId, WhiskActivation]]

@@ -40,8 +40,7 @@ protected[openwhisk] case class ActivationId private (val asString: String) exte
   def toJsObject: JsObject = JsObject("activationId" -> asString.toJson)
 }
 
-protected[core] object ActivationId {
-
+protected[core] object ActivationId extends DefaultJsonProtocol {
   protected[core] trait ActivationIdGenerator {
     def make(): ActivationId = ActivationId.generate()
   }

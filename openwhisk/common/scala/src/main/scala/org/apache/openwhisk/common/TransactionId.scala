@@ -246,6 +246,7 @@ object TransactionId {
   val topsched = TransactionId(systemPrefix + "topsched") // tl scheduler startup
   val racksched = TransactionId(systemPrefix + "racksched") // rack scheduler startup
   val rackHealth = TransactionId(systemPrefix + "rackHealth") // rack scheduler startup
+  val depInvocation = TransactionId(systemPrefix + "depInvocation") // rack scheduler startup
 
   private val dict = ('A' to 'Z') ++ ('a' to 'z') ++ ('0' to '9')
 

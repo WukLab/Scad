@@ -64,6 +64,8 @@ trait TopBalancer {
 
   /** Gets the size of the cluster all loadbalancers are acting in */
   def clusterSize: Int = 1
+
+  def id: TopSchedInstanceId
 }
 
 trait TopBalancerProvider extends Spi {

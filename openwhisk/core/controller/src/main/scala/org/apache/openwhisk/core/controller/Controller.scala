@@ -33,7 +33,7 @@ import spray.json._
 import org.apache.openwhisk.common.Https.HttpsConfig
 import org.apache.openwhisk.common.{AkkaLogging, ConfigMXBean, Logging, LoggingMarkers, TransactionId}
 import org.apache.openwhisk.core.WhiskConfig
-import org.apache.openwhisk.core.connector.MessagingProvider
+import org.apache.openwhisk.core.connector.{DependencyInvocationMessageContext, MessagingProvider}
 import org.apache.openwhisk.core.containerpool.logging.LogStoreProvider
 import org.apache.openwhisk.core.database.{ActivationStoreProvider, CacheChangeNotification, RemoteCacheInvalidation}
 import org.apache.openwhisk.core.entitlement._
@@ -269,6 +269,7 @@ object Controller {
 //      ("health", "health", None),
       ("rackHealth", "rackHealth", None),
       ("cacheInvalidation", "cache-invalidation", None),
+      (DependencyInvocationMessageContext.DEP_INVOCATION_TOPIC, "dependency-invocation", None),
       ("events", "events", None)).foreach {
       case (topic, topicConfigurationKey, maxMessageBytes) =>
         if (msgProvider.ensureTopic(config, topic, topicConfigurationKey, maxMessageBytes).isFailure) {

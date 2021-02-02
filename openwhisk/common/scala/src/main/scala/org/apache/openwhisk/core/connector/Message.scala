@@ -24,10 +24,15 @@ import org.apache.openwhisk.core.entity._
 
 import scala.concurrent.duration._
 import akka.http.scaladsl.model.StatusCodes._
-import java.util.concurrent.TimeUnit
+import org.apache.openwhisk.core.connector.RunningActivation.serdes
+import org.apache.openwhisk.core.database.DocumentFactory
 
-import org.apache.openwhisk.core.entity.ActivationResponse.{statusForCode, ERROR_FIELD}
+import java.util.concurrent.TimeUnit
+import org.apache.openwhisk.core.entity.ActivationResponse.{ERROR_FIELD, statusForCode}
+import org.apache.openwhisk.core.entity.types.EntityStore
 import org.apache.openwhisk.utils.JsHelpers
+
+import scala.concurrent.Future
 
 /** Basic trait for messages that are sent on a message bus connector. */
 trait Message {
@@ -60,6 +65,7 @@ case class ActivationMessage(override val transid: TransactionId,
                              lockedArgs: Map[String, String] = Map.empty,
                              cause: Option[ActivationId] = None,
                              traceContext: Option[Map[String, String]] = None,
+                             siblings: Option[Seq[RunningActivation]] = None,
                              appActivationId: Option[ActivationId] = None,
                              functionActivationId: Option[ActivationId] = None
                             )
@@ -175,7 +181,7 @@ object ActivationMessage extends DefaultJsonProtocol {
   def parse(msg: String) = Try(serdes.read(msg.parseJson))
 
   private implicit val fqnSerdes = FullyQualifiedEntityName.serdes
-  implicit val serdes = jsonFormat14(ActivationMessage.apply)
+  implicit val serdes = jsonFormat15(ActivationMessage.apply)
 }
 
 object CombinedCompletionAndResultMessage extends DefaultJsonProtocol {
@@ -438,4 +444,72 @@ object EventMessage extends DefaultJsonProtocol {
   }
 
   def parse(msg: String) = Try(format.read(msg.parseJson))
+}
+
+
+/**
+ * Message for sending dependency invocation back to top level scheduler
+ */
+// TODO: function reference for messages?
+object DependencyInvocationMessageContext {
+  val DEP_INVOCATION_TOPIC: String = "schedulerDependency"
+  type InstanceReference = String
+  type ParallelismReference = String
+  type DependencyReference = String
+}
+import DependencyInvocationMessageContext._
+case class DependencyInvocationMessage(action: String,
+                                       parallelism: Seq[ParallelismReference],
+                                       activationId: ActivationId,
+                                       content: Option[JsObject],
+                                       dependency: Seq[DependencyReference],
+                                       user: Identity,
+                                       appActivationId: Option[ActivationId] = None,
+                                       functionActivationId: Option[ActivationId] = None
+                                       )
+    extends Message {
+
+  override def serialize: String = DependencyInvocationMessage.serdes.write(this).compactPrint
+
+  override def toString: String = {
+    val value = (content getOrElse JsObject.empty).compactPrint
+    s"$action?message=$value"
+  }
+
+  def getFQEN(): FullyQualifiedEntityName = {
+    EntityPath(action).toFullyQualifiedEntityName
+  }
+
+}
+
+object DependencyInvocationMessage extends DefaultJsonProtocol {
+  def parse(msg: String): Try[DependencyInvocationMessage] = Try(serdes.read(msg.parseJson))
+
+  implicit val serdes: RootJsonFormat[DependencyInvocationMessage] = jsonFormat8(DependencyInvocationMessage.apply)
+}
+
+case class RunningActivation(objActivation: ActivationId,
+                             connectionInfo: Option[String]) extends WhiskEntity(EntityName(objActivation.asString), "runningActivation") {
+
+  def putDoc()(implicit transid: TransactionId, entityStore: EntityStore): Future[DocInfo] = {
+    RunningActivation.put(entityStore, this, None)(transid, None)
+  }
+  /**
+   * Gets unique document identifier for the document.
+   */
+//  override protected def docid: DocId = DocId(objActivation.toString)
+
+  /**
+   * The representation as JSON, e.g. for REST calls. Does not include id/rev.
+   */
+  override def toJson: JsObject = serdes.write(this).asJsObject
+
+  override val namespace: EntityPath = EntityPath(objActivation.asString)
+  override val version: SemVer = SemVer()
+  override val publish: Boolean = false
+  override val annotations: Parameters = Parameters()
+}
+
+object RunningActivation extends DefaultJsonProtocol with DocumentFactory[RunningActivation] {
+  implicit val serdes: RootJsonFormat[RunningActivation] = jsonFormat2(RunningActivation.apply)
 }
