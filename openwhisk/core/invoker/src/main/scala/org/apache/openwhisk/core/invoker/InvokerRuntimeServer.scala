@@ -56,7 +56,9 @@ class InvokerRuntimeServer(producer: MessageProducer,
                 activationId = activationId,
                 content = invoke.value,
                 parallelism = invoke.parallelism.getOrElse(Seq.empty),
-                dependency = invoke.dependency.getOrElse(Seq.empty)
+                dependency = invoke.dependency.getOrElse(Seq.empty),
+
+
               )
 
               invokeDependency(msg, topic) match {
