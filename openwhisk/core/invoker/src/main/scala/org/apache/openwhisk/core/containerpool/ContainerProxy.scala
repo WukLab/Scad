@@ -205,7 +205,8 @@ case class WarmedData(override val container: Container,
 
 // Events received by the actor
 case class Start(exec: CodeExec[_], resources: RuntimeResources, ttl: Option[FiniteDuration] = None)
-case class Run(action: ExecutableWhiskAction, msg: ActivationMessage, retryLogDeadline: Option[Deadline] = None)
+case class Run(action: ExecutableWhiskAction, msg: ActivationMessage, retryLogDeadline: Option[Deadline] = None,
+               corunningConfig: Option[Seq[String]] = None)
 case object Remove
 case class HealthPingEnabled(enabled: Boolean)
 //   Added for communication with libd
@@ -213,6 +214,7 @@ case class LibdActionConfig(activationId: ActivationId, actionName: String, tran
 case class LibdTransportConfig(activationId: ActivationId, transport: String)
 //   Added for component broadcast
 case class TransportReady(activationId: ActivationId, transport: String, transportAddress: TransportAddress)
+case class ObjectEnd(activationId: ActivationId)
 
 // Events sent by the actor
 case class NeedWork(data: ContainerData)
@@ -861,12 +863,13 @@ class ContainerProxy(factory: (TransactionId,
           "deadline" -> (Instant.now.toEpochMilli + actionTimeout.toMillis).toString.toJson)
 
         // TODO: we need to inject things into this environment
-        // val envMix = LibdAPIs.mixActions(env)(...)
+        val serverUrl = "8081"
+        val envMix = LibdAPIs.Action.mix(env)(serverUrl, job.msg.activationId.toString, job.corunningConfig)
 
         container
           .run(
             parameters,
-            env.toJson.asJsObject,
+            envMix.toJson.asJsObject,
             actionTimeout,
             job.action.limits.concurrency.maxConcurrent,
             reschedule)(job.msg.transid)

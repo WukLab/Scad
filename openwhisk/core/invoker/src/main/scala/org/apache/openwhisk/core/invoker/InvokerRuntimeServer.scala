@@ -27,7 +27,7 @@ object RuntimeJsonSupport extends DefaultJsonProtocol with SprayJsonSupport {
 class InvokerRuntimeServer(producer: MessageProducer,
                            topic: String
 ) (
-  implicit val acterSystem : ActorSystem,
+  implicit val actorSystem : ActorSystem,
   implicit val executionContext: ExecutionContext,
   implicit val logging: Logging
 ) {
@@ -42,7 +42,7 @@ class InvokerRuntimeServer(producer: MessageProducer,
       concat {
 
         path ("corunning") {
-          complete((500, "not implemented"))
+          complete((500, s"not implemented ${_activationId}"))
         }
 
         path ("dependency") {
@@ -55,10 +55,7 @@ class InvokerRuntimeServer(producer: MessageProducer,
                 action = invoke.target,
                 activationId = activationId,
                 content = invoke.value,
-                parallelism = invoke.parallelism.getOrElse(Seq.empty),
-                dependency = invoke.dependency.getOrElse(Seq.empty),
-
-
+                dependency = invoke.dependency.getOrElse(Seq.empty)
               )
 
               invokeDependency(msg, topic) match {

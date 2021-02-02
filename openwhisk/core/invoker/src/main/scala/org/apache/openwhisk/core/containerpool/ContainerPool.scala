@@ -28,6 +28,8 @@ import scala.collection._
 import scala.concurrent.duration._
 import scala.util.{Random, Try}
 
+import cats.implicits._
+
 sealed trait WorkerState
 case object Busy extends WorkerState
 case object Free extends WorkerState
@@ -211,15 +213,45 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
             // Pre run actions, Add map to the buffer
             activationMap = activationMap + (r.msg.activationId -> actor)
-            // For all transports, post a wait; if we get a returned value, we should be able to get the address
             // We also log this into the run message
+            val fetchedAddresses = for {
+              seq <- r.msg.siblings
+              transports <- seq
+                .map { ar =>
+                  ar.connectionInfo.flatMap { trans =>
+                    val name = LibdAPIs.Transport.getName(trans)
+                    // Need wait here?
+                    if (LibdAPIs.Transport.needWait(trans))
+                      addressBook.postWait(r.msg.activationId, name)
+                                 .map (_.toConfigString(trans))
+                    else None
+                  }
+                }.filter(_.nonEmpty)
+                .toList
+                .traverse(identity)
+            } yield transports
 
-
-            actor ! r // forwards the run request to the container
+            actor ! r.copy(corunningConfig = fetchedAddresses)
 
             // Post run actions
+            // TODO: nake get call
+            val containerIp = container.map(_.addr.host)
+                                       .get
+
+            r.msg.siblings.foreach(_.foreach { ar =>
+              ar.connectionInfo.foreach { trans =>
+                // TODO: make this process binding to trans object
+                val name = LibdAPIs.Transport.getName(trans)
+                val port = LibdAPIs.Transport.getPort(trans)
+                // Need wait here?
+                if (LibdAPIs.Transport.needSignal(trans))
+                  addressBook.signalReady(r.msg.activationId, name,
+                    TransportAddress.TCPTransport(trans, containerIp, port))
+              }
+            })
 
             logContainerStart(r, containerState, newData.activeActivationCount, container)
+
           case None =>
             // this can also happen if createContainer fails to start a new container, or
             // if a job is rescheduled but the container it was allocated to has not yet destroyed itself
@@ -315,12 +347,15 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     case c: LibdTransportConfig =>
       activationMap(c.activationId) ! c
 
+    // Handles braod cast for having new address
     case TransportReady(activationId, transport, transportAddress) =>
-      val config = transportAddress.config
-                                   .map { case (k,v) => s"$k,$v;" }
-                                   .mkString("")
-
+      val config = transportAddress.toConfigString(transport)
       activationMap(activationId) ! LibdTransportConfig(activationId, s"$transport:$config")
+
+    // Handles end of objects
+    case ObjectEnd(activationId) =>
+      activationMap = activationMap - activationId
+      addressBook.remove(activationId)
 
     // This message is received for one of these reasons:
     // 1. Container errored while resuming a warm container, could not process the job, and sent the job back

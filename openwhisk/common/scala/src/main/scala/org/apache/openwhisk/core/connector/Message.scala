@@ -53,6 +53,7 @@ trait Message {
   override def toString = serialize
 }
 
+
 case class ActivationMessage(override val transid: TransactionId,
                              action: FullyQualifiedEntityName,
                              revision: DocRevision,
@@ -460,10 +461,10 @@ object DependencyInvocationMessageContext {
 import DependencyInvocationMessageContext._
 case class DependencyInvocationMessage(action: String,
                                        activationId: ActivationId,
-                                       content: Option[JsObject],
+                                       content: Option[JsValue],
                                       // No reference for now, safe to change for future
                                        dependency: Seq[DependencyReference],
-                                       user: Identity, // Can this parameter be get from activation id
+                                      // user: Identity, // Can this parameter be get from activation id
                                       // As Parallelism Control?
                                        appActivationId: Option[ActivationId] = None,
                                        functionActivationId: Option[ActivationId] = None
@@ -486,8 +487,17 @@ case class DependencyInvocationMessage(action: String,
 object DependencyInvocationMessage extends DefaultJsonProtocol {
   def parse(msg: String): Try[DependencyInvocationMessage] = Try(serdes.read(msg.parseJson))
 
-  implicit val serdes: RootJsonFormat[DependencyInvocationMessage] = jsonFormat8(DependencyInvocationMessage.apply)
+  implicit val serdes: RootJsonFormat[DependencyInvocationMessage] = jsonFormat6(DependencyInvocationMessage.apply)
 }
+
+// An connection for an object
+case class _RunningActivation(activationId: ActivationId,
+                              transportName: String, // Name of the transport, should be same on both side
+                              transportType: String, // type of transport,
+                              transportImpl: String, // Implementation of transport
+                              needWait: Boolean,
+                              needSignal: Boolean
+                             )
 
 case class RunningActivation(objActivation: ActivationId,
                              connectionInfo: Option[String]) extends WhiskEntity(EntityName(objActivation.asString), "runningActivation") {

@@ -34,6 +34,10 @@ ext.coverageDirs = [
 ]
 distDockerCoverage.dependsOn ':common:scala:scoverageClasses', 'scoverageClasses'
 
+tasks.withType(ScalaCompile) {
+    scalaCompileOptions.additionalParameters = ["-Ypartial-unification"]
+}
+
 dependencies {
     compile "org.scala-lang:scala-library:${gradle.scala.version}"
     compile project(':common:scala')
@@ -46,6 +50,9 @@ dependencies {
         exclude group: 'log4j'
         exclude group: 'jline'
     }
+
+    // add cats
+    compile "org.typelevel:cats-core_${gradle.scala.depVersion}:2.3.1"
 }
 
 mainClassName = "org.apache.openwhisk.core.invoker.Invoker"
