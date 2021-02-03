@@ -485,7 +485,7 @@ case class DependencyInvocationMessage(action: String,
 object DependencyInvocationMessage extends DefaultJsonProtocol {
   def parse(msg: String): Try[DependencyInvocationMessage] = Try(serdes.read(msg.parseJson))
 
-  implicit val serdes: RootJsonFormat[DependencyInvocationMessage] = jsonFormat7(DependencyInvocationMessage.apply)
+  implicit val serdes: RootJsonFormat[DependencyInvocationMessage] = jsonFormat6(DependencyInvocationMessage.apply)
 }
 
 // An connection for an object

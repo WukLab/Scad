@@ -213,7 +213,7 @@ case class HealthPingEnabled(enabled: Boolean)
 case class LibdActionConfig(activationId: ActivationId, actionName: String, transports: Seq[String])
 case class LibdTransportConfig(activationId: ActivationId, transport: String)
 //   Added for component broadcast
-case class TransportReady(activationId: ActivationId, transport: String, transportAddress: TransportAddress)
+case class TransportReady(activationId: ActivationId, transportAddress: TransportAddress)
 case class ObjectEnd(activationId: ActivationId)
 
 // Events sent by the actor

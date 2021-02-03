@@ -7,7 +7,7 @@ import akka.http.scaladsl.server.Route
 import org.apache.openwhisk.common.Logging
 import org.apache.openwhisk.core.connector._
 import org.apache.openwhisk.core.entity._
-import spray.json.{DefaultJsonProtocol, JsValue}
+import spray.json._
 
 import scala.concurrent.{ExecutionContext}
 import scala.util.{Failure, Success}
@@ -15,7 +15,7 @@ import scala.util.{Failure, Success}
 
 case class RuntimeDependencyInvocation(target: String,
                                        action: JsValue,
-                                       value: Option[JsValue],
+                                       value: Option[JsObject],
                                        parallelism : Option[Seq[String]],
                                        dependency : Option[Seq[String]]
                                       )

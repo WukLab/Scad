@@ -214,17 +214,18 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
             activationMap = activationMap + (r.msg.activationId -> actor)
             // We also log this into the run message
             val fetchedAddresses = for {
+              runtime <- r.action.runtimeType
               seq <- r.msg.siblings
               transports <- seq
-                .map { ar =>
-                  ar.connectionInfo.flatMap { trans =>
-                    val name = LibdAPIs.Transport.getName(trans)
-                    // Need wait here?
-                    if (LibdAPIs.Transport.needWait(trans))
-                      addressBook.postWait(r.msg.activationId, name)
-                                 .map (_.toConfigString(trans))
-                    else None
-                  }
+                .map { ra =>
+                  val aid = r.msg.activationId
+                  val name = LibdAPIs.Transport.getName(ra)
+                  val impl = LibdAPIs.Transport.getImpl(ra, runtime)
+                  // Need wait here?
+                  if (LibdAPIs.Transport.needWait(runtime))
+                    addressBook.postWait(r.msg.activationId, TransportRequest(name, impl, aid))
+                               .map (_.toConfigString)
+                  else None
                 }.filter(_.nonEmpty)
                 .toList
                 .traverse(identity)
@@ -237,17 +238,17 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
             val containerIp = container.map(_.addr.host)
                                        .get
 
-            r.msg.siblings.foreach(_.foreach { ar =>
-              ar.connectionInfo.foreach { trans =>
-                // TODO: make this process binding to trans object
-                val name = LibdAPIs.Transport.getName(trans)
-                val port = LibdAPIs.Transport.getPort(trans)
-                // Need wait here?
-                if (LibdAPIs.Transport.needSignal(trans))
-                  addressBook.signalReady(r.msg.activationId, name,
-                    TransportAddress.TCPTransport(trans, containerIp, port))
-              }
-            })
+            for {
+              runtime <- r.action.runtimeType
+              seq <- r.msg.siblings
+            } yield seq.map { ra =>
+              val name = LibdAPIs.Transport.getName(ra)
+              val port = LibdAPIs.Transport.getPort(ra)
+              // Need wait here?
+              if (LibdAPIs.Transport.needSignal(runtime))
+                addressBook.signalReady(r.msg.activationId, name,
+                  TransportAddress.TCPTransport(containerIp, port))
+            }
 
             logContainerStart(r, containerState, newData.activeActivationCount, container)
 
@@ -348,9 +349,9 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       activationMap(c.activationId) ! c
 
     // Handles braod cast for having new address
-    case TransportReady(activationId, transport, transportAddress) =>
-      val config = transportAddress.toConfigString(transport)
-      activationMap(activationId) ! LibdTransportConfig(activationId, s"$transport:$config")
+    case TransportReady(activationId, transportAddress) =>
+      val config = transportAddress.toConfigString
+      activationMap(activationId) ! LibdTransportConfig(activationId, config)
 
     // Handles end of objects
     case ObjectEnd(activationId) =>

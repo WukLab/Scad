@@ -3,9 +3,9 @@ package org.apache.openwhisk.core.containerpool
 import akka.http.scaladsl.model.HttpMethods
 import org.apache.openwhisk.common.TransactionId
 import org.apache.openwhisk.core.entity.ActivationId
-
 import spray.json._
 import DefaultJsonProtocol._
+import org.apache.openwhisk.core.connector.RunningActivation
 
 trait LibdAPIs[T <: Container] {
 
@@ -49,10 +49,22 @@ object LibdAPIs {
   }
 
   object Transport {
-    def getName(url : String): String = url.split(';')(0)
-    def getPort(url : String): Int = 2333
-    def needWait(url : String) : Boolean = true
-    def needSignal(url : String) : Boolean = true
+
+    def getName(ra: RunningActivation): String = "memory"
+    def getImpl(ra: RunningActivation, runtimeType: String): String = runtimeType match {
+      case "memory" => s"rdma_server_${ra.transportImpl.toLowerCase()}"
+      case _        => s"rdma_${ra.transportImpl.toLowerCase()}"
+    }
+
+    def getPort(ra: RunningActivation): Int = 2333
+    def needWait(runtimeType : String) : Boolean = runtimeType match {
+      case "memory" => false
+      case _        => true
+    }
+    def needSignal(runtimeType : String) : Boolean = runtimeType match {
+      case "memory" => true
+      case _        => false
+    }
 
   }
 
