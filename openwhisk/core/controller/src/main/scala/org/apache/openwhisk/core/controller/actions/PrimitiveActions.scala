@@ -725,7 +725,7 @@ protected[actions] trait PrimitiveActions {
               invokeSimpleAction(user, obj, payload, waitForResponse, cause,
                 functionId = Some(funcid),
                 appId = Some(appActivationId),
-                corunning = Some(corunning.toSeq.map(x => RunningActivation(x, None)))))
+                corunning = Some(corunning.toSeq.map(x => RunningActivation(x)))))
         }
       val context = UserContext(user)
       val result = Promise[Either[ActivationId, WhiskActivation]]

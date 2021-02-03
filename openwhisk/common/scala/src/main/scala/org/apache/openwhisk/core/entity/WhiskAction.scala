@@ -246,6 +246,7 @@ case class WhiskActionPut(exec: Option[Exec] = None,
                           version: Option[SemVer] = None,
                           publish: Option[Boolean] = None,
                           annotations: Option[Parameters] = None,
+                          runtimeType: Option[String] = None,
                           delAnnotations: Option[Array[String]] = None,
                           relationships: Option[WhiskActionRelationshipPut] = None,
                           name: Option[String] = Some("default")) {
@@ -266,6 +267,12 @@ case class WhiskActionPut(exec: Option[Exec] = None,
         WhiskActionPut(Some(newExec), parameters, limits, version, publish, annotations, relationships = relationships)
       case _ => this
     } getOrElse this
+  }
+
+  protected[core] def withRelationshipsPut(relations: WhiskActionRelationshipPut): WhiskActionPut = {
+    WhiskActionPut(exec, parameters, limits, version, publish, annotations, runtimeType, delAnnotations,
+      relationships = Some(relations),
+      name = name)
   }
 }
 
@@ -386,6 +393,7 @@ case class WhiskAction(namespace: EntityPath, //name
                        publish: Boolean = false,
                        annotations: Parameters = Parameters(),
                        override val updated: Instant = WhiskEntity.currentMillis(),
+                       runtimeType: Option[String] = None,
                        relationships: Option[WhiskActionRelationship] = None,
                        parentFunc: Option[WhiskEntityReference] = None)
     extends WhiskActionLike(name) {
@@ -423,7 +431,7 @@ case class WhiskAction(namespace: EntityPath, //name
   def toExecutableWhiskAction: Option[ExecutableWhiskAction] = exec match {
     case codeExec: CodeExec[_] =>
       Some(
-        ExecutableWhiskAction(namespace, name, codeExec, parameters, limits, version, publish, annotations, relationships = relationships, parentFunc = parentFunc)
+        ExecutableWhiskAction(namespace, name, codeExec, parameters, limits, version, publish, annotations, runtimeType = runtimeType, relationships = relationships, parentFunc = parentFunc)
           .revision[ExecutableWhiskAction](rev))
     case _ => None
   }
@@ -537,6 +545,7 @@ case class ExecutableWhiskAction(namespace: EntityPath,
                                  publish: Boolean = false,
                                  annotations: Parameters = Parameters(),
                                  binding: Option[EntityPath] = None,
+                                 runtimeType: Option[String] = None,
                                  relationships: Option[WhiskActionRelationship] = Some(WhiskActionRelationship.empty),
                                  parentFunc: Option[WhiskEntityReference] = None
                                 )
@@ -572,7 +581,7 @@ case class ExecutableWhiskAction(namespace: EntityPath,
   }
 
   def toWhiskAction =
-    WhiskAction(namespace, name, exec, parameters, limits, version, publish, annotations, relationships = relationships, parentFunc = parentFunc)
+    WhiskAction(namespace, name, exec, parameters, limits, version, publish, annotations, runtimeType = runtimeType, relationships = relationships, parentFunc = parentFunc)
       .revision[WhiskAction](rev)
 }
 
@@ -626,6 +635,7 @@ object WhiskAction extends DocumentFactory[WhiskAction] with WhiskEntityQueries[
         "publish",
         "annotations",
         "updated",
+      "runtimeType",
        "relationships",
        "parentFunc").write(obj)
 
@@ -640,6 +650,7 @@ object WhiskAction extends DocumentFactory[WhiskAction] with WhiskEntityQueries[
         fromField[Boolean](json, "publish"),
         fromField[Parameters](json, "annotations"),
         fromField[Instant](json, "updated"),
+        fromField[Option[String]](json, "runtimeType"),
         fromField[Option[WhiskActionRelationship]](json, "relationships"),
         fromField[Option[WhiskEntityReference]](json, "parentFunc")
       )
@@ -954,10 +965,10 @@ object ActionLimitsOption extends DefaultJsonProtocol {
 }
 
 object WhiskActionPut extends DefaultJsonProtocol {
-  implicit val serdes: RootJsonFormat[WhiskActionPut] = jsonFormat9(WhiskActionPut.apply)
+  implicit val serdes: RootJsonFormat[WhiskActionPut] = jsonFormat10(WhiskActionPut.apply)
 
   def fromWhiskAction(obj: WhiskAction): WhiskActionPut = {
     WhiskActionPut(Some(obj.exec), Some(obj.parameters), Some(ActionLimitsOption.fromActionLimit(obj.limits)),
-      Some(obj.version), Some(obj.publish), Some(obj.annotations), None, obj.relationships.map(_.toRelationshipPut()), name = Some(obj.name.toString()))
+      Some(obj.version), Some(obj.publish), Some(obj.annotations), obj.runtimeType, None, obj.relationships.map(_.toRelationshipPut()), name = Some(obj.name.toString()))
   }
 }

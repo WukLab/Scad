@@ -464,8 +464,6 @@ case class DependencyInvocationMessage(action: String,
                                        content: Option[JsValue],
                                       // No reference for now, safe to change for future
                                        dependency: Seq[DependencyReference],
-                                      // user: Identity, // Can this parameter be get from activation id
-                                      // As Parallelism Control?
                                        appActivationId: Option[ActivationId] = None,
                                        functionActivationId: Option[ActivationId] = None
                                        )
@@ -487,7 +485,7 @@ case class DependencyInvocationMessage(action: String,
 object DependencyInvocationMessage extends DefaultJsonProtocol {
   def parse(msg: String): Try[DependencyInvocationMessage] = Try(serdes.read(msg.parseJson))
 
-  implicit val serdes: RootJsonFormat[DependencyInvocationMessage] = jsonFormat6(DependencyInvocationMessage.apply)
+  implicit val serdes: RootJsonFormat[DependencyInvocationMessage] = jsonFormat7(DependencyInvocationMessage.apply)
 }
 
 // An connection for an object
@@ -500,15 +498,15 @@ case class _RunningActivation(activationId: ActivationId,
                              )
 
 case class RunningActivation(objActivation: ActivationId,
-                             connectionInfo: Option[String]) extends WhiskEntity(EntityName(objActivation.asString), "runningActivation") {
+//                             transportName: String, // Name of the transport, should be same on both side // removed temporarily
+//                             transportType: String, // type of transport, // derived from object at invoker side
+                             transportImpl: String, // Implementation of transport
+                             needWait: Boolean,
+                             needSignal: Boolean) extends WhiskEntity(EntityName(objActivation.asString), "runningActivation") {
 
   def putDoc()(implicit transid: TransactionId, entityStore: EntityStore): Future[DocInfo] = {
     RunningActivation.put(entityStore, this, None)(transid, None)
   }
-  /**
-   * Gets unique document identifier for the document.
-   */
-//  override protected def docid: DocId = DocId(objActivation.toString)
 
   /**
    * The representation as JSON, e.g. for REST calls. Does not include id/rev.
@@ -522,5 +520,14 @@ case class RunningActivation(objActivation: ActivationId,
 }
 
 object RunningActivation extends DefaultJsonProtocol with DocumentFactory[RunningActivation] {
-  implicit val serdes: RootJsonFormat[RunningActivation] = jsonFormat2(RunningActivation.apply)
+
+  def apply(objActivation: ActivationId): RunningActivation = {
+    RunningActivation(objActivation, "tcp", true, true)
+  }
+
+  implicit val serdes: RootJsonFormat[RunningActivation] = jsonFormat(RunningActivation.apply,
+  "objActivation",
+  "transportImpl",
+    "needWait",
+  "needSignal")
 }
