@@ -1,6 +1,6 @@
 package org.apache.openwhisk.core.topbalancer
 
-import akka.actor.{Actor, ActorSystem}
+import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.stream.ActorMaterializer
 import org.apache.openwhisk.common.tracing.WhiskTracerProvider
 import org.apache.openwhisk.common.{Logging, TransactionId}
@@ -39,13 +39,15 @@ class DependencyForwarding(whiskConfig: WhiskConfig,
   )
 
   val pollDuration: FiniteDuration = 1.second
-  // TODO(zac): change this?
-  val depMsgFeed: MessageFeed = new MessageFeed(DependencyInvocationMessageContext.DEP_INVOCATION_TOPIC,
-    logging,
-    depMsgConsumer,
-    depMsgConsumer.maxPeek,
-    pollDuration,
-    processDependencyInvocationMessageBytes)
+
+  val depMsgFeed: ActorRef = context.system.actorOf(Props {
+    new MessageFeed(DependencyInvocationMessageContext.DEP_INVOCATION_TOPIC,
+      logging,
+      depMsgConsumer,
+      depMsgConsumer.maxPeek,
+      pollDuration,
+      processDependencyInvocationMessageBytes)
+  })
 
   override def receive: Receive = {
     case e: DependencyInvocationMessage => scheduleDependencyInvocationMessage(e)
