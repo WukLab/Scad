@@ -352,7 +352,7 @@ object StandaloneOpenWhisk extends SLF4JLogging {
   }
 
   private def startRackSched()(implicit actorSystem: ActorSystem, logger: Logging): Unit = {
-    RackSched.start(Array(Random.nextInt(1).toString))
+    RackSched.start(Array("--id", Random.nextInt(1).toString))
   }
 
   private def startController()(implicit actorSystem: ActorSystem, logger: Logging): Unit = {

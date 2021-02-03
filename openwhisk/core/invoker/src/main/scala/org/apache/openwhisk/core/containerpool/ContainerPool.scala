@@ -234,11 +234,9 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
             actor ! r.copy(corunningConfig = fetchedAddresses)
 
             // Post run actions
-            // TODO: nake get call
-            val containerIp = container.map(_.addr.host)
-                                       .get
-
+            // TODO: Wait until we have a real ip?
             for {
+              containerIp <- container.map(_.addr.host)
               runtime <- r.action.runtimeType
               seq <- r.msg.siblings
             } yield seq.map { ra =>

@@ -39,6 +39,7 @@ class DependencyForwarding(whiskConfig: WhiskConfig,
   )
 
   val pollDuration: FiniteDuration = 1.second
+  // TODO(zac): change this?
   val depMsgFeed: MessageFeed = new MessageFeed(DependencyInvocationMessageContext.DEP_INVOCATION_TOPIC,
     logging,
     depMsgConsumer,

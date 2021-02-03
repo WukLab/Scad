@@ -125,7 +125,7 @@ class DefaultTopBalancer(config: WhiskConfig,
 
   implicit val entityStore: EntityStore = WhiskEntityStore.datastore()
   implicit val authStore: AuthStore = WhiskAuthStore.datastore()
-  val dependencyScheduler: DependencyForwarding = new DependencyForwarding(config, this)
+  val dependencyScheduler: ActorRef = actorSystem.actorOf(Props(new DependencyForwarding(config, this)))
 
   // TODO(zac): setup a feed for DAG completions from racks
   /** Subscribes to ack messages from the invokers (result / completion) and registers a handler for these messages. */
