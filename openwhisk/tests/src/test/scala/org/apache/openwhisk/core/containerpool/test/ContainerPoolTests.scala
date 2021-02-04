@@ -305,7 +305,7 @@ class ContainerPoolTests
     // Second action should run now
     containers(1).expectMsgPF() {
       // The `Some` assures, that it has been retried while the first action was still blocking the invoker.
-      case Run(runMessageLarge.action, runMessageLarge.msg, Some(_)) => true
+      case Run(runMessageLarge.action, runMessageLarge.msg, Some(_), None) => true
     }
 
     containers(1).send(pool, NeedWork(warmedData(runMessageLarge)))
@@ -454,7 +454,7 @@ class ContainerPoolTests
     // Action 1 should start immediately -> 256MB free
     containers(1).expectMsgPF() {
       // The `Some` assures, that it has been retried while the first action was still blocking the invoker.
-      case Run(runMessage.action, runMessage.msg, Some(_)) => true
+      case Run(runMessage.action, runMessage.msg, Some(_), None) => true
     }
     // Action 2 should start immediately as well -> 0MB free (without any retries, as there is already enough space in the pool)
     containers(2).expectMsg(runMessageDifferentAction)
@@ -495,7 +495,7 @@ class ContainerPoolTests
     feed.expectNoMessage(100.milliseconds)
     containers(1).expectMsgPF() {
       // The `Some` assures, that it has been retried while the first action was still blocking the invoker.
-      case Run(runMessageLarge.action, runMessageLarge.msg, Some(_)) => true
+      case Run(runMessageLarge.action, runMessageLarge.msg, Some(_), None) => true
     }
 
     // Send another action to the container pool, that would fit memory-wise (3 in queue)
@@ -535,7 +535,7 @@ class ContainerPoolTests
     // Run the 6th message from the buffer
     containers(6).expectMsgPF() {
       // The `Some` assures, that it has been retried while the first action was still blocking the invoker.
-      case Run(runMessageDifferentVersion.action, runMessageDifferentVersion.msg, Some(_)) => true
+      case Run(runMessageDifferentVersion.action, runMessageDifferentVersion.msg, Some(_), None) => true
     }
 
     // When buffer is emptied, process next feed message
@@ -580,7 +580,7 @@ class ContainerPoolTests
     //start second run
     containers(0).expectMsgPF() {
       // The `Some` assures, that it has been retried while the first action was still blocking the invoker.
-      case Run(run2.action, run2.msg, Some(_)) => true
+      case Run(run2.action, run2.msg, Some(_), None) => true
     }
 
     //complete processing of second run
@@ -592,7 +592,7 @@ class ContainerPoolTests
     //start third run
     containers(0).expectMsgPF() {
       // The `Some` assures, that it has been retried while the first action was still blocking the invoker.
-      case Run(run3.action, run3.msg, None) => true
+      case Run(run3.action, run3.msg, None, None) => true
     }
 
     //complete processing of third run
@@ -630,7 +630,7 @@ class ContainerPoolTests
     //start second run
     containers(1).expectMsgPF() {
       // The `Some` assures, that it has been retried while the first action was still blocking the invoker.
-      case Run(run2.action, run2.msg, Some(_)) => true
+      case Run(run2.action, run2.msg, Some(_), None) => true
     }
   }
 
@@ -668,7 +668,7 @@ class ContainerPoolTests
     //start second run
     containers(0).expectMsgPF() {
       // The `Some` assures, that it has been retried while the first action was still blocking the invoker.
-      case Run(run2.action, run2.msg, Some(_)) => true
+      case Run(run2.action, run2.msg, Some(_), None) => true
     }
 
     //complete processing of second run
@@ -680,7 +680,7 @@ class ContainerPoolTests
     //start third run
     containers(0).expectMsgPF() {
       // The `Some` assures, that it has been retried while the first action was still blocking the invoker.
-      case Run(run3.action, run3.msg, None) => true
+      case Run(run3.action, run3.msg, None, None) => true
     }
 
     //complete processing of third run

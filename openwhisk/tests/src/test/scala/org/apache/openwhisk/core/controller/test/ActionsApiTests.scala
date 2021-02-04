@@ -924,7 +924,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
       publish = Some(true),
     )
     val name = aname()
-    //println(baseApplication.toJson.prettyPrint)
+    println(baseApplication.toJson.prettyPrint)
     Put(s"$collectionPath/$name", baseApplication) ~> Route.seal(routes(creds)(transid())) ~> check {
       status should be(OK)
     }

@@ -368,6 +368,7 @@ object StandaloneOpenWhisk extends SLF4JLogging {
         val conf = new org.apache.openwhisk.core.cli.Conf(Seq("user", "create", "--auth", key, subject))
         val admin = WhiskAdmin(conf)
         Await.ready(admin.executeCommand(), 60.seconds)
+        logging.info(this, s"User: $subject, authkey: $key")
         logging.info(this, s"Created user [$subject]")
     }
   }
