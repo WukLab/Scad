@@ -15,8 +15,15 @@ GUEST_AUTH=89c46b1-71f6-4ed5-8c54-816aa4f8c502:abczO3xZCLrMN6v2BKK1dXYFpXlPkccOF
 
 JSON_FILE="application-example.json"
 ACTION_NAME=test-action
-# Put an action
-curl -u ${SYSTEM_AUTH} -X PUT -H "Content-Type: application/json" --data @${JSON_FILE} http://172.17.0.1:3233/api/v1/namespaces/whisk.system/actions/test-action?overwrite=true
-echo "" # newline
-curl -u ${SYSTEM_AUTH} -X POST -H "Content-Type: application/json" http://172.17.0.1:3233/api/v1/namespaces/whisk.system/actions/test-action
-echo ""
+if [[ "${1}" == "d" ]]; then
+    echo "DELETING"
+    curl -u ${SYSTEM_AUTH} -X DELETE -H "Content-Type: application/json" --data @${JSON_FILE} http://172.17.0.1:3233/api/v1/namespaces/whisk.system/actions/test-action
+elif [[ "${1}" == "p" ]]; then
+    # Put an action
+    echo "UPLOADING"
+    curl -u ${SYSTEM_AUTH} -X PUT -H "Content-Type: application/json" --data @${JSON_FILE} http://172.17.0.1:3233/api/v1/namespaces/whisk.system/actions/test-action?overwrite=true
+else
+    echo "ACTIVATING"
+    curl -u ${SYSTEM_AUTH} -X POST http://172.17.0.1:3233/api/v1/namespaces/whisk.system/actions/test-action
+fi
+    echo "" # newline
