@@ -149,7 +149,7 @@ class DefaultTopBalancer(config: WhiskConfig,
     val (racksToUse, stepSizes) = (state.racks, state.stepSizes)
     val hash = ShardingContainerPoolBalancer.generateHash(msg.user.namespace.name, action.fullyQualifiedName(false))
 
-    if (racksToUse.size > 0) {
+    if (!racksToUse.isEmpty) {
       val homeInvoker = hash % racksToUse.size
       val stepSize = stepSizes(hash % stepSizes.size)
       val rack = DefaultTopBalancer.schedule(action.limits.concurrency.maxConcurrent,

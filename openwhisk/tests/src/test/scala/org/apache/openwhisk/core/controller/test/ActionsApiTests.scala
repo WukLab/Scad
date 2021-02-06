@@ -889,7 +889,8 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
         stream.reset()
     }
   }
-  it should "serialize a WhiskApplicationPut" in {
+
+  private def createTestWhiskApp(): WhiskApplicationPut = {
     val baseAction = WhiskActionPut.fromWhiskAction(
       WhiskAction(namespace, aname(),
         jsDefault(Base64.getEncoder.encodeToString(Array(0x7a)), Some("test")),
@@ -919,10 +920,14 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
     val obj3 = baseAction3.withRelationshipsPut(WhiskActionRelationshipPut(Seq(baseAction4.name.get), Seq(baseAction.name.get), Seq(baseAction2.name.get)))
     val obj4 = baseAction4.withRelationshipsPut(WhiskActionRelationshipPut(Seq(), Seq(baseAction2.name.get, baseAction3.name.get), Seq()))
     val baseFunction = WhiskFunctionPut(objects = Some(List(obj, obj2, obj3, obj4)), publish = Some(true), name = Some(aname().name))
-    val baseApplication = WhiskApplicationPut(
+    WhiskApplicationPut(
       functions = List(baseFunction),
       publish = Some(true),
     )
+  }
+
+  it should "serialize a WhiskApplicationPut" in {
+    val baseApplication:WhiskApplicationPut = createTestWhiskApp()
     val name = aname()
     println(baseApplication.toJson.prettyPrint)
     Put(s"$collectionPath/$name", baseApplication) ~> Route.seal(routes(creds)(transid())) ~> check {
@@ -942,6 +947,17 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
       val response = responseAs[JsObject]
       response.fields("activationId") should not be None
       headers should contain(RawHeader(ActivationIdHeader, response.fields("activationId").convertTo[String]))
+    }
+  }
+
+  it should "delete a whiskApplication" in {
+    val baseApplication:WhiskApplicationPut = createTestWhiskApp()
+    val name = aname()
+    Put(s"$collectionPath/$name", baseApplication) ~> Route.seal(routes(creds)(transid())) ~> check {
+      status should be(OK)
+    }
+    Delete(s"$collectionPath/$name") ~> Route.seal(routes(creds)(transid())) ~> check {
+      status should be(OK)
     }
   }
 

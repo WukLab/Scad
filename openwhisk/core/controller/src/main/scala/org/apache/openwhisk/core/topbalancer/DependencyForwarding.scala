@@ -75,7 +75,6 @@ class DependencyForwarding(whiskConfig: WhiskConfig,
         whiskObject.parentFunc map { pf =>
           whiskObject.relationships map { rel =>
             if (rel.dependents.isEmpty) {
-              // TODO(zac) send function completion message
               processFunctionInvocationMessage(pf, msg, identity)
               // This will result in the next function in the chain being triggered.
             } else {
@@ -115,7 +114,6 @@ class DependencyForwarding(whiskConfig: WhiskConfig,
           }
         }
         Future.successful(())
-
       })
     }
     ()

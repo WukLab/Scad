@@ -132,6 +132,8 @@ object WhiskDocumentReader extends DocumentReader {
       case x if x == classOf[WhiskActivation]     => WhiskActivation.serdes.read(value)
       case x if x == classOf[WhiskTrigger]        => WhiskTrigger.serdes.read(value)
       case x if x == classOf[WhiskRule]           => WhiskRule.serdes.read(value)
+      case x if x == classOf[WhiskApplication]    => WhiskApplication.serdes.read(value)
+      case x if x == classOf[WhiskFunction]       => WhiskFunction.serdes.read(value)
       case _                                      => throw DocumentUnreadable(Messages.corruptedEntity)
     }
     value.asJsObject.fields.get("entityType").foreach {
@@ -156,7 +158,9 @@ object WhiskEntityJsonFormat extends RootJsonFormat[WhiskEntity] {
       WhiskActivation.serdes.read,
       WhiskRule.serdes.read,
       WhiskTrigger.serdes.read,
-      WhiskPackage.serdes.read)
+      WhiskPackage.serdes.read,
+      WhiskApplication.serdes.read,
+      WhiskFunction.serdes.read)
 
   // Not necessarily the smartest way to go about this. In theory, whenever
   // a more precise type is known, this method shouldn't be used.
@@ -173,6 +177,8 @@ object WhiskEntityJsonFormat extends RootJsonFormat[WhiskEntity] {
     case p: WhiskPackage    => WhiskPackage.serdes.write(p)
     case r: WhiskRule       => WhiskRule.serdes.write(r)
     case t: WhiskTrigger    => WhiskTrigger.serdes.write(t)
+    case a: WhiskApplication => WhiskApplication.serdes.write(a)
+    case f: WhiskFunction => WhiskFunction.serdes.write(f)
   }
 }
 

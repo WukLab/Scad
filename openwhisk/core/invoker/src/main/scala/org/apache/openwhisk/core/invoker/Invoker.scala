@@ -25,7 +25,7 @@ import kamon.Kamon
 import org.apache.openwhisk.common.Https.HttpsConfig
 import org.apache.openwhisk.common._
 import org.apache.openwhisk.core.WhiskConfig._
-import org.apache.openwhisk.core.connector.{MessageProducer, MessagingProvider}
+import org.apache.openwhisk.core.connector.{DependencyInvocationMessageContext, MessageProducer, MessagingProvider}
 import org.apache.openwhisk.core.containerpool.{Container, ContainerPoolConfig}
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size._
@@ -203,7 +203,7 @@ object Invoker {
 
     // Start the runtime http service
     val runtimePort = config.servicePort.toInt + 1
-    val runtimeTopic = s"rackschedDependency${invokerInstance.toInt}"
+    val runtimeTopic = DependencyInvocationMessageContext.DEP_INVOCATION_TOPIC
     logger.info(this, s"Start Runtime Server API at $runtimePort with topic $runtimeTopic")
 
 
