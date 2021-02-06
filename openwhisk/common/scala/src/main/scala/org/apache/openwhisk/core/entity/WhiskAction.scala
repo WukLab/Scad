@@ -928,12 +928,12 @@ object WhiskActionMetaData
    * If it's the actual package, use its name directly as the package path name.
    * While traversing the package bindings, merge the parameters.
    */
-  def resolveActionAndMergeParameters(entityStore: EntityStore, fullyQualifiedName: FullyQualifiedEntityName)(
+  def resolveActionAndMergeParameters(entityStore: EntityStore, fullyQualifiedName: FullyQualifiedEntityName, appActivationId: Option[ActivationId] = None)(
     implicit ec: ExecutionContext,
     transid: TransactionId): Future[WhiskActionMetaData] = {
     // first check that there is a package to be resolved
     val entityPath = fullyQualifiedName.path
-    if (entityPath.defaultPackage) {
+    if (entityPath.defaultPackage || appActivationId.isDefined) {
       // this is the default package, nothing to resolve
       WhiskActionMetaData.get(entityStore, fullyQualifiedName.toDocId)
     } else {
