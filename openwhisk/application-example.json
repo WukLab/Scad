@@ -7,8 +7,8 @@
         "value": "javascript"
       }],
       "exec": {
-        "kind": "nodejs:10",
-        "code": "eg==",
+        "kind": "nodejs:14",
+        "code": "function main(params,action) { action.dependency('action_tests_name42', null); sleep(50000) }",
         "binary": true,
         "main": "test"
       },
@@ -38,8 +38,8 @@
         "value": "javascript"
       }],
       "exec": {
-        "kind": "nodejs:10",
-        "code": "eg==",
+        "kind": "nodejs:14",
+        "code": "function main(params,action) {let t = action.get_transport('server','rdma_server');let ret = t.serve();return {payload: 'serve'};}",
         "binary": true,
         "main": "test2"
       },
@@ -61,7 +61,7 @@
         "dependents": ["action_tests_name43"],
         "parents": ["action_tests_name40"]
       },
-      "runtimeType": "compute",
+      "runtimeType": "memory",
       "version": "0.0.1"
     }, {
       "annotations": [{
@@ -69,8 +69,8 @@
         "value": "javascript"
       }],
       "exec": {
-        "kind": "nodejs:10",
-        "code": "eg==",
+        "kind": "nodejs:14",
+        "code": "function main( params,action) { let t = action.get_transport('client','rdma'); let buf = t.alloc(64); buf.write('Hello RDMA', 'utf-8'); t.write(0, 64, buf); t.read(0, 64, buf); let ret = buf.toString('utf-8'); return {payload: ret}; action.dependency('action_tests_name43', null); }",
         "binary": true,
         "main": "test3"
       },
@@ -92,7 +92,7 @@
         "dependents": ["action_tests_name43"],
         "parents": ["action_tests_name40"]
       },
-      "runtimeType": "memory",
+      "runtimeType": "compute",
       "version": "0.0.1"
     }, {
       "annotations": [{
@@ -100,8 +100,8 @@
         "value": "javascript"
       }],
       "exec": {
-        "kind": "nodejs:10",
-        "code": "eg==",
+        "kind": "nodejs:14",
+        "code": "function main(params, action){}",
         "binary": true,
         "main": "test4"
       },
