@@ -3,7 +3,6 @@
 # Exit if any command errors
 set -e
 
-
 #Userful URL to view API docs:
 #https://petstore.swagger.io/?url=https://raw.githubusercontent.com/openwhisk/openwhisk/master/core/controller/src/main/resources/apiv1swagger.json#/
 
@@ -13,7 +12,7 @@ GUEST_AUTH=89c46b1-71f6-4ed5-8c54-816aa4f8c502:abczO3xZCLrMN6v2BKK1dXYFpXlPkccOF
 # List all actions
 #curl -u ${SYSTEM_AUTH} -X GET http://172.17.0.1:3233/api/v1/namespaces/whisk.system/actions
 
-JSON_FILE="application-example.json"
+JSON_FILE="application-single.json"
 ACTION_NAME=test-action
 if [[ "${1}" == "d" ]]; then
     echo "DELETING"

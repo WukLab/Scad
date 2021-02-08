@@ -42,9 +42,7 @@ COPY package.json /
 RUN cd / && npm install --no-package-lock --production \
     && npm cache clean --force
 
-EXPOSE 8080
-# runtime port
-EXPOSE 7000
+EXPOSE 8080 2333
 
 WORKDIR /nodejsAction
 CMD node --expose-gc app.js

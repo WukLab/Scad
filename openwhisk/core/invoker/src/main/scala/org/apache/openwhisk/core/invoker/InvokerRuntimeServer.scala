@@ -14,13 +14,12 @@ import scala.util.{Failure, Success}
 
 
 case class RuntimeDependencyInvocation(target: String,
-                                       action: JsValue,
                                        value: Option[JsObject],
                                        parallelism : Option[Seq[String]],
                                        dependency : Option[Seq[String]]
                                       )
 object RuntimeJsonSupport extends DefaultJsonProtocol with SprayJsonSupport {
-  implicit val runtimeDependencyInvocationF = jsonFormat5(RuntimeDependencyInvocation.apply)
+  implicit val runtimeDependencyInvocationF = jsonFormat4(RuntimeDependencyInvocation.apply)
 }
 
 // TODO: currently this one cannot talk to other actors
@@ -47,18 +46,14 @@ class InvokerRuntimeServer(producer: MessageProducer,
 
         path ("dependency") {
           post {
-            entity(as[RuntimeDependencyInvocation]) { invoke : RuntimeDependencyInvocation  =>
+            entity(as[RuntimeDependencyInvocation]) { invoke =>
 
+              // TODO: change this get
               val activationId = ActivationId.parse(_activationId).get
 
-              val msg = DependencyInvocationMessage(
-                action = invoke.target,
-                activationId = activationId,
-                content = invoke.value,
-                dependency = invoke.dependency.getOrElse(Seq.empty)
-              )
+              logging.info(this, s"Get Dependency Request from $activationId: $invoke")
 
-              invokeDependency(msg, topic) match {
+              invokeDependency(topic)(invoke, activationId) match {
                 case Left(x)  => complete((500, x))
                 case Right(x) => complete((200, x))
               }
@@ -70,7 +65,15 @@ class InvokerRuntimeServer(producer: MessageProducer,
       }
     }
 
-  def invokeDependency(msg: DependencyInvocationMessage, topic : String): Either[String, String] = {
+  def invokeDependency(topic : String)
+                      (invoke: RuntimeDependencyInvocation, activationId: ActivationId): Either[String, String] = {
+
+    val msg = DependencyInvocationMessage(
+      action = invoke.target,
+      activationId = activationId,
+      content = invoke.value,
+      dependency = invoke.dependency.getOrElse(Seq.empty)
+    )
     // Send a message
     val res = producer.send(topic = topic, msg).value
     res.getOrElse(Left("Fail")) match {

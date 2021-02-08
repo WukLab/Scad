@@ -37,20 +37,19 @@ class LibdRequest {
         this.actionId = actionId
     }
 
-    dependency(target, action, value = null, parallelism = null, dependency = null) {
-        path = `${this.serverUrl}/activation/${this.actionId}/dependency`
-        json = {
-            target: target,
-            action: action
-        }
+    dependency(target, value = null, parallelism = null, dependency = null) {
+        let path = `${this.serverUrl}/activation/${this.actionId}/dependency`
+        let json = { target: target }
 
-        if (value) json['value'] = value
-        if (parallelism) json['parallelism'] = parallelism
-        if (dependency) json['dependency'] = dependency
+        if (value)          json['value'] = value
+        if (parallelism)    json['parallelism'] = parallelism
+        if (dependency)     json['dependency'] = dependency
 
-        fetch('https://httpbin.org/post', {
+        console.log(`call invocation ${path} with parameter ${json}`)
+
+        fetch(path, {
             method: 'post',
-            body:    JSON.stringify(body),
+            body:    JSON.stringify(json),
             headers: { 'Content-Type': 'application/json' },
         })
         .then(res =>

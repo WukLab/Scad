@@ -143,9 +143,14 @@ function NodeActionService(config) {
             }
 
             if (errMsg = checkParameter(msg, 'activation_id')) { return Promise.reject(errorMessage(403, msg)) }
-            if (errMsg = checkParameter(msg, 'server_url'))    { return Promise.reject(errorMessage(403, msg)) }
+
+            let serverIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+            serverIp = serverIp.toString().replace('::ffff:', '');
+            let serverUrl = `http://${serverIp}:${process.env['__OW_INVOKER_API_PORT']}`
             
-            doAddAction(msg, msg.activation_id, msg.server_url)
+            doAddAction(msg, msg.activation_id, serverUrl)
+
+            console.log(`[action][${msg.activation_id}] Action created, prepare to run`)
 
             return doRun(msg, actions[msg.activation_id]).then(result => {
                 if (!ignoreRunStatus) {
@@ -173,8 +178,9 @@ function NodeActionService(config) {
         
         let aid = req.aid
 
-        checkParameter(msg, 'serverUrl')
-        let serverUrl = msg.serverUrl
+        let serverIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+        serverIp = serverIp.toString().replace('::ffff:', '');
+        let serverUrl = `http://${serverIp}:${process.env['__OW_INVOKER_API_PORT']}`
 
         doAddAction(msg, aid, serverUrl)
 
@@ -241,7 +247,7 @@ function NodeActionService(config) {
             console.error('Internal system error:', errStr);
             return Promise.reject(errorMessage(403, errStr));
         }
-        console.log(`Try to add transports for action ${aid}, transports: ${msg.transports}`)
+        console.log(`Try to add transports for action ${aid}, transports: ${msg.transports.length}`)
 
         for (let i = 0; i < msg.transports.length; i++) {
             let ret = action.init_transport(msg.transports[i])
@@ -249,6 +255,8 @@ function NodeActionService(config) {
         }
 
         actions[aid] = action
+
+        console.log(`[$aid] Finish config actions`)
     }
 
     function doRun(msg, action) {
