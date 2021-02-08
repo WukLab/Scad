@@ -280,6 +280,9 @@ abstract class WhiskActionLike(override val name: EntityName) extends WhiskEntit
   def exec: Exec
   def parameters: Parameters
   def limits: ActionLimits
+  def runtimeType: Option[String] = None
+  def relationships: Option[WhiskActionRelationship] = None
+  def parentFunc: Option[WhiskEntityReference] = None
 
   /** @return true iff action has appropriate annotation. */
   def hasFinalParamsAnnotation = {
@@ -301,7 +304,11 @@ abstract class WhiskActionLike(override val name: EntityName) extends WhiskEntit
       "limits" -> limits.toJson,
       "version" -> version.toJson,
       "publish" -> publish.toJson,
-      "annotations" -> annotations.toJson)
+      "annotations" -> annotations.toJson,
+      "runtimeType" -> runtimeType.toJson,
+      "relationships" -> relationships.toJson,
+      "parentFunc" -> parentFunc.toJson
+    )
 
   def getReference(): WhiskEntityReference = {
     WhiskEntityReference(namespace, name)
@@ -393,9 +400,9 @@ case class WhiskAction(namespace: EntityPath, //name
                        publish: Boolean = false,
                        annotations: Parameters = Parameters(),
                        override val updated: Instant = WhiskEntity.currentMillis(),
-                       runtimeType: Option[String] = None,
-                       relationships: Option[WhiskActionRelationship] = None,
-                       parentFunc: Option[WhiskEntityReference] = None)
+                       override val runtimeType: Option[String] = None,
+                       override val relationships: Option[WhiskActionRelationship] = None,
+                       override val parentFunc: Option[WhiskEntityReference] = None)
     extends WhiskActionLike(name) {
 
   require(exec != null, "exec undefined")
@@ -464,8 +471,9 @@ case class WhiskActionMetaData(namespace: EntityPath,
                                annotations: Parameters = Parameters(),
                                override val updated: Instant = WhiskEntity.currentMillis(),
                                binding: Option[EntityPath] = None,
-                               relationships: Option[WhiskActionRelationship] = None,
-                               parentFunc: Option[WhiskEntityReference] = None)
+                               override val runtimeType: Option[String] = None,
+                               override val relationships: Option[WhiskActionRelationship] = None,
+                               override val parentFunc: Option[WhiskEntityReference] = None)
     extends WhiskActionLikeMetaData(name) {
 
   require(exec != null, "exec undefined")
@@ -505,6 +513,7 @@ case class WhiskActionMetaData(namespace: EntityPath,
           publish,
           annotations,
           binding,
+          runtimeType = runtimeType,
           relationships = relationships,
           parentFunc = parentFunc)
           .revision[ExecutableWhiskActionMetaData](rev))
@@ -545,9 +554,9 @@ case class ExecutableWhiskAction(namespace: EntityPath,
                                  publish: Boolean = false,
                                  annotations: Parameters = Parameters(),
                                  binding: Option[EntityPath] = None,
-                                 runtimeType: Option[String] = None,
-                                 relationships: Option[WhiskActionRelationship] = Some(WhiskActionRelationship.empty),
-                                 parentFunc: Option[WhiskEntityReference] = None
+                                 override val runtimeType: Option[String] = None,
+                                 override val relationships: Option[WhiskActionRelationship] = Some(WhiskActionRelationship.empty),
+                                 override val parentFunc: Option[WhiskEntityReference] = None
                                 )
     extends WhiskActionLike(name) {
 
@@ -595,8 +604,9 @@ case class ExecutableWhiskActionMetaData(namespace: EntityPath,
                                          publish: Boolean = false,
                                          annotations: Parameters = Parameters(),
                                          binding: Option[EntityPath] = None,
-                                         relationships: Option[WhiskActionRelationship] = None,
-                                         parentFunc: Option[WhiskEntityReference] = None,
+                                         override val runtimeType: Option[String] = None,
+                                         override val relationships: Option[WhiskActionRelationship] = None,
+                                         override val parentFunc: Option[WhiskEntityReference] = None,
                                          )
     extends WhiskActionLikeMetaData(name) {
 
@@ -604,7 +614,8 @@ case class ExecutableWhiskActionMetaData(namespace: EntityPath,
   require(limits != null, "limits undefined")
 
   def toWhiskAction =
-    WhiskActionMetaData(namespace, name, exec, parameters, limits, version, publish, annotations, updated, relationships = relationships, parentFunc = parentFunc)
+    WhiskActionMetaData(namespace, name, exec, parameters, limits, version, publish, annotations, updated,
+      runtimeType = runtimeType, relationships = relationships, parentFunc = parentFunc)
       .revision[WhiskActionMetaData](rev)
 
   /**
@@ -876,6 +887,7 @@ object WhiskActionMetaData
       "annotations",
       "updated",
       "binding",
+      "runtimeType",
       "relationships",
       "parentFunc").write(obj)
 
@@ -891,6 +903,7 @@ object WhiskActionMetaData
         fromField[Parameters](json, "annotations"),
         fromField[Instant](json, "updated"),
         fromField[Option[EntityPath]](json, "binding"),
+        fromField[Option[String]](json, "runtimeType"),
         fromField[Option[WhiskActionRelationship]](json, "relationships"),
         fromField[Option[WhiskEntityReference]](json, "parentFunc"),
       )
