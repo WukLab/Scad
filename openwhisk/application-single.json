@@ -1,0 +1,39 @@
+{
+  "functions": [{
+    "name": "action_tests_name44",
+    "objects": [{
+      "annotations": [{
+        "key": "exec",
+        "value": "javascript"
+      }],
+      "exec": {
+        "kind": "nodejs:14",
+        "code": "function main(params,action) { action.request.dependency('action_tests_name42'); }",
+        "binary": true,
+        "main": "main"
+      },
+      "limits": {
+        "concurrency": 1,
+        "logs": 10,
+        "resources": {
+          "cpu": 4.0,
+          "mem": "256 MB",
+          "storage": "1 GB"
+        },
+        "timeout": 60000
+      },
+      "name": "action_tests_name40",
+      "parameters": [],
+      "publish": false,
+      "relationships": {
+        "corunning": [],
+        "dependents": [],
+        "parents": []
+      },
+      "runtimeType": "compute",
+      "version": "0.0.1"
+    }],
+    "publish": true
+  }],
+  "publish": true
+}

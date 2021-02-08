@@ -1,0 +1,70 @@
+{
+  "functions": [{
+    "name": "action_tests_name44",
+    "objects": [{
+      "annotations": [{
+        "key": "exec",
+        "value": "javascript"
+      }],
+      "exec": {
+        "kind": "nodejs:14",
+        "code": "function main(params,action) {let t = action.get_transport('server','rdma_server');let ret = t.serve();return {payload: 'serve'};}",
+        "binary": true,
+        "main": "main"
+      },
+      "limits": {
+        "concurrency": 1,
+        "logs": 10,
+        "resources": {
+          "cpu": 4.0,
+          "mem": "256 MB",
+          "storage": "1 GB"
+        },
+        "timeout": 60000
+      },
+      "name": "action_tests_name41",
+      "parameters": [],
+      "publish": false,
+      "relationships": {
+        "corunning": ["action_tests_name42"],
+        "dependents": [],
+        "parents": []
+      },
+      "runtimeType": "memory",
+      "version": "0.0.1"
+    }, {
+      "annotations": [{
+        "key": "exec",
+        "value": "javascript"
+      }],
+      "exec": {
+        "kind": "nodejs:14",
+        "code": "function main(params,action) { let t = action.get_transport('client','rdma'); let buf = t.alloc(64); buf.write('Hello RDMA', 'utf-8'); t.write(0, 64, buf); t.read(0, 64, buf); let ret = buf.toString('utf-8'); return {payload: ret};}",
+        "binary": true,
+        "main": "main"
+      },
+      "limits": {
+        "concurrency": 1,
+        "logs": 10,
+        "resources": {
+          "cpu": 4.0,
+          "mem": "256 MB",
+          "storage": "1 GB"
+        },
+        "timeout": 60000
+      },
+      "name": "action_tests_name42",
+      "parameters": [],
+      "publish": false,
+      "relationships": {
+        "corunning": ["action_tests_name41"],
+        "dependents": [],
+        "parents": []
+      },
+      "runtimeType": "compute",
+      "version": "0.0.1"
+    }],
+    "publish": true
+  }],
+  "publish": true
+}
