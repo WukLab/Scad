@@ -221,6 +221,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                   val aid = r.msg.activationId
                   val name = LibdAPIs.Transport.getName(ra)
                   val impl = LibdAPIs.Transport.getImpl(ra, runtime)
+                  logging.warn(this, s"Finding dependency for $aid:$name:$impl")
                   // Need wait here?
                   if (LibdAPIs.Transport.needWait(runtime))
                     addressBook.postWait(r.msg.activationId, TransportRequest(name, impl, aid))
@@ -231,6 +232,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                 .traverse(identity)
             } yield transports
 
+            logging.warn(this, s"Get avtivation with id ${r.msg.activationId}, $r")
             actor ! r.copy(corunningConfig = fetchedAddresses)
 
             // Post run actions
@@ -242,6 +244,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
             } yield seq.map { ra =>
               val name = LibdAPIs.Transport.getName(ra)
               val port = LibdAPIs.Transport.getPort(ra)
+              logging.warn(this, s"emmit dependency for ${r.msg.activationId}:$name:$port")
               // Need wait here?
               if (LibdAPIs.Transport.needSignal(runtime))
                 addressBook.signalReady(r.msg.activationId, name,

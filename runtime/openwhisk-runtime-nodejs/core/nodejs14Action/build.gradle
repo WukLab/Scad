@@ -30,10 +30,12 @@ distDocker.dependsOn 'copyPackageJson'
 distDocker.dependsOn 'copyProxy'
 distDocker.dependsOn 'copyRunner'
 distDocker.dependsOn 'copyService'
+distDocker.dependsOn 'copyLibdClient'
 distDocker.dependsOn 'copyPlatform'
 distDocker.dependsOn 'copyOpenWhisk'
 distDocker.dependsOn 'copyKnative'
 distDocker.dependsOn 'copyBuildTemplate'
+distDocker.dependsOn 'copyLibd'
 distDocker.finalizedBy('cleanup')
 
 task copyPackageJson(type: Copy) {
@@ -49,6 +51,11 @@ task copyProxy(type: Copy) {
 task copyRunner(type: Copy) {
     from '../nodejsActionBase/runner.js'
     into '.'
+}
+
+task copyLibdClient(type: Copy) {
+    from '../nodejsActionBase/src/libd.js'
+    into './src'
 }
 
 task copyService(type: Copy) {
@@ -76,6 +83,11 @@ task copyBuildTemplate(type: Copy) {
     into '.'
 }
 
+task copyLibd(type: Copy) {
+    from '../../../lib'
+    into 'libd'
+}
+
 task cleanup(type: Delete) {
     delete 'package.json'
     delete 'app.js'
@@ -83,4 +95,5 @@ task cleanup(type: Delete) {
     delete 'src'
     delete 'platform'
     delete 'buildtemplate.yaml'
+    delete 'libd'
 }
