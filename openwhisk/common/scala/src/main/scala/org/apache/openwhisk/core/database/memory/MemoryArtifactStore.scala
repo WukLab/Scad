@@ -144,7 +144,7 @@ class MemoryArtifactStore[DocumentAbstraction <: DocumentSerializer](dbName: Str
     val f = Future.fromTry(t)
     f.onComplete {
       case Success(_) => transid.finished(this, start, s"[PUT] '$dbName' completed document: '$docinfoStr'")
-      case Failure(_: DocumentConflictException) =>
+      case Failure(e: DocumentConflictException) =>
         transid.finished(this, start, s"[PUT] '$dbName', document: '$docinfoStr'; conflict.")
       case Failure(_) =>
     }

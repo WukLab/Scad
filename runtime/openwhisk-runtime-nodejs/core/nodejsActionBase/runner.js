@@ -76,10 +76,10 @@ class NodeActionRunner {
         this.userScriptMain = handler;
     }
 
-    run(args) {
+    run(args, action) {
         return new Promise((resolve, reject) => {
             try {
-                var result = this.userScriptMain(args);
+                var result = this.userScriptMain(args, action);
             } catch (e) {
                 reject(e);
             }

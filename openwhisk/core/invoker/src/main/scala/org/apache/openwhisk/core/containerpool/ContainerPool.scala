@@ -24,9 +24,11 @@ import org.apache.openwhisk.core.entity.ExecManifest.ReactivePrewarmingConfig
 import org.apache.openwhisk.core.entity._
 
 import scala.annotation.tailrec
-import scala.collection.immutable
+import scala.collection._
 import scala.concurrent.duration._
 import scala.util.{Random, Try}
+
+import cats.implicits._
 
 sealed trait WorkerState
 case object Busy extends WorkerState
@@ -98,6 +100,12 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     .seconds
   context.system.scheduler.schedule(2.seconds, interval, self, AdjustPrewarmedContainer)
 
+  // We need to have a actionId, which maps an actionId to activationId
+  // This can happens in both side of the work
+  var activationMap : Map[ActivationId, ActorRef] = Map.empty
+  val addressBook = new CorunningAddressBook(self)
+
+
   def logContainerStart(r: Run, containerState: String, activeActivations: Int, container: Option[Container]): Unit = {
     val namespaceName = r.msg.user.namespace.name.asString
     val actionName = r.action.name.name
@@ -121,7 +129,6 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     case r: Run =>
       // Check if the message is resent from the buffer. Only the first message on the buffer can be resent.
       val isResentFromBuffer = runBuffer.nonEmpty && runBuffer.dequeueOption.exists(_._1.msg == r.msg)
-
       // Only process request, if there are no other requests waiting for free slots, or if the current request is the
       // next request to process
       // It is guaranteed, that only the first message on the buffer is resent.
@@ -202,8 +209,50 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
               // Try to process the next item in buffer (or get another message from feed, if buffer is now empty)
               processBufferOrFeed()
             }
-            actor ! r // forwards the run request to the container
+
+            // Pre run actions, Add map to the buffer
+            activationMap = activationMap + (r.msg.activationId -> actor)
+            // We also log this into the run message
+            val fetchedAddresses = for {
+              runtime <- r.action.runtimeType
+              seq <- r.msg.siblings
+              transports <- seq
+                .map { ra =>
+                  val aid = r.msg.activationId
+                  val name = LibdAPIs.Transport.getName(ra)
+                  val impl = LibdAPIs.Transport.getImpl(ra, runtime)
+                  logging.warn(this, s"Finding dependency for $aid:$name:$impl")
+                  // Need wait here?
+                  if (LibdAPIs.Transport.needWait(runtime))
+                    addressBook.postWait(r.msg.activationId, TransportRequest(name, impl, aid))
+                               .map (_.toConfigString)
+                  else None
+                }.filter(_.nonEmpty)
+                .toList
+                .traverse(identity)
+            } yield transports
+
+            logging.warn(this, s"Get avtivation with id ${r.msg.activationId}, $r")
+            actor ! r.copy(corunningConfig = fetchedAddresses)
+
+            // Post run actions
+            // TODO: Wait until we have a real ip?
+            for {
+              containerIp <- container.map(_.addr.host)
+              runtime <- r.action.runtimeType
+              seq <- r.msg.siblings
+            } yield seq.map { ra =>
+              val name = LibdAPIs.Transport.getName(ra)
+              val port = LibdAPIs.Transport.getPort(ra)
+              logging.warn(this, s"emmit dependency for ${r.msg.activationId}:$name:$port")
+              // Need wait here?
+              if (LibdAPIs.Transport.needSignal(runtime))
+                addressBook.signalReady(r.msg.activationId, name,
+                  TransportAddress.TCPTransport(containerIp, port))
+            }
+
             logContainerStart(r, containerState, newData.activeActivationCount, container)
+
           case None =>
             // this can also happen if createContainer fails to start a new container, or
             // if a job is rescheduled but the container it was allocated to has not yet destroyed itself
@@ -260,6 +309,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
         freePool = freePool - sender()
       }
       processBufferOrFeed()
+
     // Container is prewarmed and ready to take work
     case NeedWork(data: PreWarmedData) =>
       prewarmStartingPool = prewarmStartingPool - sender()
@@ -292,6 +342,22 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       if (replacePrewarm) {
         adjustPrewarmedContainer(false, false) //in case a prewarm is removed due to health failure or crash
       }
+
+    // Forward messages back to containers
+    case c: LibdActionConfig =>
+      activationMap(c.activationId) ! c
+    case c: LibdTransportConfig =>
+      activationMap(c.activationId) ! c
+
+    // Handles braod cast for having new address
+    case TransportReady(activationId, transportAddress) =>
+      val config = transportAddress.toConfigString
+      activationMap(activationId) ! LibdTransportConfig(activationId, config)
+
+    // Handles end of objects
+    case ObjectEnd(activationId) =>
+      activationMap = activationMap - activationId
+      addressBook.remove(activationId)
 
     // This message is received for one of these reasons:
     // 1. Container errored while resuming a warm container, could not process the job, and sent the job back

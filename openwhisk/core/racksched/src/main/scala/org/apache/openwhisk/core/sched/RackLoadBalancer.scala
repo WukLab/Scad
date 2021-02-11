@@ -238,10 +238,12 @@ class RackSimpleBalancer(config: WhiskConfig,
         case _ => activationFeed ! MessageFeed.Processed
       }.map { activation =>
       implicit val transid: TransactionId = activation.transid
-      WhiskActionMetaData.resolveActionAndMergeParameters(entityStore, activation.action)
-        .foreach(metadata => {
+      WhiskActionMetaData.resolveActionAndMergeParameters(entityStore, activation.action, activation.appActivationId) onComplete {
+        case Success(metadata) =>
           publish(metadata.toExecutableWhiskAction.get, activation)
-        })
+        case Failure(exception) =>
+          logging.error(this, s"Failed to publish rack activation: $exception")
+      }
     }.recover {
       case t => logging.error(this, s"failed processing top level scheduler message: $raw")
     }

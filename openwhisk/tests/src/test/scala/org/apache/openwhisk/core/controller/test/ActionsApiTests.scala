@@ -889,24 +889,52 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
         stream.reset()
     }
   }
-  it should "serialize a WhiskApplicationPut" in {
+
+  private def createTestWhiskApp(): WhiskApplicationPut = {
     val baseAction = WhiskActionPut.fromWhiskAction(
       WhiskAction(namespace, aname(),
         jsDefault(Base64.getEncoder.encodeToString(Array(0x7a)), Some("test")),
-        annotations = Parameters("exec", "javascript"))
+        annotations = Parameters("exec", "javascript"),
+        runtimeType = Some("compute"))
     )
-    val baseFunction = WhiskFunctionPut(objects = Some(List(baseAction)), publish = Some(true), name = Some(aname().name))
-    val baseApplication = WhiskApplicationPut(
+    val baseAction2 = WhiskActionPut.fromWhiskAction(
+      WhiskAction(namespace, aname(),
+        jsDefault(Base64.getEncoder.encodeToString(Array(0x7a)), Some("test2")),
+        annotations = Parameters("exec", "javascript"),
+        runtimeType = Some("compute"))
+    )
+    val baseAction3 = WhiskActionPut.fromWhiskAction(
+      WhiskAction(namespace, aname(),
+        jsDefault(Base64.getEncoder.encodeToString(Array(0x7a)), Some("test3")),
+        annotations = Parameters("exec", "javascript"),
+        runtimeType = Some("memory"))
+    )
+    val baseAction4 = WhiskActionPut.fromWhiskAction(
+      WhiskAction(namespace, aname(),
+        jsDefault(Base64.getEncoder.encodeToString(Array(0x7a)), Some("test4")),
+        annotations = Parameters("exec", "javascript"),
+        runtimeType = Some("compute"))
+    )
+    val obj = baseAction.withRelationshipsPut(WhiskActionRelationshipPut(Seq(baseAction2.name.get, baseAction3.name.get), Seq(), Seq()))
+    val obj2 = baseAction2.withRelationshipsPut(WhiskActionRelationshipPut(Seq(baseAction4.name.get), Seq(baseAction.name.get), Seq(baseAction3.name.get)))
+    val obj3 = baseAction3.withRelationshipsPut(WhiskActionRelationshipPut(Seq(baseAction4.name.get), Seq(baseAction.name.get), Seq(baseAction2.name.get)))
+    val obj4 = baseAction4.withRelationshipsPut(WhiskActionRelationshipPut(Seq(), Seq(baseAction2.name.get, baseAction3.name.get), Seq()))
+    val baseFunction = WhiskFunctionPut(objects = Some(List(obj, obj2, obj3, obj4)), publish = Some(true), name = Some(aname().name))
+    WhiskApplicationPut(
       functions = List(baseFunction),
       publish = Some(true),
     )
+  }
+
+  it should "serialize a WhiskApplicationPut" in {
+    val baseApplication:WhiskApplicationPut = createTestWhiskApp()
     val name = aname()
-//    baseApplication.toJson.prettyPrint
+    println(baseApplication.toJson.prettyPrint)
     Put(s"$collectionPath/$name", baseApplication) ~> Route.seal(routes(creds)(transid())) ~> check {
       status should be(OK)
     }
 //    val x = entityStore.count(WhiskApplication.collectionName, List.empty, List.empty, StaleParameter.Ok)
-    stream.reset()
+//    stream.reset()
     Post(s"$collectionPath/${name}") ~> Route.seal(routes(creds)(transid())) ~> check {
       //Loading action with attachment concurrently should load only attachment once
       println(stream.toString)
@@ -920,9 +948,17 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
       response.fields("activationId") should not be None
       headers should contain(RawHeader(ActivationIdHeader, response.fields("activationId").convertTo[String]))
     }
+  }
 
-
-
+  it should "delete a whiskApplication" in {
+    val baseApplication:WhiskApplicationPut = createTestWhiskApp()
+    val name = aname()
+    Put(s"$collectionPath/$name", baseApplication) ~> Route.seal(routes(creds)(transid())) ~> check {
+      status should be(OK)
+    }
+    Delete(s"$collectionPath/$name") ~> Route.seal(routes(creds)(transid())) ~> check {
+      status should be(OK)
+    }
   }
 
   it should "put and then get an action with attachment from cache" in {

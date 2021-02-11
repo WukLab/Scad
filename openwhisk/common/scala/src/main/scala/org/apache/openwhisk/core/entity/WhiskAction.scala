@@ -246,6 +246,7 @@ case class WhiskActionPut(exec: Option[Exec] = None,
                           version: Option[SemVer] = None,
                           publish: Option[Boolean] = None,
                           annotations: Option[Parameters] = None,
+                          runtimeType: Option[String] = None,
                           delAnnotations: Option[Array[String]] = None,
                           relationships: Option[WhiskActionRelationshipPut] = None,
                           name: Option[String] = Some("default")) {
@@ -267,12 +268,21 @@ case class WhiskActionPut(exec: Option[Exec] = None,
       case _ => this
     } getOrElse this
   }
+
+  protected[core] def withRelationshipsPut(relations: WhiskActionRelationshipPut): WhiskActionPut = {
+    WhiskActionPut(exec, parameters, limits, version, publish, annotations, runtimeType, delAnnotations,
+      relationships = Some(relations),
+      name = name)
+  }
 }
 
 abstract class WhiskActionLike(override val name: EntityName) extends WhiskEntity(name, "action") {
   def exec: Exec
   def parameters: Parameters
   def limits: ActionLimits
+  def runtimeType: Option[String] = None
+  def relationships: Option[WhiskActionRelationship] = None
+  def parentFunc: Option[WhiskEntityReference] = None
 
   /** @return true iff action has appropriate annotation. */
   def hasFinalParamsAnnotation = {
@@ -294,7 +304,11 @@ abstract class WhiskActionLike(override val name: EntityName) extends WhiskEntit
       "limits" -> limits.toJson,
       "version" -> version.toJson,
       "publish" -> publish.toJson,
-      "annotations" -> annotations.toJson)
+      "annotations" -> annotations.toJson,
+      "runtimeType" -> runtimeType.toJson,
+      "relationships" -> relationships.toJson,
+      "parentFunc" -> parentFunc.toJson
+    )
 
   def getReference(): WhiskEntityReference = {
     WhiskEntityReference(namespace, name)
@@ -386,8 +400,9 @@ case class WhiskAction(namespace: EntityPath, //name
                        publish: Boolean = false,
                        annotations: Parameters = Parameters(),
                        override val updated: Instant = WhiskEntity.currentMillis(),
-                       relationships: Option[WhiskActionRelationship] = None,
-                       parentFunc: Option[WhiskEntityReference] = None)
+                       override val runtimeType: Option[String] = None,
+                       override val relationships: Option[WhiskActionRelationship] = None,
+                       override val parentFunc: Option[WhiskEntityReference] = None)
     extends WhiskActionLike(name) {
 
   require(exec != null, "exec undefined")
@@ -423,7 +438,7 @@ case class WhiskAction(namespace: EntityPath, //name
   def toExecutableWhiskAction: Option[ExecutableWhiskAction] = exec match {
     case codeExec: CodeExec[_] =>
       Some(
-        ExecutableWhiskAction(namespace, name, codeExec, parameters, limits, version, publish, annotations, relationships = relationships, parentFunc = parentFunc)
+        ExecutableWhiskAction(namespace, name, codeExec, parameters, limits, version, publish, annotations, runtimeType = runtimeType, relationships = relationships, parentFunc = parentFunc)
           .revision[ExecutableWhiskAction](rev))
     case _ => None
   }
@@ -456,8 +471,9 @@ case class WhiskActionMetaData(namespace: EntityPath,
                                annotations: Parameters = Parameters(),
                                override val updated: Instant = WhiskEntity.currentMillis(),
                                binding: Option[EntityPath] = None,
-                               relationships: Option[WhiskActionRelationship] = None,
-                               parentFunc: Option[WhiskEntityReference] = None)
+                               override val runtimeType: Option[String] = None,
+                               override val relationships: Option[WhiskActionRelationship] = None,
+                               override val parentFunc: Option[WhiskEntityReference] = None)
     extends WhiskActionLikeMetaData(name) {
 
   require(exec != null, "exec undefined")
@@ -497,6 +513,7 @@ case class WhiskActionMetaData(namespace: EntityPath,
           publish,
           annotations,
           binding,
+          runtimeType = runtimeType,
           relationships = relationships,
           parentFunc = parentFunc)
           .revision[ExecutableWhiskActionMetaData](rev))
@@ -537,8 +554,9 @@ case class ExecutableWhiskAction(namespace: EntityPath,
                                  publish: Boolean = false,
                                  annotations: Parameters = Parameters(),
                                  binding: Option[EntityPath] = None,
-                                 relationships: Option[WhiskActionRelationship] = Some(WhiskActionRelationship.empty),
-                                 parentFunc: Option[WhiskEntityReference] = None
+                                 override val runtimeType: Option[String] = None,
+                                 override val relationships: Option[WhiskActionRelationship] = Some(WhiskActionRelationship.empty),
+                                 override val parentFunc: Option[WhiskEntityReference] = None
                                 )
     extends WhiskActionLike(name) {
 
@@ -572,7 +590,7 @@ case class ExecutableWhiskAction(namespace: EntityPath,
   }
 
   def toWhiskAction =
-    WhiskAction(namespace, name, exec, parameters, limits, version, publish, annotations, relationships = relationships, parentFunc = parentFunc)
+    WhiskAction(namespace, name, exec, parameters, limits, version, publish, annotations, runtimeType = runtimeType, relationships = relationships, parentFunc = parentFunc)
       .revision[WhiskAction](rev)
 }
 
@@ -586,8 +604,9 @@ case class ExecutableWhiskActionMetaData(namespace: EntityPath,
                                          publish: Boolean = false,
                                          annotations: Parameters = Parameters(),
                                          binding: Option[EntityPath] = None,
-                                         relationships: Option[WhiskActionRelationship] = None,
-                                         parentFunc: Option[WhiskEntityReference] = None,
+                                         override val runtimeType: Option[String] = None,
+                                         override val relationships: Option[WhiskActionRelationship] = None,
+                                         override val parentFunc: Option[WhiskEntityReference] = None,
                                          )
     extends WhiskActionLikeMetaData(name) {
 
@@ -595,7 +614,8 @@ case class ExecutableWhiskActionMetaData(namespace: EntityPath,
   require(limits != null, "limits undefined")
 
   def toWhiskAction =
-    WhiskActionMetaData(namespace, name, exec, parameters, limits, version, publish, annotations, updated, relationships = relationships, parentFunc = parentFunc)
+    WhiskActionMetaData(namespace, name, exec, parameters, limits, version, publish, annotations, updated,
+      runtimeType = runtimeType, relationships = relationships, parentFunc = parentFunc)
       .revision[WhiskActionMetaData](rev)
 
   /**
@@ -626,6 +646,7 @@ object WhiskAction extends DocumentFactory[WhiskAction] with WhiskEntityQueries[
         "publish",
         "annotations",
         "updated",
+      "runtimeType",
        "relationships",
        "parentFunc").write(obj)
 
@@ -640,6 +661,7 @@ object WhiskAction extends DocumentFactory[WhiskAction] with WhiskEntityQueries[
         fromField[Boolean](json, "publish"),
         fromField[Parameters](json, "annotations"),
         fromField[Instant](json, "updated"),
+        fromField[Option[String]](json, "runtimeType"),
         fromField[Option[WhiskActionRelationship]](json, "relationships"),
         fromField[Option[WhiskEntityReference]](json, "parentFunc")
       )
@@ -865,6 +887,7 @@ object WhiskActionMetaData
       "annotations",
       "updated",
       "binding",
+      "runtimeType",
       "relationships",
       "parentFunc").write(obj)
 
@@ -880,6 +903,7 @@ object WhiskActionMetaData
         fromField[Parameters](json, "annotations"),
         fromField[Instant](json, "updated"),
         fromField[Option[EntityPath]](json, "binding"),
+        fromField[Option[String]](json, "runtimeType"),
         fromField[Option[WhiskActionRelationship]](json, "relationships"),
         fromField[Option[WhiskEntityReference]](json, "parentFunc"),
       )
@@ -917,12 +941,12 @@ object WhiskActionMetaData
    * If it's the actual package, use its name directly as the package path name.
    * While traversing the package bindings, merge the parameters.
    */
-  def resolveActionAndMergeParameters(entityStore: EntityStore, fullyQualifiedName: FullyQualifiedEntityName)(
+  def resolveActionAndMergeParameters(entityStore: EntityStore, fullyQualifiedName: FullyQualifiedEntityName, appActivationId: Option[ActivationId] = None)(
     implicit ec: ExecutionContext,
     transid: TransactionId): Future[WhiskActionMetaData] = {
     // first check that there is a package to be resolved
     val entityPath = fullyQualifiedName.path
-    if (entityPath.defaultPackage) {
+    if (entityPath.defaultPackage || appActivationId.isDefined) {
       // this is the default package, nothing to resolve
       WhiskActionMetaData.get(entityStore, fullyQualifiedName.toDocId)
     } else {
@@ -954,10 +978,10 @@ object ActionLimitsOption extends DefaultJsonProtocol {
 }
 
 object WhiskActionPut extends DefaultJsonProtocol {
-  implicit val serdes: RootJsonFormat[WhiskActionPut] = jsonFormat9(WhiskActionPut.apply)
+  implicit val serdes: RootJsonFormat[WhiskActionPut] = jsonFormat10(WhiskActionPut.apply)
 
   def fromWhiskAction(obj: WhiskAction): WhiskActionPut = {
     WhiskActionPut(Some(obj.exec), Some(obj.parameters), Some(ActionLimitsOption.fromActionLimit(obj.limits)),
-      Some(obj.version), Some(obj.publish), Some(obj.annotations), None, obj.relationships.map(_.toRelationshipPut()), name = Some(obj.name.toString()))
+      Some(obj.version), Some(obj.publish), Some(obj.annotations), obj.runtimeType, None, obj.relationships.map(_.toRelationshipPut()), name = Some(obj.name.toString()))
   }
 }

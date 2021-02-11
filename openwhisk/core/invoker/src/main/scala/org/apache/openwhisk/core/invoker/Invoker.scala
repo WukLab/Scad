@@ -25,7 +25,7 @@ import kamon.Kamon
 import org.apache.openwhisk.common.Https.HttpsConfig
 import org.apache.openwhisk.common._
 import org.apache.openwhisk.core.WhiskConfig._
-import org.apache.openwhisk.core.connector.{MessageProducer, MessagingProvider}
+import org.apache.openwhisk.core.connector.{DependencyInvocationMessageContext, MessageProducer, MessagingProvider}
 import org.apache.openwhisk.core.containerpool.{Container, ContainerPoolConfig}
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size._
@@ -198,6 +198,17 @@ object Invoker {
 
     val invokerServer = SpiLoader.get[InvokerServerProvider].instance(invoker)
     BasicHttpService.startHttpService(invokerServer.route, port, httpsConfig)(
+      actorSystem,
+      ActorMaterializer.create(actorSystem))
+
+    // Start the runtime http service
+    val runtimePort = config.servicePort.toInt + 1
+    val runtimeTopic = DependencyInvocationMessageContext.DEP_INVOCATION_TOPIC
+    logger.info(this, s"Start Runtime Server API at $runtimePort with topic $runtimeTopic")
+
+
+    val invokerRuntimeServer = new InvokerRuntimeServer(producer, runtimeTopic)
+    BasicHttpService.startHttpService(invokerRuntimeServer.route, runtimePort, httpsConfig)(
       actorSystem,
       ActorMaterializer.create(actorSystem))
   }

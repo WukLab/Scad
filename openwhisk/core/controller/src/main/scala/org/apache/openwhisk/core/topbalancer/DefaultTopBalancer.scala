@@ -34,18 +34,8 @@ import org.apache.openwhisk.core.connector.ActivationMessage
 import org.apache.openwhisk.core.connector.MessageProducer
 import org.apache.openwhisk.core.connector.MessagingProvider
 import org.apache.openwhisk.core.containerpool.RuntimeResources
-import org.apache.openwhisk.core.entity.ActivationEntityLimit
-import org.apache.openwhisk.core.entity.ActivationId
-import org.apache.openwhisk.core.entity.ExecutableWhiskActionMetaData
-import org.apache.openwhisk.core.entity.FullyQualifiedEntityName
-import org.apache.openwhisk.core.entity.RackSchedInstanceId
-import org.apache.openwhisk.core.entity.ResourceLimit
-import org.apache.openwhisk.core.entity.TimeLimit
-import org.apache.openwhisk.core.entity.TopSchedInstanceId
-import org.apache.openwhisk.core.entity.UUID
-import org.apache.openwhisk.core.entity.WhiskActivation
-import org.apache.openwhisk.core.entity.WhiskEntityStore
-import org.apache.openwhisk.core.entity.types.EntityStore
+import org.apache.openwhisk.core.entity.{ActivationEntityLimit, ActivationId, ExecutableWhiskActionMetaData, FullyQualifiedEntityName, RackSchedInstanceId, ResourceLimit, TimeLimit, TopSchedInstanceId, UUID, WhiskActivation, WhiskAuthStore, WhiskEntityStore}
+import org.apache.openwhisk.core.entity.types.{AuthStore, EntityStore}
 import org.apache.openwhisk.core.loadBalancer.ClusterConfig
 import org.apache.openwhisk.core.loadBalancer.FeedFactory
 import org.apache.openwhisk.core.loadBalancer.LoadBalancerException
@@ -134,7 +124,8 @@ class DefaultTopBalancer(config: WhiskConfig,
     Some(monitor))
 
   implicit val entityStore: EntityStore = WhiskEntityStore.datastore()
-  val dependencyScheduler: DependencyForwarding = new DependencyForwarding(config, this)
+  implicit val authStore: AuthStore = WhiskAuthStore.datastore()
+  val dependencyScheduler: ActorRef = actorSystem.actorOf(Props(new DependencyForwarding(config, this)))
 
   // TODO(zac): setup a feed for DAG completions from racks
   /** Subscribes to ack messages from the invokers (result / completion) and registers a handler for these messages. */
@@ -158,7 +149,7 @@ class DefaultTopBalancer(config: WhiskConfig,
     val (racksToUse, stepSizes) = (state.racks, state.stepSizes)
     val hash = ShardingContainerPoolBalancer.generateHash(msg.user.namespace.name, action.fullyQualifiedName(false))
 
-    if (racksToUse.size > 0) {
+    if (!racksToUse.isEmpty) {
       val homeInvoker = hash % racksToUse.size
       val stepSize = stepSizes(hash % stepSizes.size)
       val rack = DefaultTopBalancer.schedule(action.limits.concurrency.maxConcurrent,

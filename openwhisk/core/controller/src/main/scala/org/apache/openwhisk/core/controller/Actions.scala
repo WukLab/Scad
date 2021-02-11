@@ -400,7 +400,26 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
    * - 500 Internal Server Error
    */
   override def remove(user: Identity, entityName: FullyQualifiedEntityName)(implicit transid: TransactionId) = {
-    deleteEntity(WhiskAction, entityStore, entityName.toDocId, (a: WhiskAction) => Future.successful({}))
+    onComplete(WhiskApplication.get(entityStore, entityName.toDocId) flatMap { app =>
+      Future.sequence(app.functions.map { f =>
+        WhiskFunction.get(entityStore, f.getDocId()) flatMap { func =>
+          Future.sequence(func.objects.map(obj => WhiskAction.get(entityStore, obj.getDocId()) flatMap { action =>
+            WhiskAction.del(entityStore, action.docinfo)
+          })) flatMap { deletes =>
+            WhiskFunction.del(entityStore, func.docinfo)
+          }
+        }
+      }) flatMap { funcs =>
+        WhiskApplication.del(entityStore, app.docinfo)
+      }
+    }) {
+      case Success(_) =>
+        complete(OK, "deleted entity")
+      case Failure(exception: IllegalArgumentException) =>
+        deleteEntity(WhiskAction, entityStore, entityName.toDocId, (a: WhiskAction) => Future.successful({}))
+      case Failure(exception) =>
+        deleteEntity(WhiskAction, entityStore, entityName.toDocId, (a: WhiskAction) => Future.successful({}))
+    }
   }
 
   /** Checks for package binding case. we don't want to allow get for a package binding in shared package */

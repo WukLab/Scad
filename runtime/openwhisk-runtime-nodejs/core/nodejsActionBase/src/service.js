@@ -16,6 +16,7 @@
  */
 
 const { initializeActionHandler, NodeActionRunner } = require('../runner');
+const { LibdAction } = require("./libd")
 
 function NodeActionService(config) {
 
@@ -78,6 +79,9 @@ function NodeActionService(config) {
         server.timeout = 0;
     };
 
+    // New APIs
+    let actions = {}
+
     /** Returns a promise of a response to the /init invocation.
      *
      *  req.body = { main: String, code: String, binary: Boolean }
@@ -138,7 +142,17 @@ function NodeActionService(config) {
                 return Promise.reject(errorMessage(403, errStr));
             }
 
-            return doRun(msg).then(result => {
+            if (errMsg = checkParameter(msg, 'activation_id')) { return Promise.reject(errorMessage(403, msg)) }
+
+            let serverIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+            serverIp = serverIp.toString().replace('::ffff:', '');
+            let serverUrl = `http://${serverIp}:${process.env['__OW_INVOKER_API_PORT']}`
+            
+            doAddAction(msg, msg.activation_id, serverUrl)
+
+            console.log(`[action][${msg.activation_id}] Action created, prepare to run`)
+
+            return doRun(msg, actions[msg.activation_id]).then(result => {
                 if (!ignoreRunStatus) {
                     setStatus(Status.ready);
                 }
@@ -158,6 +172,43 @@ function NodeActionService(config) {
             return Promise.reject(errorMessage(403, msg));
         }
     };
+
+    this.addAction = function addAction(req) {
+        let msg = req && req.body || {};
+        
+        let aid = req.aid
+
+        let serverIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+        serverIp = serverIp.toString().replace('::ffff:', '');
+        let serverUrl = `http://${serverIp}:${process.env['__OW_INVOKER_API_PORT']}`
+
+        doAddAction(msg, aid, serverUrl)
+
+        return responseMessage(200, {});
+    }
+
+    this.addTransport = function addTransport(req) {
+        let msg = req && req.body || {};
+
+        let aid = req.aid
+
+        checkParameter(msg, 'durl')
+        let ret = actions[aid].init_transport(msg.durl)
+
+        return responseMessage(200, {return: ret});
+    }
+
+    this.configTransport = function configTransport(req) {
+        let msg = req && req.body || {};
+
+        let aid = req.aid
+        let tname = req.tname
+
+        checkParameter(msg, 'durl')
+        actions[aid].configTransport(tname, msg.configTransport)
+
+        return responseMessage(200, {return: ret});
+    }
 
     function doInit(message) {
         if (message.env && typeof message.env == 'object') {
@@ -183,7 +234,32 @@ function NodeActionService(config) {
             });
     }
 
-    function doRun(msg) {
+    function doAddAction(msg, aid, serverUrl) {
+        if (aid in actions)
+            return;
+
+        console.log(`Try to init action ${aid} with serverUrl ${serverUrl}`)
+        let action = new LibdAction(aid, serverUrl)
+        if (msg.transports == null || msg.transports == undefined) {
+            msg.transports = []
+        } else if (!Array.isArray(msg.transports)) {
+            let errStr = `Internal system error: require transports to be array of durls`;
+            console.error('Internal system error:', errStr);
+            return Promise.reject(errorMessage(403, errStr));
+        }
+        console.log(`Try to add transports for action ${aid}, transports: ${msg.transports.length}`)
+
+        for (let i = 0; i < msg.transports.length; i++) {
+            let ret = action.init_transport(msg.transports[i])
+            console.log(`Return Value of Transport ${msg.transports[i]}: ${ret}`)
+        }
+
+        actions[aid] = action
+
+        console.log(`[$aid] Finish config actions`)
+    }
+
+    function doRun(msg, action) {
         // Move per-activation keys to process env. vars with __OW_ (reserved) prefix
         Object.keys(msg).forEach(k => {
             if (typeof msg[k] === 'string' && k !== 'value') {
@@ -193,7 +269,7 @@ function NodeActionService(config) {
         });
 
         return userCodeRunner
-            .run(msg.value)
+            .run(msg.value, action)
             .then(result => {
                 if (typeof result !== 'object') {
                     console.error(`Result must be of type object but has type "${typeof result}":`, result);
@@ -205,6 +281,23 @@ function NodeActionService(config) {
                 writeMarkers();
                 return Promise.reject(error);
             });
+    }
+
+    function checkParameter(msg, field, d = undefined, f = undefined) {
+        if (msg[field] == null || msg[field] == undefined) {
+            if (d === undefined) {
+                let errStr = `Internal system error: parameter check field for field "${field}"`;
+                console.error('Internal system error:', errStr);
+                return errStr
+            } else {
+                msg[field] = d
+                return null
+            }
+        } else if (f != undefined && !f(msg[field])) {
+            let errStr = `Internal system error: parameter check field for field "${field}"`;
+            console.error('Internal system error:', errStr);
+            return errStr
+        }
     }
 
     function writeMarkers() {

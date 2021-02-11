@@ -23,6 +23,8 @@ RUN apt-get update && apt-get install -y \
     imagemagick \
     graphicsmagick \
     unzip \
+    libcurl4-openssl-dev \
+    libnanomsg-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Add sources and copy the package.json to root container,
@@ -38,6 +40,10 @@ COPY package.json /
 RUN cd / && npm install --no-package-lock --production \
     && npm cache clean --force
 
-EXPOSE 8080
+# compile and install libd
+ADD libd /libd
+RUN make -C /libd 
+
+EXPOSE 8080 2333
 
 CMD node --expose-gc app.js

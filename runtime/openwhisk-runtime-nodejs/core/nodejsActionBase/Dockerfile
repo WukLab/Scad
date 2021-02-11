@@ -23,7 +23,13 @@ RUN apt-get update && apt-get install -y \
     imagemagick \
     graphicsmagick \
     unzip \
+    libcurl-dev \
+    libnanomsg-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# compile and install libd
+ADD  ../../lib /libd
+RUN make -C /libd 
 
 # Add sources and copy the package.json to root container,
 # so npm packages from user functions take precendence.
@@ -36,7 +42,7 @@ COPY package.json /
 RUN cd / && npm install --no-package-lock --production \
     && npm cache clean --force
 
-EXPOSE 8080
+EXPOSE 8080 2333
 
 WORKDIR /nodejsAction
 CMD node --expose-gc app.js

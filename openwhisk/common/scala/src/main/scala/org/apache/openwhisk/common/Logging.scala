@@ -502,6 +502,10 @@ object LoggingMarkers {
         "completionAck_" + completionAckType.asString,
         counter)(MeasurementUnit.none)
 
+  // Time that is needed to call API on container
+  val INVOKER_CONTAINER_CALL =
+    LogMarkerToken(invoker, "containerCall", start)(MeasurementUnit.time.milliseconds)
+
   // Time that is needed to execute the action
   val INVOKER_ACTIVATION_RUN =
     LogMarkerToken(invoker, "activationRun", start)(MeasurementUnit.time.milliseconds)

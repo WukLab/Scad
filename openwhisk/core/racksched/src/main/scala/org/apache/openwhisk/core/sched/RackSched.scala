@@ -213,7 +213,11 @@ object RackSched {
   }
 
   def start(args: Array[String])(implicit actorSystem: ActorSystem, logger: Logging): Unit = {
-    ConfigMXBean.register()
+    try {
+      ConfigMXBean.register()
+    } catch { case e : Throwable =>
+      logger.error(this, s"Config MXBean Error, $e")
+    }
     Kamon.init()
 
     // Prepare Kamon shutdown

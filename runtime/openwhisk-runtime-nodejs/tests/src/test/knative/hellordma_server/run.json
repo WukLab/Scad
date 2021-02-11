@@ -1,0 +1,13 @@
+{
+  "value": {
+  },
+  "namespace": "default",
+  "action_name": "nodejs-helloworld",
+  "api_host": "",
+  "api_key": "",
+  "activation_id": "0001",
+  "server_url": "12345",
+  "deadline": "4102498800000",
+  "transports": [ "server;rdma_tcp_server;url,tcp://*:2333;size,65535;" ]
+}
+
