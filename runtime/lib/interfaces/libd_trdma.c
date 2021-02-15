@@ -6,17 +6,35 @@
 
 // interface functions
 int libd_trdma_write (struct libd_transport * trans, size_t size, uint64_t addr, void * buf) {
+    int ret;
 
-    if (trans->tstate->state != LIBD_TRANS_STATE_READY)
-        return -EINVAL;
+    operation(trans, LIBD_TRANS_STATE_READY);
 
-    return transport_handler(libd_trdma, trans, write)(trans, size, addr, buf);
+    // metrics
+    ret = transport_handler(libd_trdma, trans, write)(trans, size, addr, buf);
+    if (ret != 0) {
+        abort();
+        return ret;
+    }
+
+    
+    trans->tstate->counters.tx_bytes += size;
+    success();
+    return ret;
 }
 
 int libd_trdma_read  (struct libd_transport * trans, size_t size, uint64_t addr, void * buf) {
+    int ret;
 
-    if (trans->tstate->state != LIBD_TRANS_STATE_READY)
-        return -EINVAL;
+    operation(trans, LIBD_TRANS_STATE_READY);
 
-    return transport_handler(libd_trdma, trans, read)(trans, size, addr, buf);
+    ret = transport_handler(libd_trdma, trans, read)(trans, size, addr, buf);
+    if (ret != 0) {
+        abort();
+        return ret;
+    }
+
+    trans->tstate->counters.rx_bytes += size;
+    success();
+    return ret;
 }

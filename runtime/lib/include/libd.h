@@ -3,6 +3,7 @@
 
 #include <pthread.h>
 #include <stdint.h>
+#include <stdatomic.h>
 #include "map.h"
 
 #ifdef DEBUG
@@ -18,16 +19,26 @@ extern const char * libd_transports_name[];
 extern const struct libd_t *libd_transports[];
 extern const int num_transports;
 
+struct libd_counters {
+    uint64_t tx_bytes;
+    uint64_t rx_bytes;
+};
+
+enum {
+    LIBD_TRANS_STATE_ACTION = -3,
+    LIBD_TRANS_STATE_TRANSIT = -2,
+    LIBD_TRANS_STATE_ANY = -1,
+    LIBD_TRANS_STATE_INIT = 0,
+    LIBD_TRANS_STATE_INITD,
+    LIBD_TRANS_STATE_CONNECT,
+    LIBD_TRANS_STATE_READY,
+    LIBD_TRANS_STATE_ERROR,
+    LIBD_TRANS_STATE_TERMINATED
+};
+
 struct libd_tstate {
-    enum {
-        LIBD_TRANS_STATE_ANY = -1,
-        LIBD_TRANS_STATE_INIT = 0,
-        LIBD_TRANS_STATE_INITD,
-        LIBD_TRANS_STATE_CONNECT,
-        LIBD_TRANS_STATE_READY,
-        LIBD_TRANS_STATE_ERROR,
-        LIBD_TRANS_STATE_TERMINATED
-    } state;
+    struct libd_counters counters;
+    atomic_int state;
     
     char *name, *impl;
     map_of(string,string) config;

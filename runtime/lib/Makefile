@@ -12,7 +12,7 @@ TARGETS    := libd.so
 
 LD       := gcc
 INCLUDES := -I./include
-CFLAGS   := -fPIC -O2 -g -Wall $(INCLUDES) -DDEBUG
+CFLAGS   := -fPIC -O2 -g -std=c11 -Wall $(INCLUDES) -DDEBUG
 LDFLAGS  := $(LDFLAGS) -lnanomsg
 
 .PNONY: all install clean

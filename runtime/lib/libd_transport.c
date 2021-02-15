@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <errno.h>
+#include <stdatomic.h>
 
 #include "libd.h"
 #include "libd_transport.h"
@@ -20,30 +21,36 @@ int libd_transport_modify(struct libd_transport * trans, int from, int to) {
 
 // State machine functions
 // Handles lock and state mchine; state can also be changed from internal
-// TODO: add locks here
+
 int libd_transport_init      (struct libd_transport * trans) {
     int ret;
 
-    if (trans->tstate->state != LIBD_TRANS_STATE_INIT)
+    transit(ret, trans, LIBD_TRANS_STATE_INIT, LIBD_TRANS_STATE_INITD);
+    if (!ret)
         return -EINVAL;
 
-    if ((ret = trans->_impl->init(trans)) < 0)
+    if ((ret = trans->_impl->init(trans)) < 0) {
+        abort();
         return ret;
+    }
 
-    trans->tstate->state = LIBD_TRANS_STATE_INITD;
+    success();
     return 0;
 }
 
 int libd_transport_connect   (struct libd_transport * trans) {
     int ret;
 
-    if (trans->tstate->state != LIBD_TRANS_STATE_INITD)
+    transit(ret, trans, LIBD_TRANS_STATE_INITD, LIBD_TRANS_STATE_READY);
+    if (!ret)
         return -EINVAL;
 
-    if ((ret = trans->_impl->connect(trans)) < 0)
+    if ((ret = trans->_impl->connect(trans)) < 0) {
+        success();
         return ret;
+    }
 
-    trans->tstate->state = LIBD_TRANS_STATE_READY;
+    abort();
     return 0;
 }
 
@@ -58,3 +65,4 @@ int libd_transport_terminate (struct libd_transport * trans) {
     trans->tstate->state = LIBD_TRANS_STATE_TERMINATED;
     return 0;
 }
+

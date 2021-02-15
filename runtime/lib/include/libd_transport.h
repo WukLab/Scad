@@ -1,6 +1,8 @@
 #ifndef _LIBD_TRANSPORT_H_
 #define _LIBD_TRANSPORT_H_
 
+#include <stdatomic.h>
+
 #ifdef DEBUF
 	#inlcude "libd.h"
 #endif
@@ -31,5 +33,17 @@ int libd_transport_modify(struct libd_transport * trans, int from, int to);
 #define libd_reg_transport(name, impl)
 
 #define get_local_state(name,t,tt) tt *name = (tt *)((t)->tstate)
+
+// Functions for atomic transition
+#define transit(ret, trans, from, to) \
+    int __as_fail = from, __as_succ = to, __as_lock = LIBD_TRANS_STATE_TRANSIT; \
+    ret = atomic_compare_exchange_weak(&(trans->tstate->state), &__as_fail, __as_lock)
+#define operation(ret, trans, cur) \
+    int __as_fail = LIBD_TRANS_STATE_ERROR, __as_succ = cur, __as_lock = LIBD_TRANS_STATE_ACTION; \
+    ret = atomic_compare_exchange_weak(&(trans->tstate->state), &__as_succ, __as_lock)
+#define success() \
+    while (!atomic_compare_exchange_weak(&(trans->tstate->state), &__as_lock, __as_succ)) ;
+#define abort() \
+    while (!atomic_compare_exchange_weak(&(trans->tstate->state), &__as_lock, __as_fail)) ;
 
 #endif
