@@ -9,17 +9,19 @@ import org.apache.openwhisk.core.connector._
 import org.apache.openwhisk.core.entity._
 import spray.json._
 
-import scala.concurrent.{ExecutionContext}
-import scala.util.{Failure, Success}
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, ExecutionContext, Future}
 
 
 case class RuntimeDependencyInvocation(target: String,
                                        value: Option[JsObject],
                                        parallelism : Option[Seq[String]],
-                                       dependency : Option[Seq[String]]
+                                       dependency : Option[Seq[String]],
+                                       functionActivationId: ActivationId,
+                                       appActivationId: ActivationId,
                                       )
-object RuntimeJsonSupport extends DefaultJsonProtocol with SprayJsonSupport {
-  implicit val runtimeDependencyInvocationF = jsonFormat4(RuntimeDependencyInvocation.apply)
+object RuntimeDependencyInvocation extends DefaultJsonProtocol with SprayJsonSupport {
+  implicit val serdes: RootJsonFormat[RuntimeDependencyInvocation] = jsonFormat6(RuntimeDependencyInvocation.apply)
 }
 
 // TODO: currently this one cannot talk to other actors
@@ -30,10 +32,6 @@ class InvokerRuntimeServer(producer: MessageProducer,
   implicit val executionContext: ExecutionContext,
   implicit val logging: Logging
 ) {
-
-  import RuntimeJsonSupport._
-
-
   def route : Route =
 
     pathPrefix ("activation" / Segment ) { _activationId : String =>
@@ -61,31 +59,28 @@ class InvokerRuntimeServer(producer: MessageProducer,
             }
           }
         }
-
       }
     }
 
   def invokeDependency(topic : String)
                       (invoke: RuntimeDependencyInvocation, activationId: ActivationId): Either[String, String] = {
-
     val msg = DependencyInvocationMessage(
       action = invoke.target,
       activationId = activationId,
       content = invoke.value,
-      dependency = invoke.dependency.getOrElse(Seq.empty)
+      dependency = invoke.dependency.getOrElse(Seq.empty),
+      functionActivationId = invoke.functionActivationId,
+      appActivationId = invoke.appActivationId,
     )
     // Send a message
-    val res = producer.send(topic = topic, msg).value
-    res.getOrElse(Left("Fail")) match {
-      case Failure(exception) =>
-        val err = s"failed to post action dependency ${msg.activationId}, ${msg.toString} , ${exception.toString()}"
+    Await.result(producer.send(topic = topic, msg) flatMap { res =>
+      Future.successful(Right(res.toString))
+    } recoverWith {
+      case exception: Throwable =>
+        val err = s"failed to post action dependency ${msg.activationId}, ${msg.toString} , ${exception.toString}"
         logging.error(this, err)
-        Left(err)
-
-      case Success(value)     =>
-        Right(value.toString())
-    }
-
+        Future.successful(Left(err))
+    }, 30.seconds)
   }
 
 

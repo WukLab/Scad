@@ -172,12 +172,36 @@ class InvokerReactive(
   private val pool =
     actorSystem.actorOf(ContainerPool.props(childFactory, poolConfig, activationFeed, prewarmingConfigs))
 
+   def handlePrewarmMessage(msg: ActivationMessage, partialConfig: PartialPrewarmConfig)(implicit transid: TransactionId): Future[Unit] = {
+     val namespace = msg.action.path
+     val name = msg.action.name
+     val actionid = FullyQualifiedEntityName(namespace, name).toDocId.asDocInfo(msg.revision)
+     val subject = msg.user.subject
+     logging.debug(this, s"handling prewarm message: ${actionid.id} $subject ${msg.activationId}")
+     WhiskAction
+       .get(entityStore, actionid.id, actionid.rev, fromCache = actionid.rev != DocRevision.empty)
+       .flatMap(action => {
+         action.toExecutableWhiskAction match {
+           case Some(executable) =>
+             pool ! PrewarmContainer(executable, partialConfig)
+             Future.successful(())
+           case None =>
+             logging.error(this, s"non-executable action attempted to prewarm at invoker ${action.fullyQualifiedName(false)}")
+             Future.successful(())
+         }
+       })
+       .recoverWith({
+         case t =>
+           logging.warn(this, s"Failed to handle prewarming request: $actionid; $t")
+           Future.successful(())
+       })
+   }
+
   def handleActivationMessage(msg: ActivationMessage)(implicit transid: TransactionId): Future[Unit] = {
     val namespace = msg.action.path
     val name = msg.action.name
     val actionid = FullyQualifiedEntityName(namespace, name).toDocId.asDocInfo(msg.revision)
     val subject = msg.user.subject
-
     logging.debug(this, s"${actionid.id} $subject ${msg.activationId}")
 
     // caching is enabled since actions have revision id and an updated
@@ -242,7 +266,11 @@ class InvokerReactive(
 
         if (!namespaceBlacklist.isBlacklisted(msg.user)) {
           val start = transid.started(this, LoggingMarkers.INVOKER_ACTIVATION, logLevel = InfoLevel)
-          handleActivationMessage(msg)
+          if (msg.prewarmOnly.isDefined) {
+            handlePrewarmMessage(msg, msg.prewarmOnly.get)
+          } else {
+            handleActivationMessage(msg)
+          }
         } else {
           // Iff the current namespace is blacklisted, an active-ack is only produced to keep the loadbalancer protocol
           // Due to the protective nature of the blacklist, a database entry is not written.

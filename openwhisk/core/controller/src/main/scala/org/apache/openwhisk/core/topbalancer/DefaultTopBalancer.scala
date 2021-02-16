@@ -166,7 +166,7 @@ class DefaultTopBalancer(config: WhiskConfig,
         val timeLimitInfo = if (timeLimit == TimeLimit()) { "std" } else { "non-std" }
         logging.info(
           this,
-          s"sent activation to rack activation ${msg.activationId}, action '${msg.action.asString}', ns '${msg.user.namespace.name.asString}', resource limit ${resourceLimit} (${resourceLimitInfo}), time limit ${timeLimit.duration.toMillis} ms (${timeLimitInfo}) to ${rack}")
+          s"sent activation to rack activation ${msg.activationId}, action '${msg.action.asString}', ns '${msg.user.namespace.name.asString}', resource limit ${resourceLimit} (${resourceLimitInfo}), time limit ${timeLimit.duration.toMillis} ms (${timeLimitInfo}, prewarm: ${msg.prewarmOnly.isDefined}) to ${rack}")
         val activationResult = setupActivation(msg, action, rack)
         sendActivationToRack(messageProducer, msg, rack).map(_ => activationResult)
       }

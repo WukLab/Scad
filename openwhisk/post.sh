@@ -12,7 +12,8 @@ GUEST_AUTH=89c46b1-71f6-4ed5-8c54-816aa4f8c502:abczO3xZCLrMN6v2BKK1dXYFpXlPkccOF
 # List all actions
 #curl -u ${SYSTEM_AUTH} -X GET http://172.17.0.1:3233/api/v1/namespaces/whisk.system/actions
 
-JSON_FILE="application-corunning.json"
+
+JSON_FILE="application-example.json"
 ACTION_NAME=test-action
 if [[ "${1}" == "d" ]]; then
     echo "DELETING"
@@ -21,6 +22,13 @@ elif [[ "${1}" == "p" ]]; then
     # Put an action
     echo "UPLOADING"
     curl -u ${SYSTEM_AUTH} -X PUT -H "Content-Type: application/json" --data @${JSON_FILE} http://172.17.0.1:3233/api/v1/namespaces/whisk.system/actions/test-action?overwrite=true
+elif [[ "${1}" == "g" ]]; then
+    # echo "Getting activation for ${2}"
+    curl -u ${SYSTEM_AUTH} -X GET -H "Content-Type: application/json" --data @${JSON_FILE} http://172.17.0.1:3233/api/v1/namespaces/whisk.system/activations/${2}/result
+    echo ""
+    curl -u ${SYSTEM_AUTH} -X GET -H "Content-Type: application/json" --data @${JSON_FILE} http://172.17.0.1:3233/api/v1/namespaces/whisk.system/activations/${2}/logs
+elif [[ "${1}" == "a" ]]; then
+    curl -u ${SYSTEM_AUTH} -X GET -H "Content-Type: application/json" --data @${JSON_FILE} http://172.17.0.1:3233/api/v1/namespaces/whisk.system/activations | jq '.[] | select(.name | contains("action_tests_name"))'
 else
     echo "ACTIVATING"
     curl -u ${SYSTEM_AUTH} -X POST http://172.17.0.1:3233/api/v1/namespaces/whisk.system/actions/test-action

@@ -821,7 +821,10 @@ class ContainerProxy(factory: (TransactionId,
       "action_name" -> job.msg.action.qualifiedNameWithLeadingSlash.toJson,
       "action_version" -> job.msg.action.version.toJson,
       "activation_id" -> job.msg.activationId.toString.toJson,
-      "transaction_id" -> job.msg.transid.id.toJson)
+      "function_activation_id" -> job.msg.functionActivationId.toJson,
+      "app_activation_id" -> job.msg.appActivationId.toJson,
+      "transaction_id" -> job.msg.transid.id.toJson,
+    )
 
     // if the action requests the api key to be injected into the action context, add it here;
     // treat a missing annotation as requesting the api key for backward compatibility
@@ -902,7 +905,8 @@ class ContainerProxy(factory: (TransactionId,
               None,
               Interval.zero,
               false,
-              ActivationResponse.whiskError(Messages.abnormalRun)))
+              ActivationResponse.whiskError(Messages.abnormalRun))
+          )
       }
 
     val splitAckMessagesPendingLogCollection = collectLogs.logsToBeCollected(job.action)

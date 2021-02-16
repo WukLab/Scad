@@ -42,6 +42,8 @@ import org.apache.openwhisk.http.Messages
 protected[core] class EntityPath private (private val path: Seq[String]) extends AnyVal {
   def namespace: String = path.foldLeft("")((a, b) => if (a != "") a.trim + EntityPath.PATHSEP + b.trim else b.trim)
 
+  def segment(i: Int): Option[String] = if (i >= 0 && i < path.length) Some(path(i)) else None
+
   /**
    * @return number of parts in the path.
    */

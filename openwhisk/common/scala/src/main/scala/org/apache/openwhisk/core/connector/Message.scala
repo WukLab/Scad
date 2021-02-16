@@ -25,6 +25,7 @@ import org.apache.openwhisk.core.entity._
 import scala.concurrent.duration._
 import akka.http.scaladsl.model.StatusCodes._
 import org.apache.openwhisk.core.connector.RunningActivation.serdes
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.database.DocumentFactory
 
 import java.util.concurrent.TimeUnit
@@ -53,7 +54,6 @@ trait Message {
   override def toString = serialize
 }
 
-
 case class ActivationMessage(override val transid: TransactionId,
                              action: FullyQualifiedEntityName,
                              revision: DocRevision,
@@ -68,7 +68,8 @@ case class ActivationMessage(override val transid: TransactionId,
                              traceContext: Option[Map[String, String]] = None,
                              siblings: Option[Seq[RunningActivation]] = None,
                              appActivationId: Option[ActivationId] = None,
-                             functionActivationId: Option[ActivationId] = None
+                             functionActivationId: Option[ActivationId] = None,
+                             prewarmOnly: Option[PartialPrewarmConfig] = None,
                             )
     extends Message {
 
@@ -182,7 +183,7 @@ object ActivationMessage extends DefaultJsonProtocol {
   def parse(msg: String) = Try(serdes.read(msg.parseJson))
 
   private implicit val fqnSerdes = FullyQualifiedEntityName.serdes
-  implicit val serdes = jsonFormat15(ActivationMessage.apply)
+  implicit val serdes = jsonFormat16(ActivationMessage.apply)
 }
 
 object CombinedCompletionAndResultMessage extends DefaultJsonProtocol {
@@ -461,11 +462,11 @@ object DependencyInvocationMessageContext {
 import DependencyInvocationMessageContext._
 case class DependencyInvocationMessage(action: String,
                                        activationId: ActivationId,
-                                       content: Option[JsValue],
+                                       content: Option[JsObject],
                                       // No reference for now, safe to change for future
                                        dependency: Seq[DependencyReference],
-                                       appActivationId: Option[ActivationId] = None,
-                                       functionActivationId: Option[ActivationId] = None
+                                       functionActivationId: ActivationId,
+                                       appActivationId: ActivationId,
                                        )
     extends Message {
 
@@ -537,3 +538,10 @@ object RunningActivation extends DefaultJsonProtocol with DocumentFactory[Runnin
     "needWait",
   "needSignal")
 }
+
+case class PartialPrewarmConfig(ttlMs: Long, resources: RuntimeResources)
+
+object PartialPrewarmConfig extends DefaultJsonProtocol {
+  implicit val serdes: RootJsonFormat[PartialPrewarmConfig] = jsonFormat2(PartialPrewarmConfig.apply)
+}
+

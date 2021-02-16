@@ -948,7 +948,8 @@ object WhiskActionMetaData
     val entityPath = fullyQualifiedName.path
     if (entityPath.defaultPackage || appActivationId.isDefined) {
       // this is the default package, nothing to resolve
-      WhiskActionMetaData.get(entityStore, fullyQualifiedName.toDocId)
+      val docid = fullyQualifiedName.toDocId
+      WhiskActionMetaData.get(entityStore, docid)
     } else {
       // there is a package to be resolved
       val pkgDocid = fullyQualifiedName.path.toDocId

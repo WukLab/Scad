@@ -19,7 +19,7 @@ package org.apache.openwhisk.core.containerpool
 
 import akka.actor.{Actor, ActorRef, ActorRefFactory, Props}
 import org.apache.openwhisk.common.{Logging, LoggingMarkers, MetricEmitter, TransactionId}
-import org.apache.openwhisk.core.connector.MessageFeed
+import org.apache.openwhisk.core.connector.{MessageFeed, PartialPrewarmConfig}
 import org.apache.openwhisk.core.entity.ExecManifest.ReactivePrewarmingConfig
 import org.apache.openwhisk.core.entity._
 
@@ -27,7 +27,6 @@ import scala.annotation.tailrec
 import scala.collection._
 import scala.concurrent.duration._
 import scala.util.{Random, Try}
-
 import cats.implicits._
 
 sealed trait WorkerState
@@ -41,6 +40,8 @@ case class WorkerData(data: ContainerData, state: WorkerState)
 case object EmitMetrics
 
 case object AdjustPrewarmedContainer
+
+case class PrewarmContainer(action: ExecutableWhiskAction, msg: PartialPrewarmConfig)
 
 /**
  * A pool managing containers to run actions on.
@@ -232,7 +233,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                 .traverse(identity)
             } yield transports
 
-            logging.warn(this, s"Get avtivation with id ${r.msg.activationId}, $r")
+            logging.debug(this, s"Get activation with id ${r.msg.activationId}, $r")
             actor ! r.copy(corunningConfig = fetchedAddresses)
 
             // Post run actions
@@ -372,6 +373,8 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
     case AdjustPrewarmedContainer =>
       adjustPrewarmedContainer(false, true)
+    case warm: PrewarmContainer =>
+      prewarmContainer(warm.action.exec, warm.msg.resources, Some(FiniteDuration(warm.msg.ttlMs, MILLISECONDS)))
   }
 
   /** Resend next item in the buffer, or trigger next item in the feed, if no items in the buffer. */

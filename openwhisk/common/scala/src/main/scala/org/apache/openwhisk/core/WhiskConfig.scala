@@ -259,6 +259,7 @@ object ConfigKeys {
 
   val controller = s"whisk.controller"
   val controllerActivation = s"$controller.activation"
+  val controllerDepPrewarm = s"$controller.dependency-prewarm"
 
   val activationStore = "whisk.activation-store"
   val elasticSearchActivationStore = s"$activationStore.elasticsearch"
