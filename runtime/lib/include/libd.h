@@ -74,6 +74,7 @@ struct libd_action {
     char aid[128];
     char server_url[256];
     map_of(string, struct libd_transport *) transports;
+    map_of(string, int (*)(struct libd_plugin *, struct libd_transport *)) transport_hooks;
 };
 
 struct libd_action * libd_action_init(char * aid, char * server_url);
@@ -83,6 +84,15 @@ int libd_action_add_transport(struct libd_action * action, char * durl);
 int libd_action_config_transport(struct libd_action * action, char *name, char * durl);
 struct libd_transport * libd_action_get_transport(struct libd_action * action, char * name);
 
-// capbilities
+// user functions
+struct libd_plugin {
+    struct libd_action *action;
+    int (*init) (struct libd_plugin *);
+    int (*terminate) (struct libd_plugin *);
+};
+
+// register a callback for transport
+int libd_plugin_reg_transport(struct libd_plugin *plugin, char *name,
+                              int (*callback)(struct libd_plugin *, struct libd_transport *);
 
 #endif
