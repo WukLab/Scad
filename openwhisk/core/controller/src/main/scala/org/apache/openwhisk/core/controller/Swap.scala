@@ -98,7 +98,7 @@ trait SwapApi extends Directives with AuthorizedRouteProvider with Authenticated
   }
 
   protected def scheduleSwap(obj: SwapObject, user: Identity)(implicit transid: TransactionId): Future[Unit] = {
-    SwapObject.swapAction() flatMap { exec =>
+    SwapObject.swapAction(obj.mem) flatMap { exec =>
       WhiskActionMetaData.serdes.read(WhiskAction.serdes.write(exec)).toExecutableWhiskAction flatMap { action =>
         val msg = activationMsgFromObj(obj, user)
         logging.debug(this, s"scheduling swap activation for ${obj.appActivationId}::${obj.functionActivationId} with activation ${msg.activationId}")

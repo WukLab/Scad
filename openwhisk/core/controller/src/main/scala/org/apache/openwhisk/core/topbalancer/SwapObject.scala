@@ -1,20 +1,30 @@
 package org.apache.openwhisk.core.topbalancer
 
 import org.apache.openwhisk.common.{Logging, TransactionId}
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.database.NoDocumentException
+import org.apache.openwhisk.core.entity.size.SizeInt
 import org.apache.openwhisk.core.entity.types.EntityStore
-import org.apache.openwhisk.core.entity.{ActionLimits, ActivationId, BasicAuthenticationAuthKey, CodeExecAsString, EntityName, ExecManifest, ExecutableWhiskActionMetaData, Identity, InvokerInstanceId, Namespace, ResourceLimit, Secret, Subject, UUID, WhiskAction}
+import org.apache.openwhisk.core.entity.{ActionLimits, ActivationId, BasicAuthenticationAuthKey, ByteSize, CodeExecAsString, EntityName, ExecManifest, ExecutableWhiskActionMetaData, Identity, InvokerInstanceId, Namespace, ResourceLimit, Secret, Subject, UUID, WhiskAction}
 import spray.json.{DefaultJsonProtocol, RootJsonFormat}
 
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Success}
 
-case class SwapObject(originalAction: String, source: InvokerInstanceId, functionActivationId: ActivationId, appActivationId: ActivationId)
+/**
+ * An object representing a request to schedule a new swap object
+ *
+ * @param originalAction the fully qualified name of the object requesting the swap space. e.g. {namespace}/action
+ * @param source the invoker where the swap request is coming from
+ * @param functionActivationId the activation ID belonging to the function which is requesting this swap
+ * @param appActivationId the application ID of the application requesting this swap
+ */
+case class SwapObject(originalAction: String, source: InvokerInstanceId, functionActivationId: ActivationId, appActivationId: ActivationId, mem: ByteSize)
 
 object SwapObject extends DefaultJsonProtocol {
 
-  implicit val serdes: RootJsonFormat[SwapObject] = jsonFormat4(SwapObject.apply)
+  implicit val serdes: RootJsonFormat[SwapObject] = jsonFormat5(SwapObject.apply)
 
   val swapObjectIdentity: Identity = {
     val whiskSystem = "whisk.system"
@@ -22,15 +32,14 @@ object SwapObject extends DefaultJsonProtocol {
     Identity(Subject(whiskSystem), Namespace(EntityName(whiskSystem), uuid), BasicAuthenticationAuthKey(uuid, Secret()))
   }
 
-  def swapAction(): Option[WhiskAction] =
+  def swapAction(memory: ByteSize = 0.B): Option[WhiskAction] =
     ExecManifest.runtimesManifest.resolveDefaultRuntime("nodejs:default").map { manifest =>
       new WhiskAction(
         namespace = swapObjectIdentity.namespace.name.toPath,
         name = EntityName(s"swapAction"),
         exec = CodeExecAsString(manifest, """function main(params,action) {let t = action.get_transport('server','rdma_server');let ret = t.serve();return {payload: 'serve'};}""", None),
-        limits = ActionLimits(resources = ResourceLimit(ResourceLimit.MIN_RESOURCES)))
+        limits = ActionLimits(resources = ResourceLimit(RuntimeResources(0, memory, 0.B))))
     }
-  def swapActionMetadata(): Option[ExecutableWhiskActionMetaData] = ???
 
   def createSwapAction(db: EntityStore, action: WhiskAction): Future[Unit] = {
       implicit val tid: TransactionId = TransactionId.loadbalancer
