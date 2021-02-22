@@ -5,6 +5,8 @@
 
 static const int MAP_DEFAULT_SIZE = 4;
 
+// we relies on ksize to see if its string (null terminated)
+
 int _map_init(map *m, int ksize, const char * kt) {
     m->cap = MAP_DEFAULT_SIZE;
     m->keys   = (void **)calloc(MAP_DEFAULT_SIZE, sizeof(void *));

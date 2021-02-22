@@ -4,11 +4,13 @@
 #include "libd_trdma.h"
 #include "libd_transport.h"
 
+// TODO: blocking interface?
 // interface functions
 int libd_trdma_write (struct libd_transport * trans, size_t size, uint64_t addr, void * buf) {
     int ret;
 
-    operation(trans, LIBD_TRANS_STATE_READY);
+    // TODO: blocking?
+    operation_spin(ret, trans, LIBD_TRANS_STATE_READY);
 
     // metrics
     ret = transport_handler(libd_trdma, trans, write)(trans, size, addr, buf);
@@ -26,7 +28,8 @@ int libd_trdma_write (struct libd_transport * trans, size_t size, uint64_t addr,
 int libd_trdma_read  (struct libd_transport * trans, size_t size, uint64_t addr, void * buf) {
     int ret;
 
-    operation(trans, LIBD_TRANS_STATE_READY);
+    // TODO: blocking?
+    operation_spin(ret, trans, LIBD_TRANS_STATE_READY);
 
     ret = transport_handler(libd_trdma, trans, read)(trans, size, addr, buf);
     if (ret != 0) {

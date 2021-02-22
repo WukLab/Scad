@@ -6,14 +6,20 @@ INTERFACES      := ./interfaces
 INTERFACES_SRCS := $(wildcard $(INTERFACES)/*.c)
 INTERFACES_OBJS := $(patsubst $(INTERFACES)/%.c,$(INTERFACES)/%.o,$(INTERFACES_SRCS))
 
+PLUGINS      := ./plugins
+PLUGINS_SRCS := $(wildcard $(PLUGINS)/*.c)
+PLUGINS_OBJS := $(patsubst $(PLUGINS)/%.c,$(PLUGINS)/%.o,$(PLUGINS_SRCS))
+
+DYN_OBJS   := $(TRANSPORTS_OBJS) $(INTERFACES_OBJS) $(PLUGINS_OBJS)
 UTIL_OBJS  := map.o durl.o
-OBJECTS    := libd.o libd_transport.o libd_transports.o $(UTIL_OBJS) $(TRANSPORTS_OBJS) $(INTERFACES_OBJS)
+OBJECTS    := libd.o libd_transport.o libd_transports.o $(UTIL_OBJS) $(DYN_OBJS)
 TARGETS    := libd.so
 
 LD       := gcc
 INCLUDES := -I./include
+LIBS     := -lnanomsg -lcurl
 CFLAGS   := -fPIC -O2 -g -std=c11 -Wall $(INCLUDES) -DDEBUG
-LDFLAGS  := $(LDFLAGS) -lnanomsg
+LDFLAGS  := $(LDFLAGS) $(LIBS)
 
 .PNONY: all install clean
 
