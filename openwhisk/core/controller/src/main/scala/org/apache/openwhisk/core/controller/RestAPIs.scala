@@ -208,7 +208,8 @@ class RestAPIVersion(config: WhiskConfig, apiPath: String, apiVersion: String)(
                   rules.routes(user) ~
                   activations.routes(user) ~
                   packages.routes(user) ~
-                  limits.routes(user)
+                  limits.routes(user) ~
+                  swap.routes(user)
               }
           } ~
           swaggerRoutes
@@ -236,6 +237,7 @@ class RestAPIVersion(config: WhiskConfig, apiPath: String, apiVersion: String)(
   private val activations = new ActivationsApi(apiPath, apiVersion)
   private val rules = new RulesApi(apiPath, apiVersion)
   private val limits = new LimitsApi(apiPath, apiVersion)
+  private val swap = new SwapSchedulerApi(apiPath, apiVersion)
   private val web = new WebActionsApi(Seq("web"), new WebApiDirectives())
 
   class NamespacesApi(val apiPath: String, val apiVersion: String) extends WhiskNamespacesApi
@@ -329,6 +331,21 @@ class RestAPIVersion(config: WhiskConfig, apiPath: String, apiVersion: String)(
     override val whiskConfig: WhiskConfig)
       extends WhiskWebActionsApi
       with WhiskServices
+
+  class SwapSchedulerApi(val apiPath: String, val apiVersion: String)(
+    implicit override val actorSystem: ActorSystem,
+    implicit override val entityStore: EntityStore,
+    override val entitlementProvider: EntitlementProvider,
+    override val activationStore: ActivationStore,
+    override val activationIdFactory: ActivationIdGenerator,
+    override val loadBalancer: TopBalancer,
+    override val cacheChangeNotification: Some[CacheChangeNotification],
+    override val executionContext: ExecutionContext,
+    override val whiskConfig: WhiskConfig,
+    val logging: Logging,
+    val materializer: ActorMaterializer,
+    val topsched: ControllerInstanceId,
+  ) extends SwapApi
 }
 
 trait AuthenticationDirectiveProvider extends Spi {

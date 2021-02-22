@@ -230,6 +230,7 @@ protected trait ControllerTestCommon
   val ACTIONS = Collection(Collection.ACTIONS)
   val TRIGGERS = Collection(Collection.TRIGGERS)
   val RULES = Collection(Collection.RULES)
+  val SWAP = Collection(Collection.SWAP)
   val ACTIVATIONS = Collection(Collection.ACTIVATIONS)
   val NAMESPACES = Collection(Collection.NAMESPACES)
   val PACKAGES = Collection(Collection.PACKAGES)

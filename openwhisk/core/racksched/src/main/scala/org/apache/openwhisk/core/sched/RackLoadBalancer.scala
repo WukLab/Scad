@@ -283,10 +283,10 @@ class RackSimpleBalancer(config: WhiskConfig,
           schedulingState.invokerSlots,
           action.limits.resources.limits,
           homeInvoker,
-          stepSize) map { v =>
+          stepSize,
+          swappingInvoker = msg.swapFrom) map { v =>
         (v._1, None, v._2)
       }
-
 
       val invoker: Option[(InvokerInstanceId, Option[ActivationId], Boolean)] = msg.waitForContent match {
         case Some(content) =>

@@ -124,6 +124,7 @@ protected[core] object Collection {
   protected[core] val ACTIVATIONS = WhiskActivation.collectionName
   protected[core] val NAMESPACES = "namespaces"
   protected[core] val LIMITS = "limits"
+  protected[core] val SWAP = "swap"
 
   private val collections = scala.collection.mutable.Map[String, Collection]()
   private def register(c: Collection) = collections += c.path -> c
@@ -134,6 +135,7 @@ protected[core] object Collection {
     register(new ActionCollection(entityStore))
     register(new Collection(TRIGGERS))
     register(new Collection(RULES))
+    register(new Collection(SWAP))
     register(new PackageCollection(entityStore))
 
     register(new Collection(ACTIVATIONS) {
