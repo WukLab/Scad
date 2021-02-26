@@ -17,7 +17,7 @@
 
 package org.apache.openwhisk.core.controller
 
-import akka.actor.ActorSystem
+import akka.actor.{ActorRef, ActorSystem}
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
 import akka.http.scaladsl.model.StatusCodes._
 import akka.http.scaladsl.model.Uri
@@ -169,6 +169,7 @@ class RestAPIVersion(config: WhiskConfig, apiPath: String, apiVersion: String)(
   implicit val cacheChangeNotification: Some[CacheChangeNotification],
   implicit val activationStore: ActivationStore,
   implicit val logStore: LogStore,
+  implicit val appActivator: ActorRef,
   implicit val whiskConfig: WhiskConfig)
     extends SwaggerDocs(Uri.Path(apiPath) / apiVersion, "apiv1swagger.json")
     with RespondWithHeaders {
@@ -256,6 +257,7 @@ class RestAPIVersion(config: WhiskConfig, apiPath: String, apiVersion: String)(
     override val cacheChangeNotification: Some[CacheChangeNotification],
     override val executionContext: ExecutionContext,
     override val logging: Logging,
+    override val appActivator: ActorRef,
     override val whiskConfig: WhiskConfig)
       extends WhiskActionsApi
       with WhiskServices {
@@ -323,6 +325,7 @@ class RestAPIVersion(config: WhiskConfig, apiPath: String, apiVersion: String)(
     override val actorSystem: ActorSystem,
     override val executionContext: ExecutionContext,
     override val logging: Logging,
+    override val appActivator: ActorRef,
     override val whiskConfig: WhiskConfig)
       extends WhiskWebActionsApi
       with WhiskServices

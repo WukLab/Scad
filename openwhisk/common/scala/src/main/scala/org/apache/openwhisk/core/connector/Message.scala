@@ -472,11 +472,6 @@ case class DependencyInvocationMessage(action: String,
 
   override def serialize: String = DependencyInvocationMessage.serdes.write(this).compactPrint
 
-  override def toString: String = {
-    val value = (content getOrElse JsObject.empty).compactPrint
-    s"$action?message=$value"
-  }
-
   def getFQEN(): FullyQualifiedEntityName = {
     EntityPath(action).toFullyQualifiedEntityName
   }

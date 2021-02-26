@@ -257,8 +257,6 @@ class RackSimpleBalancer(config: WhiskConfig,
       sendActivationToInvoker,
       Some(monitor))
 
-  val invokerName: InvokerInstanceId = InvokerInstanceId(0, None, None, poolConfig.resources)
-
   /** 1. Publish a message to the rackLoadBalancer */
   override def publish(action: ExecutableWhiskActionMetaData, msg: ActivationMessage)(
     implicit transid: TransactionId): Future[Future[Either[ActivationId, WhiskActivation]]] = {
@@ -426,24 +424,29 @@ class RackSimpleBalancer(config: WhiskConfig,
   /** 4. Get the ack message and parse it */
   protected[sched] def processAcknowledgement(bytes: Array[Byte]): Future[Unit] = Future {
     val raw = new String(bytes, StandardCharsets.UTF_8)
-    Future.fromTry(AcknowledegmentMessage.parse(raw))
-      .andThen {
-        case _ => activationFeed ! MessageFeed.Processed
-      }.map { acknowledgement =>
-      acknowledgement.isSlotFree.foreach { instance =>
-        processCompletion(
-          acknowledgement.activationId,
-          acknowledgement.transid,
-          forced = false,
-          isSystemError = acknowledgement.isSystemError.getOrElse(false),
-          instance)
-      }
+    AcknowledegmentMessage.parse(raw) match {
+      case Success(acknowledgement) =>
+        acknowledgement.isSlotFree.foreach { instance =>
+          processCompletion(
+            acknowledgement.activationId,
+            acknowledgement.transid,
+            forced = false,
+            isSystemError = acknowledgement.isSystemError.getOrElse(false),
+            instance)
+        }
 
-      acknowledgement.result.foreach { response =>
-        processResult(acknowledgement.activationId, acknowledgement.transid, response)
-      }
-    }.recover {
-      case t => logging.error(this, s"failed processing message: $raw")
+        acknowledgement.result.foreach { response =>
+          processResult(acknowledgement.activationId, acknowledgement.transid, response)
+        }
+        acknowledgementFeed ! MessageFeed.Processed
+      case Failure(exception) =>
+        logging.error(this, s"failed processing message: $raw")
+        acknowledgementFeed ! MessageFeed.Processed
+      case _ =>
+        logging.error(this, s"Unexpected Acknowledgment message received by racksched: $raw")
+        acknowledgementFeed ! MessageFeed.Processed
+
+
     }
   }
 

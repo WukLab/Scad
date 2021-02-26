@@ -170,9 +170,11 @@ object BasicHttpService {
    */
   def startHttpService(route: Route, port: Int, config: Option[HttpsConfig] = None, interface: String = "0.0.0.0")(
     implicit actorSystem: ActorSystem,
-    materializer: ActorMaterializer): Unit = {
+    materializer: ActorMaterializer,
+    logger: Logging): Unit = {
     val connectionContext = config.map(Https.connectionContext(_)).getOrElse(HttpConnectionContext)
     val httpBinding = Http().bindAndHandle(route, interface, port, connectionContext = connectionContext)
+    logger.info(this, s"starting web service on port ${interface}:${port} with config ${config}")
     addShutdownHook(httpBinding)
   }
 

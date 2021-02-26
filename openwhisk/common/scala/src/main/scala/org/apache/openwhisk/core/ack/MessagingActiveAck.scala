@@ -38,7 +38,8 @@ class MessagingActiveAck(producer: MessageProducer, instance: InstanceId, eventS
     implicit val transid: TransactionId = tid
 
     def send(msg: AcknowledegmentMessage, recovery: Boolean = false) = {
-      producer.send(topic = "completed" + controllerInstance.asString, msg).andThen {
+      val topic = "completed" + controllerInstance.asString
+      producer.send(topic = topic, msg).andThen {
         case Success(_) =>
           val info = if (recovery) s"recovery ${msg.messageType}" else msg.messageType
           logging.info(this, s"posted $info of activation ${acknowledegment.activationId}")

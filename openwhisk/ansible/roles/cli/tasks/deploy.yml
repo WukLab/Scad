@@ -85,3 +85,6 @@
     dest: "{{ item.path | dirname }}"
     remote_src: yes
   with_items: "{{ individual_zipfiles.files }}"
+
+- name: "Configure wsk CLI"
+  shell: "{{ cli.path }} property set --auth `cat {{ catalog_auth_key }}` --apihost {{ whisk_api_host_name | default(groups['edge'] | first) }}"

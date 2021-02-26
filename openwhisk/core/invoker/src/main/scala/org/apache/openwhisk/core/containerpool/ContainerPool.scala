@@ -233,7 +233,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                 .traverse(identity)
             } yield transports
 
-            logging.debug(this, s"Get activation with id ${r.msg.activationId}, $r")
+            logging.debug(this, s"Get activation for ${r.msg.action} with id ${r.msg.activationId}: addresses ${fetchedAddresses}: run msg: $r")
             actor ! r.copy(corunningConfig = fetchedAddresses)
 
             // Post run actions
@@ -245,7 +245,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
             } yield seq.map { ra =>
               val name = LibdAPIs.Transport.getName(ra)
               val port = LibdAPIs.Transport.getPort(ra)
-              logging.warn(this, s"emmit dependency for ${r.msg.activationId}:$name:$port")
+              logging.debug(this, s"emit dependency for ${r.msg.activationId}:$name:$port")
               // Need wait here?
               if (LibdAPIs.Transport.needSignal(runtime))
                 addressBook.signalReady(r.msg.activationId, name,

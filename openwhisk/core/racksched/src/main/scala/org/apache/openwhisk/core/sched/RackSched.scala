@@ -317,7 +317,7 @@ object RackSched {
 
        BasicHttpService.startHttpService(racksched.route, port, httpsConfig, interface)(
          actorSystem,
-         racksched.materializer)
+         racksched.materializer, logger)
 
       case Failure(t) =>
         abort(s"Invalid runtimes manifest: $t")

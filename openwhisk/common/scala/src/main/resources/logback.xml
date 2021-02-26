@@ -13,6 +13,7 @@
 
   <!-- Kafka -->
   <logger name="org.apache.kafka" level="ERROR" />
+  <logger name="org.apache.openwhisk" level="DEBUG" />
 
   <root level="${logback.log.level:-INFO}">
     <appender-ref ref="console" />

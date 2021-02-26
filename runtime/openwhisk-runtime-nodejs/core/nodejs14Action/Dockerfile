@@ -46,4 +46,4 @@ RUN make -C /libd
 
 EXPOSE 8080 2333
 
-CMD node --expose-gc app.js
+CMD node --expose-gc --perf-basic-prof app.js

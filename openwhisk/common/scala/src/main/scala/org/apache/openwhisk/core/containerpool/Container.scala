@@ -18,7 +18,6 @@
 package org.apache.openwhisk.core.containerpool
 
 import java.time.Instant
-
 import akka.actor.ActorSystem
 import akka.event.Logging.InfoLevel
 import akka.http.scaladsl.model.HttpMethod

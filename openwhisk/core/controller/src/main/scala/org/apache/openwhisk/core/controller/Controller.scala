@@ -18,7 +18,7 @@
 package org.apache.openwhisk.core.controller
 
 import akka.Done
-import akka.actor.{ActorSystem, CoordinatedShutdown}
+import akka.actor.{ActorRef, ActorSystem, CoordinatedShutdown, Props}
 import akka.event.Logging.InfoLevel
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
 import akka.http.scaladsl.model.StatusCodes._
@@ -41,14 +41,13 @@ import org.apache.openwhisk.core.entity.ActivationId.ActivationIdGenerator
 import org.apache.openwhisk.core.entity.ExecManifest.Runtimes
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.loadBalancer.LoadBalancerProvider
-import org.apache.openwhisk.core.topbalancer.RackState
-import org.apache.openwhisk.core.topbalancer.TopBalancerProvider
+import org.apache.openwhisk.core.topbalancer.{AppActivator, RackState, TopBalancerProvider}
 import org.apache.openwhisk.http.{BasicHttpService, BasicRasService}
 import org.apache.openwhisk.spi.SpiLoader
 
 import scala.concurrent.ExecutionContext.Implicits
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.Await
+import scala.concurrent.{Await, ExecutionContext}
 import scala.util.{Failure, Success}
 
 /**
@@ -112,7 +111,8 @@ class Controller(val instance: TopSchedInstanceId,
       remoteCacheInvalidaton.notifyOtherInstancesAboutInvalidation(k)
     }
   })
-
+  implicit val ec: ExecutionContext = actorSystem.dispatcher
+  implicit val appActivator: ActorRef = actorSystem.actorOf(Props { AppActivator() })
   // initialize backend services
   private implicit val loadBalancer =
     SpiLoader.get[TopBalancerProvider].instance(whiskConfig, instance)
@@ -292,7 +292,7 @@ object Controller {
 
         BasicHttpService.startHttpService(controller.route, port, httpsConfig, interface)(
           actorSystem,
-          controller.materializer)
+          controller.materializer, logger)
 
       case Failure(t) =>
         abort(s"Invalid runtimes manifest: $t")

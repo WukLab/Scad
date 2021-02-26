@@ -220,6 +220,7 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
         putEntity(WhiskApplication, entityStore, entityName.toDocId, overwrite, (x: WhiskApplication) => app, () => app)
       } catch {
         case e: Throwable => {
+          logging.debug(this, s"Failed to create application from PUT content. Attempting normal application...: $e")
           val actionPut = WhiskActionPut.serdes.read(content)
           putEntity(WhiskAction, entityStore, entityName.toDocId, overwrite, updateAction(user, actionPut) _, () => {
             val x: Future[WhiskAction] = makeAction(user, entityName, actionPut)
@@ -603,7 +604,7 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
      case deprecatedExec =>
        Future failed RejectRequest(BadRequest, runtimeDeprecated(deprecatedExec))
 
-   } getOrElse Future.failed(RejectRequest(BadRequest, "exec undefined"))
+   } getOrElse Future.failed(RejectRequest(BadRequest, "exec undefined for makeAction"))
  }
 
   /**
@@ -633,7 +634,7 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
     val functions: Seq[WhiskFunctionPut] = content.functions
     val names = functions.map(_.name.get)
     val funcNames = functions.map(a => a.name.get -> {
-      val ent = entityName.add(EntityName("function")).add(EntityName(a.name.get))
+      val ent = entityName.add(EntityName(a.name.get))
       WhiskEntityReference(ent.path, ent.name)
     }).toMap
 
@@ -661,7 +662,7 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
       // need to be serialized and put into a DB first so that it contains valid object references.
       // They are uploaded with their own user defined names, so it is separate from the funcName map
       val objNames = a.objects.get.map(_.name.get)
-        .map(a => a.name -> ref.toFQEN().add(EntityName("object")).add(EntityName(a.name))).toMap
+        .map(a => a.name -> ref.toFQEN().add(EntityName(a.name))).toMap
       // ensure no duplicates
       require(objNames.size == a.objects.get.size, "object names must not contain duplicates")
 

@@ -12,7 +12,6 @@ import spray.json._
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContext, Future}
 
-
 case class RuntimeDependencyInvocation(target: String,
                                        value: Option[JsObject],
                                        parallelism : Option[Seq[String]],
@@ -43,19 +42,23 @@ class InvokerRuntimeServer(producer: MessageProducer,
         }
 
         path ("dependency") {
+          logging.debug(this, "Got dependency message!")
           post {
             entity(as[RuntimeDependencyInvocation]) { invoke =>
-
-              // TODO: change this get
-              val activationId = ActivationId.parse(_activationId).get
-
-              logging.info(this, s"Get Dependency Request from $activationId: $invoke")
-
-              invokeDependency(topic)(invoke, activationId) match {
-                case Left(x)  => complete((500, x))
-                case Right(x) => complete((200, x))
+              logging.info(this, s"Get Dependency Request from (unparsed) ${_activationId}: $invoke")
+              ActivationId.parse(_activationId).toEither match {
+                case Left(throwable) =>
+                  logging.warn(this, s"aid parse failed: ${_activationId}: ${throwable}")
+                  complete((500, throwable))
+                case Right(aid) =>
+                  invokeDependency(topic)(invoke, aid) match {
+                    case Left(x)  =>
+                      logging.warn(this, s"dependency request failed: ${x}")
+                      complete((500, x))
+                    case Right(x) =>
+                      complete((200, x))
+                  }
               }
-
             }
           }
         }
@@ -74,6 +77,7 @@ class InvokerRuntimeServer(producer: MessageProducer,
     )
     // Send a message
     Await.result(producer.send(topic = topic, msg) flatMap { res =>
+      logging.debug(this, s"dependency message sent successfully ${msg}") 
       Future.successful(Right(res.toString))
     } recoverWith {
       case exception: Throwable =>

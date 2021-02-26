@@ -75,7 +75,7 @@ class PlaygroundLauncher(host: String,
   private val wsk = new Wsk(host, controllerPort, authKey)
 
   def run(): ServiceContainer = {
-    BasicHttpService.startHttpService(PlaygroundService.route, pgPort, None, interface)(actorSystem, materializer)
+    BasicHttpService.startHttpService(PlaygroundService.route, pgPort, None, interface)(actorSystem, materializer, logging)
     ServiceContainer(pgPort, pgUrl, "Playground")
   }
 

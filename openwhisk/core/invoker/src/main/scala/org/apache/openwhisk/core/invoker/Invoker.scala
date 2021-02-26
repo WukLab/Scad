@@ -199,7 +199,7 @@ object Invoker {
     val invokerServer = SpiLoader.get[InvokerServerProvider].instance(invoker)
     BasicHttpService.startHttpService(invokerServer.route, port, httpsConfig)(
       actorSystem,
-      ActorMaterializer.create(actorSystem))
+      ActorMaterializer.create(actorSystem), logger)
 
     // Start the runtime http service
     val runtimePort = config.servicePort.toInt + 1
@@ -210,7 +210,7 @@ object Invoker {
     val invokerRuntimeServer = new InvokerRuntimeServer(producer, runtimeTopic)
     BasicHttpService.startHttpService(invokerRuntimeServer.route, runtimePort, httpsConfig)(
       actorSystem,
-      ActorMaterializer.create(actorSystem))
+      ActorMaterializer.create(actorSystem), logger)
   }
 }
 

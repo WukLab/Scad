@@ -1,8 +1,6 @@
 package org.apache.openwhisk.core.topbalancer
 
-import akka.actor.ActorRefFactory
-import akka.actor.ActorSystem
-import akka.actor.Props
+import akka.actor.{ActorRef, ActorRefFactory, ActorSystem, Props}
 import akka.stream.ActorMaterializer
 import org.apache.openwhisk.common.Logging
 import org.apache.openwhisk.common.TransactionId
@@ -73,7 +71,8 @@ trait TopBalancerProvider extends Spi {
 
   def instance(whiskConfig: WhiskConfig, instance: TopSchedInstanceId)(implicit actorSystem: ActorSystem,
                                                                        logging: Logging,
-                                                                       materializer: ActorMaterializer): TopBalancer
+                                                                       materializer: ActorMaterializer,
+                                                                       appActivator: ActorRef): TopBalancer
 
   /** Return default FeedFactory */
   def createFeedFactory(whiskConfig: WhiskConfig, instance: ControllerInstanceId)(implicit actorSystem: ActorSystem,

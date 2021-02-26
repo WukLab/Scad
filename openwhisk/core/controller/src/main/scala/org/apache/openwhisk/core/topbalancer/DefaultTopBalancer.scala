@@ -59,7 +59,8 @@ class DefaultTopBalancer(config: WhiskConfig,
                          val instance: TopSchedInstanceId)(implicit actorSystem: ActorSystem,
                            logging: Logging,
                            materializer: ActorMaterializer,
-                           implicit val messagingProvider: MessagingProvider = SpiLoader.get[MessagingProvider])
+                           implicit val messagingProvider: MessagingProvider = SpiLoader.get[MessagingProvider],
+                                                           appActivator: ActorRef)
                            extends TopBalancer {
   protected implicit val executionContext: ExecutionContext = actorSystem.dispatcher
   /** Build a cluster of all loadbalancers */
@@ -127,7 +128,6 @@ class DefaultTopBalancer(config: WhiskConfig,
   implicit val authStore: AuthStore = WhiskAuthStore.datastore()
   val dependencyScheduler: ActorRef = actorSystem.actorOf(Props(new DependencyForwarding(config, this)))
 
-  // TODO(zac): setup a feed for DAG completions from racks
   /** Subscribes to ack messages from the invokers (result / completion) and registers a handler for these messages. */
 //  private val activationFeed: ActorRef =
 //    feedFactory.createFeed(actorSystem, messagingProvider, processAcknowledgement)
@@ -155,7 +155,6 @@ class DefaultTopBalancer(config: WhiskConfig,
       val rack = DefaultTopBalancer.schedule(action.limits.concurrency.maxConcurrent,
         action.fullyQualifiedName(true),
         racksToUse,
-  //      action.limits.memory.megabytes,
         homeInvoker,
         stepSize)
 
@@ -345,7 +344,7 @@ object DefaultTopBalancer extends TopBalancerProvider {
 
   override def requiredProperties: Map[String, String] = kafkaHosts
 
-  override def instance(whiskConfig: WhiskConfig, instance: TopSchedInstanceId)(implicit actorSystem: ActorSystem, logging: Logging, materializer: ActorMaterializer): TopBalancer = {
+  override def instance(whiskConfig: WhiskConfig, instance: TopSchedInstanceId)(implicit actorSystem: ActorSystem, logging: Logging, materializer: ActorMaterializer, appActivator: ActorRef): TopBalancer = {
     val rackPoolFactory = new RackPoolFactory {
       override def createRackPool(actorRefFactory: ActorRefFactory,
                                       messagingProvider: MessagingProvider,

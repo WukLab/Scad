@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# this script requires python3 and pip3 installed.
+
+set -e
+# set -x
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+
+PYTHON3_VERSION="$(python3 --version | awk '{print substr($2, 1, 3)}')"
+VIRTUALENV_LOCATION="${HOME}/.local/bin/virtualenv"
+
+ENV_DIR="${SCRIPT_DIR}/env"
+PYTHON="${ENV_DIR}/bin/python"
+PIP="${ENV_DIR}/bin/pip"
+
+if ! command -v ${VIRTUALENV_LOCATION} 2>&1 &> /dev/null
+then
+    echo "virtualenv command not found. Performing first-time setup....."
+    pip3 install --user virtualenv 
+fi
+
+
+if [[ ! -d ${ENV_DIR} ]]; then
+    echo "python virtual environment not found. Performing first time setup...."
+    "${VIRTUALENV_LOCATION}" -p python3 "${ENV_DIR}"
+    "${PIP}" install -r "${SCRIPT_DIR}/requirements.txt"
+fi
+
+"${PYTHON}" "${SCRIPT_DIR}/wskish.py" ${@}
+

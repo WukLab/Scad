@@ -37,10 +37,11 @@ class LibdRequest {
         this.actionId = actionId
     }
 
-    dependency(target, value = null, parallelism = null, dependency = null,
+    async dependency(target = null, value = null, parallelism = null, dependency = null,
         functionActivationId = null, appActivationId = null) {
         let path = `${this.serverUrl}/activation/${this.actionId}/dependency`
-        let json = { target: target }
+        let requestPath = target || process.env['__OW_ACTION_NAME']
+        let json = { target: requestPath }
         
         json['functionActivationId'] = functionActivationId || process.env['__OW_FUNCTION_ACTIVATION_ID']
         json['appActivationId']      = appActivationId || process.env['__OW_APP_ACTIVATION_ID']
@@ -51,15 +52,11 @@ class LibdRequest {
         let params = JSON.stringify(json)
 
         console.log(`call invocation ${path} with parameter ${params}`)
-
         fetch(path, {
             method: 'post',
             body:    params,
             headers: { 'Content-Type': 'application/json' },
-        })
-        .then(res =>
-            console.log(`request dependency ${target} with return ${res}`)
-        )
+        }).then(res => console.log(`request dependency ${json} with return ${res}`))
     }
 
 

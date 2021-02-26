@@ -266,11 +266,13 @@ class InvokerReactive(
 
         if (!namespaceBlacklist.isBlacklisted(msg.user)) {
           val start = transid.started(this, LoggingMarkers.INVOKER_ACTIVATION, logLevel = InfoLevel)
-          if (msg.prewarmOnly.isDefined) {
+          val future = if (msg.prewarmOnly.isDefined) {
             handlePrewarmMessage(msg, msg.prewarmOnly.get)
           } else {
             handleActivationMessage(msg)
           }
+          future.onComplete(f => activationFeed ! MessageFeed)
+          future
         } else {
           // Iff the current namespace is blacklisted, an active-ack is only produced to keep the loadbalancer protocol
           // Due to the protective nature of the blacklist, a database entry is not written.

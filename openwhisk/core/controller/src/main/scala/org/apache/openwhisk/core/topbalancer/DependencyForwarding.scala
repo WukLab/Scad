@@ -9,7 +9,7 @@ import org.apache.openwhisk.core.connector.{ActivationMessage, DependencyInvocat
 import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.database.{ActivationStoreProvider, CacheChangeNotification, UserContext}
 import org.apache.openwhisk.core.entity.SizeUnits.MB
-import org.apache.openwhisk.core.entity.{ActivationId, ActivationLogs, ActivationResponse, ByteSize, EntityName, ExecutableWhiskActionMetaData, FullyQualifiedEntityName, Identity, Parameters, SemVer, WhiskAction, WhiskActionMetaData, WhiskActivation, WhiskEntityReference, WhiskFunction}
+import org.apache.openwhisk.core.entity.{ActivationId, ActivationLogs, ActivationResponse, ByteSize, EntityName, EntityPath, ExecutableWhiskActionMetaData, FullyQualifiedEntityName, Identity, Parameters, SemVer, WhiskAction, WhiskActionMetaData, WhiskActivation, WhiskEntityReference, WhiskFunction}
 import org.apache.openwhisk.core.entity.types.{AuthStore, EntityStore}
 import org.apache.openwhisk.spi.SpiLoader
 import pureconfig.loadConfigOrThrow
@@ -20,6 +20,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import scala.util.{Failure, Success}
 
+
 class DependencyForwarding(whiskConfig: WhiskConfig,
                            topBalancer: TopBalancer)(
   implicit val actorSystem: ActorSystem,
@@ -27,12 +28,12 @@ class DependencyForwarding(whiskConfig: WhiskConfig,
   val messagingProvider: MessagingProvider,
   val ec: ExecutionContext,
   val entityStore: EntityStore,
-  val authStore: AuthStore) extends Actor {
+  val authStore: AuthStore,
+  val appActivator: ActorRef) extends Actor {
   protected val controllerPrewarmConfig: Boolean =
     loadConfigOrThrow[Boolean](ConfigKeys.controllerDepPrewarm)
 
   implicit val transid: TransactionId = TransactionId.depInvocation
-
   implicit val materializer: ActorMaterializer = ActorMaterializer()
   private val activationStore =
     SpiLoader.get[ActivationStoreProvider].instance(actorSystem, materializer, logging)
@@ -62,8 +63,10 @@ class DependencyForwarding(whiskConfig: WhiskConfig,
     val raw = new String(bytes, StandardCharsets.UTF_8)
     DependencyInvocationMessage.parse(raw) match {
       case Success(p: DependencyInvocationMessage) =>
+        depMsgFeed ! MessageFeed.Processed
         self ! p
-      case Failure(t) =>
+        case Failure(t) =>
+        depMsgFeed ! MessageFeed.Processed
         logging.error(this, s"failed processing message: $raw with $t")
     }
   }
@@ -72,62 +75,68 @@ class DependencyForwarding(whiskConfig: WhiskConfig,
     // We're getting notice of a particular object finishing
     // need to schedule the next object in line
     // First, lookup the application and function this finished object is a part of.
-        val f = WhiskAction.get(entityStore, msg.getFQEN().toDocId) flatMap { whiskObject =>
-          Identity.get(authStore, whiskObject.fullyQualifiedName(false).path.root).flatMap(identity => {
-            // if the object has any dependencies, schedule them all.
-            // if the object has no dependencies, it is the end of the function
-            // encapsulate the dependency invocation message to function invocation message handler.
-            whiskObject.parentFunc map { pf =>
-              whiskObject.relationships map { rel =>
-                if (rel.dependents.isEmpty) {
-                  processFunctionInvocationMessage(pf, msg, identity, msg.getFQEN())
-                  // This will result in the next function in the chain being triggered.
-                } else {
-                  // schedule the next set of dependencies
-                  // generate the new activationIds
-                  // Use RunningActivation type so invokers can update the DB with network address
-                  val siblingActivations: Set[ActivationId] = rel.dependents.map(_ => ActivationId.generate()).toSet
-                  // for all of the next objects to be activated, get the action metadata and publish
-                  // to the load balancer
-                  rel.dependents zip siblingActivations map {
-                    case (child, newActivationId) =>
-                      WhiskActionMetaData.get(entityStore, child.getDocId()) flatMap { action =>
-                        action.toExecutableWhiskAction map { obj =>
-                          val sibs = (siblingActivations - newActivationId).map(x => RunningActivation(x))
-                          val message = ActivationMessage(
-                            transid,
-                            FullyQualifiedEntityName(action.namespace, action.name, Some(action.version), action.binding),
-                            action.rev,
-                            identity,
-                            newActivationId, // activation id created here
-                            topBalancer.id,
-                            blocking = false,
-                            msg.content,
-                            action.parameters.initParameters,
-                            action.parameters.lockedParameters(msg.content.map(_.fields.keySet).getOrElse(Set.empty)),
-                            cause = Some(msg.activationId),
-                            WhiskTracerProvider.tracer.getTraceContext(transid),
-                            siblings = Some(sibs.toSeq),
-                            functionActivationId = Some(msg.functionActivationId),
-                            appActivationId = Some(msg.appActivationId)
-                          )
-                          val publishedMsg = topBalancer.publish(obj, message)
-                          // once published, prewarm next objects in the DAG...
-                          publishedMsg.onComplete(_ => {
-                            if (controllerPrewarmConfig) {
-                              prewarmNextLevelDeps(message, obj)
-                            }
-                          })
-                          publishedMsg
-                        } get
-                      }
+    logging.debug(this, s"scheduling dependency invocation message: ${msg}")
+    val f = WhiskAction.get(entityStore, msg.getFQEN().toDocId) flatMap { whiskObject =>
+      Identity.get(authStore, whiskObject.fullyQualifiedName(false).path.root).flatMap(identity => {
+        // if the object has any dependencies, schedule them all.
+        // if the object has no dependencies, it is the end of the function
+        // encapsulate the dependency invocation message to function invocation message handler.
+        logging.debug(this, s"dependency msg with identity: ${identity}")
+        whiskObject.parentFunc map { pf =>
+          logging.debug(this, s"dependency msg with whiskObjectParentFunc: ${pf}")
+          whiskObject.relationships map { rel =>
+            logging.debug(this, s"dependency msg with whisk object relationship: ${rel}")
+            if (rel.dependents.isEmpty) {
+              processFunctionInvocationMessage(pf, msg, identity, msg.getFQEN())
+              // This will result in the next function in the chain being triggered.
+            } else {
+              // schedule the next set of dependencies
+              // generate the new activationIds
+              // Use RunningActivation type so invokers can update the DB with network address
+              val siblingActivations: Set[ActivationId] = rel.dependents.map(_ => ActivationId.generate()).toSet
+              // for all of the next objects to be activated, get the action metadata and publish
+              // to the load balancer
+              rel.dependents zip siblingActivations map {
+                case (child, newActivationId) =>
+                  WhiskActionMetaData.get(entityStore, child.getDocId()) flatMap { action =>
+                    action.toExecutableWhiskAction map { obj =>
+                      val sibs = (siblingActivations - newActivationId).map(x => RunningActivation(x))
+                      val message = ActivationMessage(
+                        transid,
+                        FullyQualifiedEntityName(action.namespace, action.name, Some(action.version), action.binding),
+                        action.rev,
+                        identity,
+                        newActivationId, // activation id created here
+                        topBalancer.id,
+                        blocking = false,
+                        msg.content,
+                        action.parameters.initParameters,
+                        action.parameters.lockedParameters(msg.content.map(_.fields.keySet).getOrElse(Set.empty)),
+                        cause = Some(msg.activationId),
+                        WhiskTracerProvider.tracer.getTraceContext(transid),
+                        siblings = Some(sibs.toSeq),
+                        functionActivationId = Some(msg.functionActivationId),
+                        appActivationId = Some(msg.appActivationId)
+                      )
+                      logging.debug(this, s"scheduling dependent object ${action.namespace}/${action.name}")
+                      val publishedMsg = topBalancer.publish(obj, message)
+                      // once published, prewarm next objects in the DAG...
+                      publishedMsg.onComplete(_ => {
+                        if (controllerPrewarmConfig) {
+                          logging.debug(this, s"prewarming dependent object ${obj.namespace}, ${obj.name}}")
+                          prewarmNextLevelDeps(message, obj)
+                        }
+                      })
+                      publishedMsg
+                    } get
                   }
-                }
               }
             }
-            Future.successful(())
-          })
+          }
         }
+        Future.successful(())
+      })
+    }
   }
 
   /**
@@ -137,13 +146,18 @@ class DependencyForwarding(whiskConfig: WhiskConfig,
    * @param invocationMessage the final invocation message from the object DAG
    */
   private def processFunctionInvocationMessage(func: WhiskEntityReference, invocationMessage: DependencyInvocationMessage, user: Identity, fqen: FullyQualifiedEntityName): Unit = {
+    logging.debug(this, s"processFunctionInvocationMessage(${invocationMessage.appActivationId}): func: ${func}")
     WhiskFunction.get(entityStore, func.getDocId()) flatMap { wf =>
       val chillen = wf.children getOrElse Seq.empty
+      logging.debug(this, s"processFunctionInvocationMessage(${invocationMessage.appActivationId}): chillen: ${chillen}")
+
       if (chillen.isEmpty) {
         // post application response, there are no more functions in the DAG
+        logging.debug(this, s"processFunctionInvocationMessage(${invocationMessage.appActivationId}): postActivationResponse: ")
         postActivationResponse(invocationMessage.appActivationId, invocationMessage, user, fqen)
       } else {
         // there are more functions to be invoked after this one
+        logging.debug(this, s"processFunctionInvocationMessage(${invocationMessage.appActivationId}): invoking next chillen")
         chillen map { nextFunc =>
           WhiskFunction.get(entityStore, nextFunc.getDocId()) flatMap { func =>
             DagExecutor.executeFunction(func, entityStore, (obj, funcId, corunning) => {
@@ -195,35 +209,67 @@ class DependencyForwarding(whiskConfig: WhiskConfig,
   }
 
   private def postActivationResponse(appId: ActivationId, msg: DependencyInvocationMessage, user: Identity, fqen: FullyQualifiedEntityName)(implicit notifier: Option[CacheChangeNotification] = None): Unit = {
-    val actionName = fqen.path.segment(1).map { e => EntityName(e) }.get
-    val activation = WhiskActivation(
-      fqen.path.root.toPath,
-      actionName,
-      user.subject,
-      appId,
-      Instant.now(),
-      Instant.now(),
-      cause = None,
-      response = ActivationResponse.success(msg.content),
-      logs = ActivationLogs(),
-      version = SemVer(),
-    annotations = Parameters(),
-    duration = None,
-    parent = None
-    )
-    activationStore.store(activation, UserContext(user)) flatMap   { docinfo =>
-      logging.debug(this, s"application activation $activation stored with $docinfo")
-      Future.successful(())
-    } recoverWith {
-      case t: Throwable =>
-        logging.warn(this, s"application activation store $activation FAILED with $t")
-        Future.successful(())
-    }
+    val finishActivation = FinishActivation(appId, ActivationResponse.success(msg.content))
+    appActivator ! finishActivation
   }
 }
 
 object DependencyForwarding {
 
+}
 
+case class IncompleteActivation(id: ActivationId, startTime: Instant, entityPath: EntityPath, actionName: EntityName, user: Identity)
+case class FinishActivation(id: ActivationId, response: ActivationResponse,
+                            logs: ActivationLogs = ActivationLogs(),
+                            version: SemVer = SemVer(),
+                            annotations: Parameters = Parameters())
 
+/**
+ * This actor receives messages which allow it to track and store activations for "applications"
+ *
+ *
+ * an IncompleteActivation will store the activation in memory temporarily. a FinishActivation
+ * message will record and store the final activation result in the database
+ *
+ * @param actorSystem
+ * @param materializer
+ * @param logging
+ * @param ec
+ * @param cacheChangeNotification
+ */
+case class AppActivator()(implicit val actorSystem: ActorSystem, materializer: ActorMaterializer, val logging: Logging, ec: ExecutionContext, cacheChangeNotification: Option[CacheChangeNotification] = None) extends Actor {
+
+  implicit val transid: TransactionId = TransactionId.appActivator
+  private val activationStore =
+    SpiLoader.get[ActivationStoreProvider].instance(actorSystem, materializer, logging)
+
+  val incompleteActivations: collection.mutable.Map[ActivationId, IncompleteActivation] = collection.mutable.Map()
+
+   def receive: Receive = {
+    case info: IncompleteActivation =>
+      incompleteActivations.put(info.id, info)
+    case fin: FinishActivation =>
+      incompleteActivations.get(fin.id).map(incomplete => {
+        val now = Instant.now()
+        val act = WhiskActivation(
+          incomplete.entityPath,
+          incomplete.actionName,
+          incomplete.user.subject,
+          fin.id,
+          incomplete.startTime,
+          now,
+          response = fin.response,
+          duration = Some(now.toEpochMilli - incomplete.startTime.toEpochMilli)
+        )
+        activationStore.store(act, UserContext(incomplete.user)) flatMap { docInfo =>
+          logging.debug(this, s"application activation ${fin.id} stored with $docInfo")
+          Future.successful(())
+        } recoverWith {
+          case t: Throwable =>
+            logging.warn(this, s"application activation store ${fin.id} FAILED with $t")
+            Future.successful(())
+        }
+        incompleteActivations.remove(fin.id)
+      })
+  }
 }

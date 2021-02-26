@@ -18,7 +18,7 @@
 package org.apache.openwhisk.core.controller.actions
 
 import java.time.{Clock, Instant}
-import akka.actor.ActorSystem
+import akka.actor.{ActorRef, ActorSystem}
 import akka.event.Logging.InfoLevel
 import spray.json.DefaultJsonProtocol._
 import spray.json._
@@ -37,7 +37,7 @@ import org.apache.openwhisk.utils.ExecutionContextFactory.FutureExtensions
 import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.containerpool.Interval
 import org.apache.openwhisk.core.containerpool.RuntimeResources
-import org.apache.openwhisk.core.topbalancer.DagExecutor
+import org.apache.openwhisk.core.topbalancer.{DagExecutor, IncompleteActivation}
 
 import scala.collection.mutable.Buffer
 import scala.concurrent.duration._
@@ -57,6 +57,8 @@ protected[actions] trait PrimitiveActions {
   protected implicit val executionContext: ExecutionContext
 
   protected implicit val logging: Logging
+
+  implicit val appActivator: ActorRef
 
   /**
    *  The index of the active ack topic, this controller is listening for.
@@ -722,29 +724,16 @@ protected[actions] trait PrimitiveActions {
         val objResults = startingFuncs map { func =>
           DagExecutor.executeFunction(funcmap(func), entityStore,
             (obj, funcid, corunning) =>
-              invokeSimpleAction(user, obj, payload, waitForResponse, cause,
+              invokeSimpleAction(user, obj, payload, None, cause,
                 functionId = Some(funcid),
                 appId = Some(appActivationId),
                 corunning = Some(corunning.toSeq.map(x => RunningActivation(x)))))
         }
-      val context = UserContext(user)
-      val result = Promise[Either[ActivationId, WhiskActivation]]
-      val docid = new DocId(WhiskEntity.qualifiedName(user.namespace.name.toPath, appActivationId))
-      // fast poll
-      pollActivation(docid, context, result, i => 1.seconds + (2.seconds * i), maxRetries = 4)
-      // slow poll
-      pollActivation(docid, context, result, _ => 15.seconds)
-      // 3. Timeout forces a fallback to activationId
-      waitForResponse map { finiteDuration =>
-        val timeout = actorSystem.scheduler.scheduleOnce(finiteDuration)(result.trySuccess(Left(appActivationId)))
-
-        result.future.andThen {
-          case _ => timeout.cancel()
-        }
-      } getOrElse {
-        // no, return the activation id
-        Future.successful(Left(appActivationId))
-      }
+//      val context = UserContext(user)
+//      val result = Promise[Either[ActivationId, WhiskActivation]]
+//      val docid = new DocId(WhiskEntity.qualifiedName(user.namespace.name.toPath, appActivationId))
+      appActivator ! IncompleteActivation(appActivationId, Instant.now, application.namespace, application.name, user)
+      Future.successful(Left(appActivationId))
     } recoverWith {
       case t: Throwable =>
         logging.debug(this, s"failed to lookup funcs: $t")

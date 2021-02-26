@@ -17,6 +17,8 @@
 
 package org.apache.openwhisk.core.controller.test
 
+import akka.actor.{ActorRef, Props}
+
 import scala.concurrent.{Await, Future}
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.{Duration, DurationInt, FiniteDuration}
@@ -41,7 +43,7 @@ import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.test.ExecHelpers
 import org.apache.openwhisk.spi.SpiLoader
 import org.apache.openwhisk.core.database.UserContext
-import org.apache.openwhisk.core.topbalancer.TopBalancer
+import org.apache.openwhisk.core.topbalancer.{AppActivator, TopBalancer}
 
 protected trait ControllerTestCommon
     extends FlatSpec
@@ -69,6 +71,8 @@ protected trait ControllerTestCommon
   ExecManifest.initialize(whiskConfig)
 
   override val loadBalancer = new DegenerateLoadBalancerService(whiskConfig)
+
+  implicit val appActivator: ActorRef = actorSystem.actorOf(Props { AppActivator() })
 
   override lazy val entitlementProvider: EntitlementProvider =
     new LocalEntitlementProvider(whiskConfig, loadBalancer, instance)

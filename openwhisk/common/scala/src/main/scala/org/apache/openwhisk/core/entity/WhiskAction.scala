@@ -405,8 +405,9 @@ case class WhiskAction(namespace: EntityPath, //name
                        override val parentFunc: Option[WhiskEntityReference] = None)
     extends WhiskActionLike(name) {
 
-  require(exec != null, "exec undefined")
-  require(limits != null, "limits undefined")
+  
+  require(exec != null, "exec undefined in WhiskAction")
+  require(limits != null, "limits undefined in WhiskAction")
 
   /**
    * Merges parameters (usually from package) with existing action parameters.
@@ -476,8 +477,8 @@ case class WhiskActionMetaData(namespace: EntityPath,
                                override val parentFunc: Option[WhiskEntityReference] = None)
     extends WhiskActionLikeMetaData(name) {
 
-  require(exec != null, "exec undefined")
-  require(limits != null, "limits undefined")
+  require(exec != null, "exec undefined in WhiskActionMetaData")
+  require(limits != null, "limits undefined in WhiskActionMetaData")
 
   /**
    * Merges parameters (usually from package) with existing action parameters.
@@ -560,8 +561,8 @@ case class ExecutableWhiskAction(namespace: EntityPath,
                                 )
     extends WhiskActionLike(name) {
 
-  require(exec != null, "exec undefined")
-  require(limits != null, "limits undefined")
+  require(exec != null, "exec undefined in ExecutableWhiskAction")
+  require(limits != null, "limits undefined in ExecutableWhiskAction")
 
   /**
    * Gets initializer for action. This typically includes the code to execute,
@@ -610,8 +611,8 @@ case class ExecutableWhiskActionMetaData(namespace: EntityPath,
                                          )
     extends WhiskActionLikeMetaData(name) {
 
-  require(exec != null, "exec undefined")
-  require(limits != null, "limits undefined")
+  require(exec != null, "exec undefined in ExecutableWhiskActionMetaData")
+  require(limits != null, "limits undefined in ExecutableWhiskActionMetaData")
 
   def toWhiskAction =
     WhiskActionMetaData(namespace, name, exec, parameters, limits, version, publish, annotations, updated,

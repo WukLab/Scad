@@ -73,25 +73,27 @@ class KafkaProducerConnector(
     produced.future.andThen {
       case Success(status) =>
         // spammy log
-        //        logging.debug(this, s"sent message: ${status.topic()}[${status.partition()}][${status.offset()}]")
+        // logging.debug(this, s"sent message: ${status.topic()}[${status.partition()}][${status.offset()}]")
         sentCounter.next()
       case Failure(t) =>
         logging.error(this, s"sending message on topic '$topic' failed: ${t.getMessage}")
-    } recoverWith {
-      // Do not retry on these exceptions as they may cause duplicate messages on Kafka.
-      case _: NotEnoughReplicasAfterAppendException | _: TimeoutException =>
+      } recoverWith {
+        // Do not retry on these exceptions as they may cause duplicate messages on Kafka.
+        case t @ (_: NotEnoughReplicasAfterAppendException | _: TimeoutException) =>
+        logging.error(this, s"sending message on topic '$topic' failed: ${t.getMessage}")
         recreateProducer()
         produced.future
-      case r: RetriableException if retry > 0 =>
+        case r: RetriableException if retry > 0 =>
         logging.info(this, s"$r: Retrying $retry more times")
         after(gracefulWaitTime, actorSystem.scheduler)(send(topic, msg, retry - 1))
-      // Ignore this exception as restarting the producer doesn't make sense
-      case e: RecordTooLargeException =>
-        Future.failed(e)
-      // All unknown errors just result in a recreation of the producer. The failure is propagated.
-      case _: Throwable =>
-        recreateProducer()
-        produced.future
+        // Ignore this exception as restarting the producer doesn't make sense
+        case e: RecordTooLargeException =>
+          logging.error(this, s"sending message on topic '$topic' failed: ${e.getMessage}")
+          Future.failed(e)
+        // All unknown errors just result in a recreation of the producer. The failure is propagated.
+        case _: Throwable =>
+          recreateProducer()
+          produced.future
     }
   }
 

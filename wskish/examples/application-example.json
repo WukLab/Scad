@@ -8,7 +8,7 @@
       }],
       "exec": {
         "kind": "nodejs:14",
-        "code": "function main(params,action) { action.request.dependency('whisk.system/test-action/function/action_tests_name44/object/action_tests_name42'); }",
+        "code": "function main(params,action) { action.request.dependency('whisk.system/test-action/function/action_tests_name44/object/action_tests_name40'); }",
         "binary": true,
         "main": "main"
       },
@@ -70,7 +70,7 @@
       }],
       "exec": {
         "kind": "nodejs:14",
-        "code": "function main(params,action) { let t = action.get_transport('client','rdma'); let buf = t.alloc(64); buf.write('Hello RDMA', 'utf-8'); t.write(0, 64, buf); t.read(0, 64, buf); let ret = buf.toString('utf-8'); action.request.dependency('whisk.system/test-action/function/action_tests_name44/object/action_tests_name43'); return {payload: ret}; }",
+        "code": "function main(params,action) { let t = action.get_transport('client','rdma'); let buf = t.alloc(64); buf.write('Hello RDMA', 'utf-8'); t.write(0, 64, buf); t.read(0, 64, buf); let ret = buf.toString('utf-8'); action.request.dependency('whisk.system/test-action/function/action_tests_name44/object/action_tests_name41'); return {payload: ret}; }",
         "binary": true,
         "main": "main"
       },

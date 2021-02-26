@@ -176,8 +176,8 @@ class InvokerPool(childFactory: (ActorRefFactory, InvokerInstanceId) => ActorRef
     val raw = new String(bytes, StandardCharsets.UTF_8)
     PingMessage.parse(raw) match {
       case Success(p: PingMessage) =>
-        self ! p
         invokerPingFeed ! MessageFeed.Processed
+        self ! p
 
       case Failure(t) =>
         invokerPingFeed ! MessageFeed.Processed
@@ -272,7 +272,7 @@ object InvokerPool {
       new WhiskAction(
         namespace = healthActionIdentity.namespace.name.toPath,
         name = EntityName(s"invokerHealthTestAction${i.asString}"),
-        exec = CodeExecAsString(manifest, """function main(params) { return params; }""", None),
+        exec = CodeExecAsString(manifest, """function main(params, action) { return params; }""", None),
         limits = ActionLimits(resources = ResourceLimit(ResourceLimit.MIN_RESOURCES)))
     }
 }
@@ -353,7 +353,7 @@ class InvokerActor(invokerInstance: InvokerInstanceId, controllerInstance: Contr
   def healthPingingTransitionHandler(state: InvokerState): TransitionHandler = {
     case _ -> `state` =>
       invokeTestAction()
-      setTimer(InvokerActor.timerName, Tick, 1.minute, repeat = true)
+      setTimer(InvokerActor.timerName, Tick, 15.seconds, repeat = true)
     case `state` -> _ => cancelTimer(InvokerActor.timerName)
   }
 
@@ -392,6 +392,7 @@ class InvokerActor(invokerInstance: InvokerInstanceId, controllerInstance: Contr
       if (entries.count(_ == InvocationFinishedResult.SystemError) > InvokerActor.bufferErrorTolerance) {
         gotoIfNotThere(Unhealthy)
       } else if (entries.count(_ == InvocationFinishedResult.Timeout) > InvokerActor.bufferErrorTolerance) {
+        logging.debug(this, s"${this.name} staying unresponsive: timeouts above threshold (${entries.count(_ == InvocationFinishedResult.Timeout)} > ${InvokerActor.bufferErrorTolerance})")
         gotoIfNotThere(Unresponsive)
       } else {
         gotoIfNotThere(Healthy)
@@ -404,6 +405,7 @@ class InvokerActor(invokerInstance: InvokerInstanceId, controllerInstance: Contr
    * The InvokerPool redirects it to the invoker which is represented by this InvokerActor.
    */
   private def invokeTestAction() = {
+    logging.debug(this, s"invoking test action for ${invokerInstance}")
     InvokerPool.healthAction(controllerInstance).map { action =>
       val activationMessage = ActivationMessage(
         // Use the sid of the InvokerSupervisor as tid
@@ -439,7 +441,7 @@ object InvokerActor {
     Props(new InvokerActor(invokerInstance, controllerInstance))
 
   val bufferSize = 10
-  val bufferErrorTolerance = 3
+  val bufferErrorTolerance = 5
 
   val timerName = "testActionTimer"
 }

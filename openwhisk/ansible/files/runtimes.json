@@ -16,9 +16,9 @@
         "nodejs": [
             {
                 "kind": "nodejs:14",
-                "default": true,
+                "default": false,
                 "image": {
-                    "prefix": "whisk",
+                    "prefix": "",
                     "name": "action-nodejs-v14",
                     "tag": "latest"
                 },
@@ -47,7 +47,7 @@
             },
             {
                 "kind": "nodejs:12",
-                "default": false,
+                "default": true,
                 "image": {
                     "prefix": "openwhisk",
                     "name": "action-nodejs-v12",
