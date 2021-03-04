@@ -87,6 +87,7 @@ def RunProfilingLoop(main_start_time, monitoring_duration, db_file=None):
     last_container_info_time = 0
     profiling_data = {}
     known_containers = []
+    container_id_to_name_mapping = {}
     latest_known_cont_id = None
 
     if db_file is not None:
@@ -111,10 +112,12 @@ def RunProfilingLoop(main_start_time, monitoring_duration, db_file=None):
                 print('latest_known_cont_id: ' + str(latest_known_cont_id))
             if db_file is not None:
                 conn.commit()
-        for container_id in container_info['ID']: 
+        for i in range(len(container_info['ID'])):
+            container_id = container_info['ID'][i]
             if container_id not in known_containers:
                 known_containers.append( container_id )
                 profiling_data[container_id] = {'MemoryUsageInBytes':{'timestamps':[],'vals':[]}, 'ContainerCPUAcct':{'timestamps':[],'vals':[]}}
+                container_id_to_name_mapping[container_id] = container_info['NAME'][i]
         for container_id in known_containers:   # conduct measurements for last-known running containers
             # Memory
             [t1, v1] = GetContainerMemoryUsageInBytes(container_id=container_id, ref_time=main_start_time)
@@ -127,9 +130,9 @@ def RunProfilingLoop(main_start_time, monitoring_duration, db_file=None):
                 profiling_data[container_id]['ContainerCPUAcct']['vals'].append( v2 )
             else:
                 conn.execute("INSERT INTO PERFPROF (NAME,ID,TIMESTAMP,FIELD,VALUE) \
-                              VALUES ('Controller', '"+container_id+"', "+str(t1)+", 'MemUsageBytes', "+str(v1)+" )")
+                              VALUES ('"+container_id_to_name_mapping[container_id]+"', '"+container_id+"', "+str(t1)+", 'MemUsageBytes', "+str(v1)+" )")
                 conn.execute("INSERT INTO PERFPROF (NAME,ID,TIMESTAMP,FIELD,VALUE) \
-                              VALUES ('Controller', '"+container_id+"', "+str(t2)+", 'CPUAcct', "+str(v2)+" )")
+                              VALUES ('"+container_id_to_name_mapping[container_id]+"', '"+container_id+"', "+str(t2)+", 'CPUAcct', "+str(v2)+" )")
 
         time.sleep(CONTAINER_SAMPLING_PERIOD)
     
@@ -148,13 +151,12 @@ def main(argv):
 
     parser = OptionParser()
     parser.add_option("-d", "--duration", dest="duration",
-                      help="Measurement duration", metavar="FILE")
+                      help="Measurement duration in seconds", type="int")
     (options, args) = parser.parse_args()
 
     if not options.duration:
         print("Error: You should provide measurement duration!")
         return False
-    monitoring_duration = float(options.duration)
 
     conn = sqlite3.connect('profiling.db')
     conn.execute('''CREATE TABLE PERFPROF
@@ -179,7 +181,7 @@ def main(argv):
 
     ## Actual Profiling
     profiling_data = RunProfilingLoop(main_start_time=main_start_time, 
-                                      monitoring_duration=monitoring_duration, 
+                                      monitoring_duration=options.duration,
                                       db_file='profiling.db')
     # print( json.dumps(profiling_data, indent=4) )
 
