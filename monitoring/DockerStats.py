@@ -1,10 +1,3 @@
-#!/usr/bin/env python3
-
-# Copyright (c) 2021 Princeton University
-#
-# This source code is licensed under the MIT license found in the
-# LICENSE file in the root directory of this source tree.
-
 from datetime import datetime
 import json
 from optparse import OptionParser
@@ -78,7 +71,6 @@ def MeasureProfilingOverhead(func, measurement_count=10):
             end = time.time()
         delay.append(end-start)
         print(delay[-1])
-        # print(value)
         time.sleep(0.25)
     print('Average run time (s):' + str(1.0*sum(delay)/len(delay)))
 
@@ -167,17 +159,6 @@ def main(argv):
          VALUE          REAL    NOT NULL);''')
     conn.close()
     time.sleep(0.5)
-
-    # conn = sqlite3.connect('profiling.db')
-    # container_id = '10ac9ee49fd3647ebc22fb8b5b58b4c6a0a3778029a14748f8228daf75936316'
-    # [t, v] = GetContainerMemoryUsageInBytes(container_id=container_id)
-    # field = "MemUsageBytes"
-    # print([t,v])
-    # conn.execute("INSERT INTO PERFPROF (NAME,ID,TIMESTAMP,FIELD,VALUE) \
-    #     VALUES ('Controller', '"+container_id+"', "+str(t)+", '"+field+"', "+str(v)+" )")
-    # conn.commit()
-    # conn.close()
-
 
     ## Actual Profiling
     profiling_data = RunProfilingLoop(main_start_time=main_start_time, 
