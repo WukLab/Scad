@@ -1,3 +1,6 @@
 [submodule "openwhisk-base"]
 	path = openwhisk-base
 	url = https://github.com/apache/openwhisk.git
+[submodule "faas-profiler"]
+	path = faas-profiler
+	url = https://github.com/WukLab/faas-profiler.git
