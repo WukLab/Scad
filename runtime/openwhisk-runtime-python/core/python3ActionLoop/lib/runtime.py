@@ -20,34 +20,28 @@ def fetch_msg(fifo):
     content = os.read(fifo, size).decode('ascii')
     return json.loads(content)
 
-ACTADD PARAMS
-TRANSADD ACTION,PARAMS
-TRANSCONF ACTION,PARAMS
+def _act_add(runtime, *params):
+    runtime.add_action(LibdAction(*params))
+def _trans_add(runtime, name, *params):
+    runtime.get_action(name).add_transport(*params)
+def _trans_config(runtime, name, *params):
+    runtime.get_action(name).config_transport(*params)
+
+cmd_funcs = {
+    # create action
+    'ACTADD'    : _act_add,
+    'TRANSADD'  : _trans_add,
+    'TRANSCONF' : _trans_config
+}
 
 def handle_message(fifoName, runtime):
-    action functions
-    def _act_add(*params):
-        runtime.add_action(LibdAction(*params))
-    def _trans_add(name, *params):
-        runtime.get_action(name).add_transport(*params)
-    def _trans_config(name, *params):
-        runtime.get_action(name).config_transport(*params)
-
-    funcs = {
-        # create action
-        'ACTADD'    : _act_add,
-        'TRANSADD'  : _trans_add,
-        'TRANSCONF' : _trans_config
-    }
-
     with os.open(fifoName, os.O_RDONLY) as fifo:
         # TODO: ternimate?
         while True:
             msg = fetch_msg(fifo)
             print(msg)
             # simple IPC
-            funcs[msg.cmd](*msg.params)
-
+            cmd_funcs[msg.cmd](runtime, *msg.params)
 
 # Libd object infomation
 class LibdRuntime:

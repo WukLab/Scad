@@ -66,7 +66,9 @@ while True:
   for key in args:
     if key == "value":
       payload = args["value"]
-    # TODO: check this
+    if key == 'cmds':
+      for cmd in args['cmds']:
+        cmd_funcs[cmd.cmd](_runtime, *cmd.params)
     else:
       env["__OW_%s" % key.upper()]= args[key]
   res = {}
