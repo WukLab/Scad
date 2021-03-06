@@ -27,6 +27,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // ActionProxy is the container of the data specific to a server
@@ -51,6 +52,9 @@ type ActionProxy struct {
 	outFile *os.File
 	errFile *os.File
 
+	// Fifo file
+	fifoFile *os.File
+
 	// environment
 	env map[string]string
 }
@@ -66,6 +70,7 @@ func NewActionProxy(baseDir string, compiler string, outFile *os.File, errFile *
 		nil,
 		outFile,
 		errFile,
+		nil,
 		map[string]string{},
 	}
 }
@@ -143,8 +148,24 @@ func (ap *ActionProxy) StartLatestAction() error {
 	newExecutor := NewExecutor(ap.outFile, ap.errFile, executable, ap.env)
 	Debug("starting %s", executable)
 
+	// create a fifo file in the directory
+	// The filename is defined as a protocol, do not need to pass the filename
+	// This fifo file will also be deleted when we remove the whole process
+	fifoFile := fmt.Sprintf("%s/%d/fifo", ap.baseDir, highestDir)
+	err := syscall.Mkfifo(fifoFile, 0666)
+	if err != nil {
+		// TODO: check this
+		Debug("cannot create fifo file")
+	}
+	ap.fifoFile, err = os.OpenFile(fifoFile, os.O_WRONLY, 0666)
+	if err != nil {
+		// TODO: check this
+		Debug("Cannot open FIFO file")
+		goto cleanup
+	}
+
 	// start executor
-	err := newExecutor.Start(os.Getenv("OW_WAIT_FOR_ACK") != "")
+	err = newExecutor.Start(os.Getenv("OW_WAIT_FOR_ACK") != "")
 	if err == nil {
 		ap.theExecutor = newExecutor
 		if curExecutor != nil {
@@ -154,9 +175,15 @@ func (ap *ActionProxy) StartLatestAction() error {
 		return nil
 	}
 
+cleanup:
 	// cannot start, removing the action
 	// and leaving the current executor running
 	if !Debugging {
+		// cleanup fifo file
+		if ap.fifoFile != nil {
+			ap.fifoFile.Close()
+		}
+
 		exeDir := fmt.Sprintf("./action/%d/", highestDir)
 		Debug("removing the failed action in %s", exeDir)
 		os.RemoveAll(exeDir)
@@ -164,12 +191,26 @@ func (ap *ActionProxy) StartLatestAction() error {
 	return err
 }
 
+// TODO: add APIs here
 func (ap *ActionProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/init":
 		ap.initHandler(w, r)
 	case "/run":
 		ap.runHandler(w, r)
+	}
+	// Match of added APIs
+	fields := strings.FieldsFunc(r.URL.Path[1:], func(c rune) bool {
+		return c == '/'
+	})
+	if fields[0] == "activation" {
+		// activation calls
+		if fields[3] == "" {
+
+		} else if fileds[3] == "" {
+
+		}
+
 	}
 }
 
@@ -190,9 +231,9 @@ func (ap *ActionProxy) ExtractAndCompileIO(r io.Reader, w io.Writer, main string
 
 	envMap := make(map[string]interface{})
 	if env != "" {
-	    json.Unmarshal([]byte(env), &envMap)
+		json.Unmarshal([]byte(env), &envMap)
 	}
-    ap.SetEnv(envMap)
+	ap.SetEnv(envMap)
 
 	// extract and compile it
 	file, err := ap.ExtractAndCompile(&in, main)

@@ -65,6 +65,9 @@ func (ap *ActionProxy) runHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO: insert operations to call libd functions from fifo
+	ap.fifoWrite(LibdMessage{cmd: "testcmd"})
+
 	// remove newlines
 	body = bytes.Replace(body, []byte("\n"), []byte(""), -1)
 

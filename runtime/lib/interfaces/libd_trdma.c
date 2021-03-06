@@ -41,3 +41,7 @@ int libd_trdma_read  (struct libd_transport * trans, size_t size, uint64_t addr,
     success();
     return ret;
 }
+
+void * libd_trdma_reg   (struct libd_transport * trans, size_t size, void * buf) {
+    return transport_handler(libd_trdma, trans, reg)(trans, size, buf);
+}

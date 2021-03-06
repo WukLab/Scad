@@ -25,3 +25,10 @@ with the two container running, we need to first run `bash run.sh hellordma-serv
 
 # Libd:
 transport hold the callback for libd functions
+
+http post fields:
+```
+object: objectname,
+<timestamp>: ,[<transportname>, <rxBytes, <txBytes>]+
+```
+

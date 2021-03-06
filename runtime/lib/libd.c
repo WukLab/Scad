@@ -16,6 +16,7 @@ struct libd_action * libd_action_init(char * aid, char * server_url) {
 
     // TODO: init of plugins
     map_init(action->plugins, string);
+    dprintf("Action %s initd\n", aid);
 
     return action;
 }

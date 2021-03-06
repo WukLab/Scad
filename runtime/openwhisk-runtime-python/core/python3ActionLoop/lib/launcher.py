@@ -20,6 +20,9 @@ from sys import stdout
 from sys import stderr
 from os import fdopen
 import sys, os, json, traceback, warnings
+import thread
+
+from message import *
 
 try:
   # if the directory 'virtualenv' is extracted out of a zip file
@@ -47,6 +50,12 @@ if os.getenv("__OW_WAIT_FOR_ACK", "") != "":
     out.write(b'\n')
     out.flush()
 
+# TODO: create libd binding
+
+# start libd monitor thread, this will keep up for one initd function
+FIFO_FILE = "../fifo"
+threading.Thread(target=handle_message, args=(FIFO_FILE, libd)).start()
+
 env = os.environ
 while True:
   line = stdin.readline()
@@ -56,9 +65,11 @@ while True:
   for key in args:
     if key == "value":
       payload = args["value"]
+    # TODO: check this
     else:
       env["__OW_%s" % key.upper()]= args[key]
   res = {}
+  # Here the funciton is in the same thread
   try:
     res = main(payload)
   except Exception as ex:

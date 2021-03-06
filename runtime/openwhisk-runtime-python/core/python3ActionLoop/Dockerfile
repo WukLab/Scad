@@ -22,8 +22,27 @@ ADD ./openwhisk-runtime-go /src
 RUN cd /src ; env GO111MODULE=on CGO_ENABLED=0 go build main/proxy.go && \
     mv proxy /bin/proxy
 
+# build libd and python bindign from source
+# the results will be libd.so and disagg.xxx.pythonxx.so
+FROM python:3.7-buster AS build_libd
+RUN apt-get update && apt-get install -y \
+    libcurl4-openssl-dev \
+    libnanomsg-dev \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip install \
+    cython
+
+ADD libd /libd
+RUN make -C /libd ext_python
+
 FROM python:3.7-buster
 # ARG GO_PROXY_BUILD_FROM=local
+
+# install dependencies for c libd
+RUN apt-get update && apt-get install -y \
+    libcurl4-openssl-dev \
+    libnanomsg-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install common modules for python
 RUN pip install \
@@ -44,8 +63,12 @@ WORKDIR /
 # COPY --from=builder_release /bin/proxy /bin/proxy_release
 # RUN mv /bin/proxy_${GO_PROXY_BUILD_FROM} /bin/proxy
 COPY --from=builder_local /bin/proxy /bin/proxy
+# Copy python and c libds into path
+COPY --from=build_libd /libd/libd.so /usr/lib/
+# TODO: this may fail when we change python version
+COPY --from=build_libd /libd/disagg.*.so /usr/local/lib/python3.7/lib-dynload/
 ADD bin/compile /bin/compile
-ADD lib/launcher.py /lib/launcher.py
+ADD lib/*.py /lib/
 
 # log initialization errors
 ENV OW_LOG_INIT_ERROR=1

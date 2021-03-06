@@ -21,7 +21,7 @@ LIBS     := -lnanomsg -lcurl
 CFLAGS   := -fPIC -O2 -g -std=c11 -Wall $(INCLUDES) -DDEBUG
 LDFLAGS  := $(LDFLAGS) $(LIBS)
 
-.PNONY: all install clean
+.PNONY: all install clean ext_python
 
 install: libd.so
 	cp libd.so /usr/lib
@@ -31,6 +31,10 @@ all: $(TARGETS)
 libd.so: $(OBJECTS)
 	$(LD) -shared -o $@ $(LDFLAGS) $^
 
+ext_python: libd.so
+	python ext/python/setup.py build_ext -i
+
 clean:
-	rm $(OBJECTS) $(TARGETS)
+	rm $(OBJECTS) $(TARGETS) *.so
 	make -C test clean
+
