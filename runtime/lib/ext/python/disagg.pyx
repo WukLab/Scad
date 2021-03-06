@@ -1,4 +1,5 @@
 cimport clibd
+from functools import partial
 
 # Pack APIs to pure python objects
 cdef class LibdAction:
@@ -10,19 +11,37 @@ cdef class LibdAction:
         if self._c_action is NULL:
             raise MemoryError()
 
+        # Python init part
+        self.transports = {}
+
+    # del will call free
     def __dealloc__(self):
         if self._c_action is not NULL:
             clibd.libd_action_free(self._c_action)
 
     # Member Functions
-    def add_transport(self, name):
-        pass
+    def add_transport(self, durl):
+        # TODO: add ttype here
+        c_durl = durl.enocde('ascii')
+        return clibd.libd_action_add_transport(self._c_action, c_durl)
 
-    def config_transport(self):
-        pass
+    def config_transport(self, name, durl):
+        return clibd.libd_action_config_transport(
+            self._c_action, name.encode('ascii'), durl.encode('ascii'))
 
-    def get_transport(self):
-        pass
+    def get_transport(self, name, ttype):
+        if name not in self.transports:
+            # raise exception if type is not found
+            # delay construct of object by function wrap
+            trans = {
+                'rdma': partial(LibdTransportRDMA, self)
+            }[ttype](name)
+            self.transports[name] = trans
+        # raise exception if name is not found
+        return self.transports[name]
+
+    # Python APIs
+    # Reset methods for reuse of this instance
 
 cdef class LibdTransport:
     cdef clibd.libd_transport * _c_trans
@@ -30,6 +49,9 @@ cdef class LibdTransport:
         self.action = action
         self._c_trans = clibd.libd_action_get_transport(
                 action._c_action, name)
+        # TODO: check this error
+        if self._c_trans is NULL:
+            raise MemoryError()
 
 cdef class LibdTransportRDMA(LibdTransport):
     # use of buf is required
@@ -58,11 +80,4 @@ cdef class LibdTransportRDMA(LibdTransport):
         if (self.initd == False):
             raise MemoryError()
         return clibd.libd_trdma_write(self._c_trans, size, addr, self._c_buf)
-
-# api wrapper, for user functions
-class Libd:
-    def __init__(self, action, transports):
-        self.action = action
-        self.transports = transports
-
 

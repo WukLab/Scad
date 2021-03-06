@@ -22,7 +22,7 @@ from os import fdopen
 import sys, os, json, traceback, warnings
 import thread
 
-from message import *
+from runtime import *
 
 try:
   # if the directory 'virtualenv' is extracted out of a zip file
@@ -54,7 +54,8 @@ if os.getenv("__OW_WAIT_FOR_ACK", "") != "":
 
 # start libd monitor thread, this will keep up for one initd function
 FIFO_FILE = "../fifo"
-threading.Thread(target=handle_message, args=(FIFO_FILE, libd)).start()
+_runtime = LibdRuntime()
+threading.Thread(target=handle_message, args=(FIFO_FILE, _runtime)).start()
 
 env = os.environ
 while True:

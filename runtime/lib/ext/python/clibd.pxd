@@ -7,11 +7,12 @@ cdef extern from "libd.h":
     cdef struct libd_action:
         pass
 
+    # TODO: check if needed in API
     # statemachine functions 
-    int libd_transport_init      (libd_transport* trans); 
-    int libd_transport_connect   (libd_transport* trans);
-    int libd_transport_recover   (libd_transport* trans);
-    int libd_transport_terminate (libd_transport* trans);
+    # int libd_transport_init      (libd_transport* trans); 
+    # int libd_transport_connect   (libd_transport* trans);
+    # int libd_transport_recover   (libd_transport* trans);
+    # int libd_transport_terminate (libd_transport* trans);
 
     # Actions interfaces
     libd_action * libd_action_init(char* aid, char* server_url);
