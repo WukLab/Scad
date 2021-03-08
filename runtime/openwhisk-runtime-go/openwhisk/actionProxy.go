@@ -146,24 +146,26 @@ func (ap *ActionProxy) StartLatestAction() error {
 	executable := fmt.Sprintf("%s/%d/bin/exec", ap.baseDir, highestDir)
 	os.Chmod(executable, 0755)
 	newExecutor := NewExecutor(ap.outFile, ap.errFile, executable, ap.env)
-	Debug("starting %s", executable)
 
 	// create a fifo file in the directory
 	// The filename is defined as a protocol, do not need to pass the filename
 	// This fifo file will also be deleted when we remove the whole process
 	fifoFile := fmt.Sprintf("%s/%d/fifo", ap.baseDir, highestDir)
+	Debug("preparing FIFO for %s at %s", executable, fifoFile)
 	err := syscall.Mkfifo(fifoFile, 0666)
 	if err != nil {
 		// TODO: check this
 		Debug("cannot create fifo file")
 	}
-	ap.fifoFile, err = os.OpenFile(fifoFile, os.O_WRONLY, 0666)
+	// TODO: why this open is strange?
+	ap.fifoFile, err = os.OpenFile(fifoFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0777)
 	if err != nil {
 		// TODO: check this
 		Debug("Cannot open FIFO file")
 		goto cleanup
 	}
 
+	Debug("starting %s", executable)
 	// start executor
 	err = newExecutor.Start(os.Getenv("OW_WAIT_FOR_ACK") != "")
 	if err == nil {

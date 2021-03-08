@@ -20,13 +20,13 @@ from sys import stdout
 from sys import stderr
 from os import fdopen
 import sys, os, json, traceback, warnings
-import thread
 
 ####################
 # BEGIN libd runtime
 ####################
 
 from disagg import LibdAction
+import threading
 import struct
 import os
 
@@ -64,7 +64,8 @@ cmd_funcs = {
 }
 
 def handle_message(fifoName, runtime):
-    with os.open(fifoName, os.O_RDONLY) as fifo:
+    try:
+        fifo = os.open(fifoName, os.O_RDONLY)
         while True:
             # parse message from FIFO
             size = struct.unpack("<I", os.read(fifo, 4))[0]
@@ -75,6 +76,8 @@ def handle_message(fifoName, runtime):
             # forward message to json
             body = json.dumps(msg.body)
             cmd_funcs[msg.cmd](runtime, msg.params, body)
+    finally:
+        print('cannot open file fifo', file=stderr)
 
 # start libd monitor thread, this will keep up for one initd function
 FIFO_FILE = os.path.join(
@@ -122,7 +125,7 @@ while True:
   for key in args:
     if key == "value":
       payload = args["value"]
-    if key == 'cmds':
+    elif key == 'cmds':
       for cmd in args['cmds']:
         cmd_funcs[cmd.cmd](_runtime, cmd.params, cmd.body)
     else:
