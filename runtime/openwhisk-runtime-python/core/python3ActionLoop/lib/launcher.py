@@ -22,7 +22,70 @@ from os import fdopen
 import sys, os, json, traceback, warnings
 import thread
 
-from runtime import *
+####################
+# BEGIN libd runtime
+####################
+
+from disagg import LibdAction
+import struct
+import os
+
+class LibdRuntime:
+    def init(self):
+        self.actions = {}
+
+    def add_action(self, name, action):
+        # TODO: inject APIs into this object
+        action.request = None
+        self.actions[name] = action
+
+    # This may throw exception
+    def get_action(self, name):
+        return self.actions[name]
+
+    def terminate_action(self, name):
+        # TODO: call of dealloc is not garenteed, use ternimate?
+        del self.actions[name]
+
+
+# Params: a list of strings. Body: the body of http request
+def _act_add        (runtime, params, body):
+    runtime.add_action(LibdAction(*params))
+def _trans_add      (runtime, params, body):
+    runtime.get_action(name).add_transport(*params)
+def _trans_config   (runtime, params, body):
+    runtime.get_action(name).config_transport(*params)
+
+cmd_funcs = {
+    # create action
+    'ACTADD'    : _act_add,
+    'TRANSADD'  : _trans_add,
+    'TRANSCONF' : _trans_config
+}
+
+def handle_message(fifoName, runtime):
+    with os.open(fifoName, os.O_RDONLY) as fifo:
+        while True:
+            # parse message from FIFO
+            size = struct.unpack("<I", os.read(fifo, 4))[0]
+            content = os.read(fifo, size).decode('ascii')
+            msg = json.loads(content)
+            print(msg)
+
+            # forward message to json
+            body = json.dumps(msg.body)
+            cmd_funcs[msg.cmd](runtime, msg.params, body)
+
+# start libd monitor thread, this will keep up for one initd function
+FIFO_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "../fifo")
+_runtime = LibdRuntime()
+threading.Thread(target=handle_message, args=(FIFO_FILE, _runtime)).start()
+
+####################
+# END   libd runtime
+####################
 
 try:
   # if the directory 'virtualenv' is extracted out of a zip file
@@ -50,13 +113,6 @@ if os.getenv("__OW_WAIT_FOR_ACK", "") != "":
     out.write(b'\n')
     out.flush()
 
-# TODO: create libd binding
-
-# start libd monitor thread, this will keep up for one initd function
-FIFO_FILE = "../fifo"
-_runtime = LibdRuntime()
-threading.Thread(target=handle_message, args=(FIFO_FILE, _runtime)).start()
-
 env = os.environ
 while True:
   line = stdin.readline()
@@ -68,7 +124,7 @@ while True:
       payload = args["value"]
     if key == 'cmds':
       for cmd in args['cmds']:
-        cmd_funcs[cmd.cmd](_runtime, *cmd.params)
+        cmd_funcs[cmd.cmd](_runtime, cmd.params, cmd.body)
     else:
       env["__OW_%s" % key.upper()]= args[key]
   res = {}

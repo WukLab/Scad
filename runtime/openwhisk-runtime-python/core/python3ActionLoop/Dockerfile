@@ -68,7 +68,7 @@ COPY --from=build_libd /libd/libd.so /usr/lib/
 # TODO: this may fail when we change python version
 COPY --from=build_libd /libd/disagg.*.so /usr/local/lib/python3.7/lib-dynload/
 ADD bin/compile /bin/compile
-ADD lib/*.py /lib/
+ADD lib/launcher.py /lib/launcher.py
 
 # log initialization errors
 ENV OW_LOG_INIT_ERROR=1

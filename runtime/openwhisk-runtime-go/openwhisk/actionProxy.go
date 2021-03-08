@@ -198,19 +198,8 @@ func (ap *ActionProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ap.initHandler(w, r)
 	case "/run":
 		ap.runHandler(w, r)
-	}
-	// Match of added APIs
-	fields := strings.FieldsFunc(r.URL.Path[1:], func(c rune) bool {
-		return c == '/'
-	})
-	if fields[0] == "activation" {
-		// activation calls
-		if fields[3] == "" {
-
-		} else if fileds[3] == "" {
-
-		}
-
+	default:
+		ap.handleLibdRequest(w, r)
 	}
 }
 
