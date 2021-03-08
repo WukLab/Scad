@@ -33,15 +33,18 @@ import os
 class LibdRuntime:
     def init(self):
         self.actions = {}
+        self.server_url = os.getenv('__OW_INVOKER_API_URL')
 
-    def add_action(self, name, action):
+    def create_action(self, aid):
+        action = LibdAction(aid, self.server_url)
         # TODO: inject APIs into this object
         action.request = None
-        self.actions[name] = action
+        self.actions[aid] = action
+        return action
 
     # This may throw exception
-    def get_action(self, name):
-        return self.actions[name]
+    def get_action(self, aid):
+        return self.actions.get(aid, self.create_action(aid))
 
     def terminate_action(self, name):
         # TODO: call of dealloc is not garenteed, use ternimate?
@@ -50,7 +53,7 @@ class LibdRuntime:
 
 # Params: a list of strings. Body: the body of http request
 def _act_add        (runtime, params, body):
-    runtime.add_action(LibdAction(*params))
+    runtime.create_action(body['activation_id'])
 def _trans_add      (runtime, params, body):
     runtime.get_action(name).add_transport(*params)
 def _trans_config   (runtime, params, body):
@@ -122,14 +125,21 @@ while True:
   if not line: break
   args = json.loads(line)
   payload = {}
+  action = None
+  transports = []
   for key in args:
     if key == "value":
       payload = args["value"]
-    elif key == 'cmds':
-      for cmd in args['cmds']:
-        cmd_funcs[cmd.cmd](_runtime, cmd.params, cmd.body)
+    elif key == 'activation_id':
+      action = _runtime.get_action(args['activation_id'])
+    elif key == 'transports':
+      transports = args['transports']
     else:
       env["__OW_%s" % key.upper()]= args[key]
+  if action != None:
+    for trans in transports:
+      action.add_transport(trans)
+
   res = {}
   # Here the funciton is in the same thread
   try:
