@@ -19,7 +19,11 @@ int _map_insert(map *m, void *key, void *value);
 #define map_get(vt,m,k) ((vt *)_map_get(&(m),k))
 void * _map_get(map *m, void *key);
 
+/* Do not free the space for keys and values */
 #define map_free(m) _map_free(&(m))
 int _map_free(map *m);
+
+// TODO: map cleanup
+// map_cleanup(m,kd,vd) 
 
 #endif

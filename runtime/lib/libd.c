@@ -13,18 +13,27 @@ struct libd_action * libd_action_init(char * aid, char * server_url) {
 
     strcpy(action->aid, aid);
     strcpy(action->server_url, server_url);
+
+    // TODO: init of plugins
+    map_init(action->plugins, string);
+    dprintf("Action %s initd\n", aid);
+
     return action;
 }
 
 int libd_action_free(struct libd_action * action) {
     int ret;
+
     for (int i = 0; i < action->transports.size; i++) {
         struct libd_transport * trans = action->transports.values[i];
         if ((ret = libd_transport_terminate(trans)) != 0)
             return ret;
     }
-
     map_free(action->transports);
+
+    // TODO: free of plugins
+    map_free(action->plugins);
+
     free(action);
     return 0;
 }
@@ -46,7 +55,10 @@ int libd_action_config_transport(struct libd_action *action, char *name, char *d
 }
 
 struct libd_transport * libd_action_get_transport(struct libd_action * action, char * name) {
-    return map_get(struct libd_transport, action->transports, name);
+    struct libd_transport * trans; 
+    // TODO: block here will cause timeout in node runtime
+    while ((trans = map_get(struct libd_transport, action->transports, name)) == NULL) ;
+    return trans;
 }
 
 // find impl and add action

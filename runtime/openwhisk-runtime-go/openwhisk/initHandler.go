@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type initBodyRequest struct {
@@ -93,6 +94,11 @@ func (ap *ActionProxy) initHandler(w http.ResponseWriter, r *http.Request) {
 
 	// passing the env to the action proxy
 	ap.SetEnv(request.Value.Env)
+	// Set invoker host
+	// TODO: this requires __OW_INVOKER_API_PORT to be set
+	serverIP := strings.Split(r.RemoteAddr, ":")[0]
+	serverPort := ap.env["__OW_INVOKER_API_PORT"]
+	ap.env["__OW_INVOKER_API_URL"] = fmt.Sprintf("http://%s:%s", serverIP, serverPort)
 
 	// setting main
 	main := request.Value.Main

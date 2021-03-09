@@ -22,3 +22,13 @@ We can call `bash setup-rdma.sh` to setup those two containers. After that, we n
 
 with the two container running, we need to first run `bash run.sh hellordma-server devnode-server` to launch the rdma server in `devnode-server` container. This call should block; After that, we can run `bash run.sh hellordma-client devnode-client` to run client program.
 
+
+# Libd:
+transport hold the callback for libd functions
+
+http post fields:
+```
+object: objectname,
+<timestamp>: ,[<transportname>, <rxBytes, <txBytes>]+
+```
+

@@ -27,6 +27,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // ActionProxy is the container of the data specific to a server
@@ -51,6 +52,9 @@ type ActionProxy struct {
 	outFile *os.File
 	errFile *os.File
 
+	// Fifo file
+	fifoFile *os.File
+
 	// environment
 	env map[string]string
 }
@@ -66,6 +70,7 @@ func NewActionProxy(baseDir string, compiler string, outFile *os.File, errFile *
 		nil,
 		outFile,
 		errFile,
+		nil,
 		map[string]string{},
 	}
 }
@@ -141,10 +146,28 @@ func (ap *ActionProxy) StartLatestAction() error {
 	executable := fmt.Sprintf("%s/%d/bin/exec", ap.baseDir, highestDir)
 	os.Chmod(executable, 0755)
 	newExecutor := NewExecutor(ap.outFile, ap.errFile, executable, ap.env)
-	Debug("starting %s", executable)
 
+	// create a fifo file in the directory
+	// The filename is defined as a protocol, do not need to pass the filename
+	// This fifo file will also be deleted when we remove the whole process
+	fifoFile := fmt.Sprintf("%s/%d/fifo", ap.baseDir, highestDir)
+	Debug("preparing FIFO for %s at %s", executable, fifoFile)
+	err := syscall.Mkfifo(fifoFile, 0666)
+	if err != nil {
+		// TODO: check this
+		Debug("cannot create fifo file")
+	}
+	// TODO: why this open is strange?
+	ap.fifoFile, err = os.OpenFile(fifoFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0777)
+	if err != nil {
+		// TODO: check this
+		Debug("Cannot open FIFO file")
+		goto cleanup
+	}
+
+	Debug("starting %s", executable)
 	// start executor
-	err := newExecutor.Start(os.Getenv("OW_WAIT_FOR_ACK") != "")
+	err = newExecutor.Start(os.Getenv("OW_WAIT_FOR_ACK") != "")
 	if err == nil {
 		ap.theExecutor = newExecutor
 		if curExecutor != nil {
@@ -154,9 +177,15 @@ func (ap *ActionProxy) StartLatestAction() error {
 		return nil
 	}
 
+cleanup:
 	// cannot start, removing the action
 	// and leaving the current executor running
 	if !Debugging {
+		// cleanup fifo file
+		if ap.fifoFile != nil {
+			ap.fifoFile.Close()
+		}
+
 		exeDir := fmt.Sprintf("./action/%d/", highestDir)
 		Debug("removing the failed action in %s", exeDir)
 		os.RemoveAll(exeDir)
@@ -164,12 +193,15 @@ func (ap *ActionProxy) StartLatestAction() error {
 	return err
 }
 
+// TODO: add APIs here
 func (ap *ActionProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/init":
 		ap.initHandler(w, r)
 	case "/run":
 		ap.runHandler(w, r)
+	default:
+		ap.handleLibdRequest(w, r)
 	}
 }
 
@@ -190,9 +222,9 @@ func (ap *ActionProxy) ExtractAndCompileIO(r io.Reader, w io.Writer, main string
 
 	envMap := make(map[string]interface{})
 	if env != "" {
-	    json.Unmarshal([]byte(env), &envMap)
+		json.Unmarshal([]byte(env), &envMap)
 	}
-    ap.SetEnv(envMap)
+	ap.SetEnv(envMap)
 
 	// extract and compile it
 	file, err := ap.ExtractAndCompile(&in, main)

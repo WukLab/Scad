@@ -1,0 +1,6 @@
+#!/bin/bash
+
+SCRIPT=`realpath ${BASH_SOURCE[0]}`
+SCRIPTPATH=`dirname $SCRIPT`
+
+export PATH=$SCRIPTPATH:$PATH

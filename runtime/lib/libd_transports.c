@@ -1,8 +1,10 @@
 #include "libd.h"
 
+// interfaces and implementations
 extern struct libd_trdma rdma_tcp;
 extern struct libd_trdma_server rdma_tcp_server;
 
+// register implementations
 const char * libd_transports_name[] = {
     "rdma_tcp",
     "rdma_tcp_server",

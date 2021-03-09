@@ -15,11 +15,16 @@
 # limitations under the License.
 #
 IMG=whisk/actionloop-python-v3.7:latest
+GO_RUNTIME=openwhisk-runtime-go
 
 build:
+	cp -r ../../../$(GO_RUNTIME) .
+	cp -r ../../../lib ./libd
 	docker build -t $(IMG) .
 
 clean:
+	rm -rf ./$(GO_RUNTIME)
+	rm -rf ./libd
 	docker rmi -f $(IMG)
 
 debug: build
