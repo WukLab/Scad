@@ -91,6 +91,9 @@ static int _terminate(struct libd_transport * trans) {
 // actions
 // TODO: blocking and lock?
 static void * _reg(struct libd_transport *trans, size_t s, void *buf) {
+    if (buf == NULL) {
+        return malloc(s);
+    }
     return NULL;
 }
 

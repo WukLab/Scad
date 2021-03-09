@@ -31,7 +31,7 @@ import struct
 import os
 
 class LibdRuntime:
-    def init(self):
+    def __init__(self):
         self.actions = {}
         self.server_url = os.getenv('__OW_INVOKER_API_URL')
 

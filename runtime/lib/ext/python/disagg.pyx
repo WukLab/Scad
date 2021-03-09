@@ -4,6 +4,7 @@ from functools import partial
 # Pack APIs to pure python objects
 cdef class LibdAction:
     cdef clibd.libd_action * _c_action
+    cdef public object transports
 
     def __cinit__(self, str aid, str server_url):
         self._c_action = clibd.libd_action_init(
@@ -11,7 +12,8 @@ cdef class LibdAction:
         if self._c_action is NULL:
             raise MemoryError()
 
-        # Python init part
+    # Python init part, I assume they have same objects
+    def __init__(self, *args):
         self.transports = {}
 
     # del will call free
@@ -22,7 +24,7 @@ cdef class LibdAction:
     # Member Functions
     def add_transport(self, durl):
         # TODO: add ttype here
-        c_durl = durl.enocde('ascii')
+        c_durl = durl.encode('ascii')
         return clibd.libd_action_add_transport(self._c_action, c_durl)
 
     def config_transport(self, name, durl):
@@ -45,10 +47,11 @@ cdef class LibdAction:
 
 cdef class LibdTransport:
     cdef clibd.libd_transport * _c_trans
-    def __cinit__(self, LibdAction action, char * name, *argv):
+    cdef object action
+    def __cinit__(self, LibdAction action, str name, *argv):
         self.action = action
         self._c_trans = clibd.libd_action_get_transport(
-                action._c_action, name)
+                action._c_action, name.encode('ascii'))
         # TODO: check this error
         if self._c_trans is NULL:
             raise MemoryError()
@@ -56,9 +59,14 @@ cdef class LibdTransport:
 cdef class LibdTransportRDMA(LibdTransport):
     # use of buf is required
     cdef char * _c_buf
-    cdef public char [:] buf
+    cdef size_t size
+    cdef object initd
 
-    def __cinit__(self, LibdAction action, char * name, *argv):
+    cdef public char [:] buf
+    def __cinit__(self, LibdAction action, str name, *argv):
+        pass
+
+    def __init__(self, *args):
         self.initd = False
 
     def reg(self, size):
@@ -71,13 +79,15 @@ cdef class LibdTransportRDMA(LibdTransport):
         self.initd = True
         self.buf = <char [:size]>self._c_buf
 
-    def read(self, size, addr):
+    def read(self, size, addr, int offset = 0):
         if (self.initd == False):
             raise MemoryError()
-        return clibd.libd_trdma_read(self._c_trans, size, addr, self._c_buf)
+        return clibd.libd_trdma_read(self._c_trans, size, addr,
+                    self._c_buf + offset)
 
-    def wirte(self, size, addr):
+    def wirte(self, size, addr, int offset = 0):
         if (self.initd == False):
             raise MemoryError()
-        return clibd.libd_trdma_write(self._c_trans, size, addr, self._c_buf)
+        return clibd.libd_trdma_write(self._c_trans, size, addr,
+                    self._c_buf + offset)
 
