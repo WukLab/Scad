@@ -9,10 +9,9 @@ import re
 import random
 
 def build_init(name, code, main, binary = False):
-    # should work..
     return { 'value': locals() }
 
-def build_run(activation_id, namespace = 'default', value = {}):
+def build_run(activation_id, namespace = 'default', value = {}, transports = []):
     return locals()
 
 def call_host(host, path, body):
@@ -67,10 +66,12 @@ if __name__ == '__main__':
                         help='name of the action')
     parser.add_argument('-n', '--name', type=str,
                         help='name of the action')
-    parser.add_argument('-c', '--container', type=str, required=True,
-                        help='name of the contaienr')
     parser.add_argument('-a', '--activationid', type=str,
                         help='activation id')
+    parser.add_argument('-t', '--transport', nargs='+',
+                        help='transports to be added to the run command')
+    parser.add_argument('-c', '--container', type=str, required=True,
+                        help='name of the contaienr')
     parser.add_argument('action', choices=actions, nargs='+',
                         help='actions to be ')
     args = parser.parse_args()
@@ -98,5 +99,4 @@ if __name__ == '__main__':
 
         elif action == 'reset':
             reset_container(args.container)
-
     

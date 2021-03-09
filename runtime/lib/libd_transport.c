@@ -46,11 +46,11 @@ int libd_transport_connect   (struct libd_transport * trans) {
         return -EINVAL;
 
     if ((ret = trans->_impl->connect(trans)) < 0) {
-        success();
+        abort();
         return ret;
     }
 
-    abort();
+    success();
     return 0;
 }
 

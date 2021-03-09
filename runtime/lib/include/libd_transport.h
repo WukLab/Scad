@@ -3,8 +3,8 @@
 
 #include <stdatomic.h>
 
-#ifdef DEBUF
-	#inlcude "libd.h"
+#ifdef DEBUG
+	#include "libd.h"
 #endif
 
 // utils
@@ -47,8 +47,10 @@ int libd_transport_modify(struct libd_transport * trans, int from, int to);
     int __as_fail = LIBD_TRANS_STATE_ERROR, __as_succ = cur, __as_lock = LIBD_TRANS_STATE_ACTION; \
     while (!(ret = atomic_compare_exchange_weak(&(trans->tstate->state), &__as_succ, __as_lock))) ;
 #define success() \
+    dprintf("state transaction SUCCESS (%d, %d)", __as_fail, __as_succ); \
     while (!atomic_compare_exchange_weak(&(trans->tstate->state), &__as_lock, __as_succ)) ;
 #define abort() \
+    dprintf("state transaction ABORT (%d, %d)", __as_succ, __as_fail); \
     while (!atomic_compare_exchange_weak(&(trans->tstate->state), &__as_lock, __as_fail)) ;
 
 #endif

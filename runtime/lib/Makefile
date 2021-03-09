@@ -17,7 +17,7 @@ TARGETS    := libd.so
 
 LD       := gcc
 INCLUDES := -I./include
-LIBS     := -lnanomsg -lcurl
+LIBS     := -lnanomsg -lcurl -lpthread
 CFLAGS   := -fPIC -O2 -g -std=c11 -Wall $(INCLUDES) -DDEBUG
 LDFLAGS  := $(LDFLAGS) $(LIBS)
 
@@ -31,8 +31,13 @@ all: $(TARGETS)
 libd.so: $(OBJECTS)
 	$(LD) -shared -o $@ $(LDFLAGS) $^
 
+# Extensions.
+# Python interface module using cython
 ext_python: libd.so
 	python ext/python/setup.py build_ext -i
+
+memory_server: ext/host/memory_server.o $(OBJECTS)
+	$(LD) -o $@ $^ $(LDFLAGS)
 
 clean:
 	rm $(OBJECTS) $(TARGETS) *.so
