@@ -85,7 +85,7 @@ cdef class LibdTransportRDMA(LibdTransport):
         return clibd.libd_trdma_read(self._c_trans, size, addr,
                     self._c_buf + offset)
 
-    def wirte(self, size, addr, int offset = 0):
+    def write(self, size, addr, int offset = 0):
         if (self.initd == False):
             raise MemoryError()
         return clibd.libd_trdma_write(self._c_trans, size, addr,
