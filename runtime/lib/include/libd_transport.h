@@ -2,6 +2,7 @@
 #define _LIBD_TRANSPORT_H_
 
 #include <stdatomic.h>
+#include <stdlib.h>
 
 #ifdef DEBUG
 	#include "libd.h"
@@ -29,8 +30,9 @@ int libd_transport_modify(struct libd_transport * trans, int from, int to);
 #define init_config_set(name,v) \
     _config->name = v;
 
+// Functions for config..
 #define id(a) (a)
-#define libd_reg_transport(name, impl)
+#define config_to_ull(s) strtoull(s,NULL,10)
 
 #define get_local_state(name,t,tt) tt *name = (tt *)((t)->tstate)
 
@@ -40,15 +42,19 @@ int libd_transport_modify(struct libd_transport * trans, int from, int to);
 #define transit(ret, trans, from, to) \
     int __as_fail = from, __as_succ = to, __as_lock = LIBD_TRANS_STATE_TRANSIT; \
     ret = atomic_compare_exchange_weak(&(trans->tstate->state), &__as_fail, __as_lock)
+
 #define operation(ret, trans, cur) \
     int __as_fail = LIBD_TRANS_STATE_ERROR, __as_succ = cur, __as_lock = LIBD_TRANS_STATE_ACTION; \
     ret = atomic_compare_exchange_weak(&(trans->tstate->state), &__as_succ, __as_lock)
+
 #define operation_spin(ret, trans, cur) \
     int __as_fail = LIBD_TRANS_STATE_ERROR, __as_succ = cur, __as_lock = LIBD_TRANS_STATE_ACTION; \
-    while (!(ret = atomic_compare_exchange_weak(&(trans->tstate->state), &__as_succ, __as_lock))) ;
+    do { __as_succ = cur; ret = atomic_compare_exchange_weak(&(trans->tstate->state), &__as_succ, __as_lock); dprintf("spin in lock...");} while (!ret);
+
 #define success() \
     dprintf("state transaction SUCCESS (%d, %d)", __as_fail, __as_succ); \
     while (!atomic_compare_exchange_weak(&(trans->tstate->state), &__as_lock, __as_succ)) ;
+
 #define abort() \
     dprintf("state transaction ABORT (%d, %d)", __as_succ, __as_fail); \
     while (!atomic_compare_exchange_weak(&(trans->tstate->state), &__as_lock, __as_fail)) ;

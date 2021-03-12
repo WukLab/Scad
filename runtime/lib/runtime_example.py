@@ -1,5 +1,7 @@
 from disagg import *
 import struct
+import threading
+import time
 
 activation_id = "0000"
 server_url = "0000"
@@ -38,12 +40,28 @@ def main(args, action):
 
 if __name__ == '__main__':
 
+    cv = threading.Condition()
     # in real launch, this part will be handled by serverless system
-    action = LibdAction(activation_id, server_url)
+    action = LibdAction(cv, activation_id, server_url)
 
-    transport_url = "{};rdma_tcp;url,tcp://localhost:{};size,{};".format(
-        transport_name, server_port, memory_block_size);
-
+    transport_url = "{};rdma_tcp;".format(transport_name);
     action.add_transport(transport_url)
+
+    def delayed_config():
+        time.sleep(5)
+        extra_url = "url,tcp://localhost:{};size,{};".format(
+            server_port, memory_block_size)
+        action.config_transport(transport_name, extra_url)
+        with cv:
+            print("cv notified")
+            cv.notify_all()
+        print("cv released")
+
+    config_thread = threading.Thread(
+        target = delayed_config)
+    config_thread.start()
+
     main(None, action)
+    config_thread.join()
+
 

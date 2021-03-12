@@ -1,16 +1,19 @@
 cimport clibd
+from libc cimport errno
 from functools import partial
 
 # Pack APIs to pure python objects
 cdef class LibdAction:
     cdef clibd.libd_action * _c_action
     cdef public object transports
+    cdef public object cv
 
-    def __cinit__(self, str aid, str server_url):
+    def __cinit__(self, cv, str aid, str server_url):
         self._c_action = clibd.libd_action_init(
             aid.encode('ascii'), server_url.encode('ascii'))
         if self._c_action is NULL:
             raise MemoryError()
+        self.cv = cv
 
     # Python init part, I assume they have same objects
     def __init__(self, *args):
@@ -48,11 +51,12 @@ cdef class LibdAction:
 cdef class LibdTransport:
     cdef clibd.libd_transport * _c_trans
     cdef object action
+    cdef object cv
     def __cinit__(self, LibdAction action, str name, *argv):
         self.action = action
         self._c_trans = clibd.libd_action_get_transport(
                 action._c_action, name.encode('ascii'))
-        # TODO: check this error
+        # TODO: spin here if we cannot get a transport
         if self._c_trans is NULL:
             raise MemoryError()
 
@@ -82,12 +86,24 @@ cdef class LibdTransportRDMA(LibdTransport):
     def read(self, size, addr, int offset = 0):
         if (self.initd == False):
             raise MemoryError()
-        return clibd.libd_trdma_read(self._c_trans, size, addr,
-                    self._c_buf + offset)
+        # block here
+        with self.action.cv:
+            while True:
+                ret = clibd.libd_trdma_read(self._c_trans, size, addr,
+                        self._c_buf + offset)
+                if ret != -errno.EAGAIN:
+                    return ret
+                self.action.cv.wait()
 
     def write(self, size, addr, int offset = 0):
         if (self.initd == False):
             raise MemoryError()
-        return clibd.libd_trdma_write(self._c_trans, size, addr,
-                    self._c_buf + offset)
+        # block here
+        with self.action.cv:
+            while True:
+                ret = clibd.libd_trdma_write(self._c_trans, size, addr,
+                        self._c_buf + offset)
+                if ret != -errno.EAGAIN:
+                    return ret
+                self.action.cv.wait()
 
