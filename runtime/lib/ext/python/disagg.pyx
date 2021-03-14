@@ -59,6 +59,7 @@ cdef class LibdTransport:
         # TODO: spin here if we cannot get a transport
         if self._c_trans is NULL:
             raise MemoryError()
+    # we do not need to have __dealloc__ for all transports, clib will handle this
 
 cdef class LibdTransportRDMA(LibdTransport):
     # use of buf is required
@@ -87,23 +88,24 @@ cdef class LibdTransportRDMA(LibdTransport):
         if (self.initd == False):
             raise MemoryError()
         # block here
-        with self.action.cv:
-            while True:
-                ret = clibd.libd_trdma_read(self._c_trans, size, addr,
-                        self._c_buf + offset)
-                if ret != -errno.EAGAIN:
-                    return ret
+        while True:
+            ret = clibd.libd_trdma_read(self._c_trans, size, addr,
+                    self._c_buf + offset)
+            if ret != -errno.EAGAIN:
+                return ret
+            # TODO: can be interrupted before it get the lock.
+            with self.action.cv:
                 self.action.cv.wait()
 
     def write(self, size, addr, int offset = 0):
         if (self.initd == False):
             raise MemoryError()
         # block here
-        with self.action.cv:
-            while True:
-                ret = clibd.libd_trdma_write(self._c_trans, size, addr,
-                        self._c_buf + offset)
-                if ret != -errno.EAGAIN:
-                    return ret
+        while True:
+            ret = clibd.libd_trdma_write(self._c_trans, size, addr,
+                    self._c_buf + offset)
+            if ret != -errno.EAGAIN:
+                return ret
+            with self.action.cv:
                 self.action.cv.wait()
 

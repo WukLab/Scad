@@ -34,22 +34,19 @@ class LibdRuntime:
     def __init__(self):
         self.actions = {}
         self.server_url = os.getenv('__OW_INVOKER_API_URL')
-
+        self.cv = threading.Condition()
     def create_action(self, aid):
-        action = LibdAction(aid, self.server_url)
+        action = LibdAction(self.cv, aid, self.server_url)
         # TODO: inject APIs into this object
-        action.request = None
+        # action.request = None
         self.actions[aid] = action
         return action
-
     # This may throw exception
     def get_action(self, aid):
         return self.actions.get(aid, self.create_action(aid))
-
     def terminate_action(self, name):
         # TODO: call of dealloc is not garenteed, use ternimate?
         del self.actions[name]
-
 
 # Params: a list of strings. Body: the body of http request
 def _act_add        (runtime, params, body):
@@ -74,7 +71,7 @@ def handle_message(fifoName, runtime):
             size = struct.unpack("<I", os.read(fifo, 4))[0]
             content = os.read(fifo, size).decode('ascii')
             msg = json.loads(content)
-            print(msg)
+            print('get message from FIFO', msg)
 
             # forward message to json
             body = json.dumps(msg.body)
@@ -124,6 +121,7 @@ while True:
   line = stdin.readline()
   if not line: break
   args = json.loads(line)
+  # TODO: log error at this phase
   payload = {}
   action = None
   transports = []
@@ -143,7 +141,7 @@ while True:
   res = {}
   # Here the funciton is in the same thread
   try:
-    res = main(payload)
+    res = main(payload, action)
   except Exception as ex:
     print(traceback.format_exc(), file=stderr)
     res = {"error": str(ex)}

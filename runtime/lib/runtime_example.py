@@ -53,9 +53,7 @@ if __name__ == '__main__':
             server_port, memory_block_size)
         action.config_transport(transport_name, extra_url)
         with cv:
-            print("cv notified")
             cv.notify_all()
-        print("cv released")
 
     config_thread = threading.Thread(
         target = delayed_config)

@@ -33,6 +33,8 @@ def reset_container(name):
     def _execute(command):
         try:
             subprocess.run(command).check_returncode()
+        except:
+            pass
         finally:
             pass
     _execute(['docker', 'stop', name])
@@ -47,7 +49,7 @@ def gen_activationid(length):
 if __name__ == '__main__':
 
     # Helper functions
-    actions = ['init', 'run', 'reset']
+    actions = ['init', 'run', 'reset', 'config']
     CONFIG_FILE = '/tmp/wskruntime_config'
     def load_config(args):
         config = configparser.ConfigParser()
@@ -76,7 +78,6 @@ if __name__ == '__main__':
                         help='actions to be ')
     args = parser.parse_args()
 
-    host = get_container_address(args.container)
     for action in args.action:
         if action == 'init':
             if args.file is None:
@@ -85,6 +86,7 @@ if __name__ == '__main__':
             if name == None:
                 name = 'action_' + '_'.join(re.split('/|\.', args.file))
             name = name[:64] # get short name 
+            host = get_container_address(args.container)
 
             with open(args.file) as f:
                 code = f.read()
@@ -93,10 +95,17 @@ if __name__ == '__main__':
                 call_host(host, '/init', body)
 
         elif action == 'run':
+            host = get_container_address(args.container)
             aid = gen_activationid(32)
-            body = build_run(aid)
+            body = build_run(aid, transports = args.transport)
             call_host(host, '/run', body)
 
         elif action == 'reset':
             reset_container(args.container)
+
+        elif action == 'config':
+            host = get_container_address(args.container)
+            print('in config')
+            if args.name is None:
+                parser.error("require --name to be used with init")
     
