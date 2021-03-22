@@ -1,0 +1,18 @@
+{
+    "test_name": "test_data_run",
+    "test_duration_in_seconds": 30,
+    "random_seed": 100,
+    "blocking_cli": false,
+    "instances":{
+        "instance1":{
+            "application": "test-action",
+            "distribution": "Uniform",
+            "rate": 5,
+            "activity_window": [5, 25]
+        }
+    },
+    "perf_monitoring":{
+        "runtime_script": "monitoring/RuntimeMonitoring.sh",
+        "post_script": null
+    }
+}

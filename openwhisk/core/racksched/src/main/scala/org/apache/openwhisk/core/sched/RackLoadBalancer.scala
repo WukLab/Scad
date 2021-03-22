@@ -29,8 +29,7 @@ import org.apache.openwhisk.core.WhiskConfig.kafkaHosts
 import org.apache.openwhisk.core.WhiskConfig.wskApiHost
 import org.apache.openwhisk.core.connector.AcknowledegmentMessage
 import org.apache.openwhisk.core.connector.{ActivationMessage, MessageFeed, MessageProducer, MessagingProvider}
-import org.apache.openwhisk.core.containerpool.ContainerPoolConfig
-import org.apache.openwhisk.core.containerpool.RuntimeResources
+import org.apache.openwhisk.core.containerpool.{ContainerPoolConfig, Interval, RuntimeResources}
 import org.apache.openwhisk.core.entity.ControllerInstanceId
 import org.apache.openwhisk.core.entity.ResourceLimit
 import org.apache.openwhisk.core.entity.WhiskActionMetaData
@@ -55,6 +54,7 @@ import org.apache.openwhisk.core.loadBalancer.ShardingContainerPoolBalancer
 import org.apache.openwhisk.core.loadBalancer.ShardingContainerPoolBalancerState
 
 import java.nio.charset.StandardCharsets
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicReference
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.ExecutionContext
@@ -240,6 +240,7 @@ class RackSimpleBalancer(config: WhiskConfig,
       implicit val transid: TransactionId = activation.transid
       WhiskActionMetaData.resolveActionAndMergeParameters(entityStore, activation.action, activation.appActivationId) onComplete {
         case Success(metadata) =>
+          logging.debug(this, s"about to schedule: ${activation.appActivationId}: ||latency: ${Interval(activation.transid.meta.start, Instant.now()).duration.toMillis}")
           publish(metadata.toExecutableWhiskAction.get, activation)
         case Failure(exception) =>
           logging.error(this, s"Failed to publish rack activation: $exception")
@@ -260,7 +261,6 @@ class RackSimpleBalancer(config: WhiskConfig,
   /** 1. Publish a message to the rackLoadBalancer */
   override def publish(action: ExecutableWhiskActionMetaData, msg: ActivationMessage)(
     implicit transid: TransactionId): Future[Future[Either[ActivationId, WhiskActivation]]] = {
-
     val isBlackboxInvocation = action.exec.pull
     val actionType = if (!isBlackboxInvocation) "managed" else "blackbox"
     val (invokersToUse, stepSizes) =
@@ -579,6 +579,7 @@ class RackSimpleBalancer(config: WhiskConfig,
           start,
           s"posted to ${status.topic()}[${status.partition()}][${status.offset()}]",
           logLevel = InfoLevel)
+        logging.debug(this, s"scheduled: ${msg.appActivationId}: ||latency: ${Interval(msg.transid.meta.start, Instant.now()).duration.toMillis}")
       case Failure(_) => transid.failed(this, start, s"error on posting to topic $topic")
     }
   }

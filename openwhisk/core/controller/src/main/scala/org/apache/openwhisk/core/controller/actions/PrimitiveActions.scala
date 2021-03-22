@@ -723,15 +723,14 @@ protected[actions] trait PrimitiveActions {
         // Start the first objects of the first functions within the application.
         val objResults = startingFuncs map { func =>
           DagExecutor.executeFunction(funcmap(func), entityStore,
-            (obj, funcid, corunning) =>
+            (obj, funcid, corunning) => {
+              logging.debug(this, s"invokeSimpleAction (finished db lookup on initial invocation) latency: ${Interval.currentLatency()}")
               invokeSimpleAction(user, obj, payload, None, cause,
                 functionId = Some(funcid),
                 appId = Some(appActivationId),
-                corunning = Some(corunning.toSeq.map(x => RunningActivation(x)))))
+                corunning = Some(corunning.toSeq.map(x => RunningActivation(x))))
+            })
         }
-//      val context = UserContext(user)
-//      val result = Promise[Either[ActivationId, WhiskActivation]]
-//      val docid = new DocId(WhiskEntity.qualifiedName(user.namespace.name.toPath, appActivationId))
       appActivator ! IncompleteActivation(appActivationId, Instant.now, application.namespace, application.name, user)
       Future.successful(Left(appActivationId))
     } recoverWith {

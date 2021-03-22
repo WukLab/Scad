@@ -1,14 +1,10 @@
 #!/usr/bin/env bash
+# set -x
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
-
-FAAS_HOME="$(find "${HOME}" -name faas-profiler -type d | head -n 1 )"
-INVOKER="./WorkloadInvoker"
-ANALYZER="./WorkloadAnalyzer"
+FAAS_HOME="$(readlink -f "${SCRIPT_DIR}/../faas-profiler")"
 
 EXEC="${1}"
 ARGS="${@:2}"
 
-
-pushd "${FAAS_HOME}"
-"./${EXEC}" ${ARGS}
-popd
+"${FAAS_HOME}/${EXEC}" ${ARGS}

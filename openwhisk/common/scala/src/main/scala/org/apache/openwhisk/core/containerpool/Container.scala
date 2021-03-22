@@ -320,6 +320,10 @@ case class RunResult(interval: Interval, response: Either[ContainerConnectionErr
 
 object Interval {
 
+  def currentLatency()(implicit transid: TransactionId): Long = {
+    Interval(transid.meta.start, Instant.now()).duration.toMillis
+  }
+
   /** An interval starting now with zero duration. */
   def zero = {
     val now = Instant.now

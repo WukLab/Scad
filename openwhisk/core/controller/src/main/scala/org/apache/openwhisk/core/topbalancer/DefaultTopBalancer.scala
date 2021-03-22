@@ -33,7 +33,7 @@ import org.apache.openwhisk.core.WhiskConfig.kafkaHosts
 import org.apache.openwhisk.core.connector.ActivationMessage
 import org.apache.openwhisk.core.connector.MessageProducer
 import org.apache.openwhisk.core.connector.MessagingProvider
-import org.apache.openwhisk.core.containerpool.RuntimeResources
+import org.apache.openwhisk.core.containerpool.{Interval, RuntimeResources}
 import org.apache.openwhisk.core.entity.{ActivationEntityLimit, ActivationId, ExecutableWhiskActionMetaData, FullyQualifiedEntityName, RackSchedInstanceId, ResourceLimit, TimeLimit, TopSchedInstanceId, UUID, WhiskActivation, WhiskAuthStore, WhiskEntityStore}
 import org.apache.openwhisk.core.entity.types.{AuthStore, EntityStore}
 import org.apache.openwhisk.core.loadBalancer.ClusterConfig
@@ -227,6 +227,7 @@ class DefaultTopBalancer(config: WhiskConfig,
       LoggingMarkers.CONTROLLER_KAFKA,
       s"posting topic '$topic' with activation id '${msg.activationId}'",
       logLevel = InfoLevel)
+    logging.debug(this, s"posting to racksched: ${msg.activationId}: ||latency: ${Interval.currentLatency()}")
 
     producer.send(topic, msg).andThen {
       case Success(status) =>

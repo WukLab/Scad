@@ -315,7 +315,7 @@ class ContainerProxy(factory: (TransactionId,
 
     // cold start (no container to reuse or available stem cell container)
     case Event(job: Run, _) =>
-      implicit val transid = job.msg.transid
+      implicit val transid: TransactionId = job.msg.transid
       activeCount += 1
       // create a new container
       val container = factory(

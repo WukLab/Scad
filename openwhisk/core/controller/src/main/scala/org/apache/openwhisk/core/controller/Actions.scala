@@ -30,6 +30,7 @@ import akka.http.scaladsl.unmarshalling._
 import spray.json._
 import spray.json.DefaultJsonProtocol._
 import org.apache.openwhisk.common.TransactionId
+import org.apache.openwhisk.common.TransactionId.childOf
 import org.apache.openwhisk.core.{FeatureFlags, WhiskConfig}
 import org.apache.openwhisk.core.controller.RestApiCommons.{ListLimit, ListSkip}
 import org.apache.openwhisk.core.controller.actions.PostActionActivation
@@ -280,17 +281,23 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
                  }
              })
            case Failure(e: Throwable) =>
-             logging.debug(this, s"[GET] entity for whisk action metadata failed...attempting DAG application")
-             val ent = WhiskApplication.resolveApplication(entityStore, entityName)
-             getEntity(ent, Some { app: WhiskApplication =>
-               val appWithMergedParams = env.map(app.inherit) getOrElse app
-               doDagInvoke(user, appWithMergedParams, payload, blocking, waitOverride, result, entityStore)
-             })
-         }
-
-
+             handleDag(transid, entityName, user, env, payload, blocking, waitOverride, result)
+          }
         }
     }
+  }
+
+  def handleDag(tid: TransactionId, entityName: FullyQualifiedEntityName, user: Identity, env: Option[Parameters],
+                payload: Option[JsObject], blocking: Boolean, waitOverride: FiniteDuration, result: Boolean): RequestContext => Future[RouteResult] = {
+    implicit val transid: TransactionId = childOf(tid)
+    // separate transaction id for object from rest API request
+    logging.debug(this, s"[GET] entity for whisk action metadata failed...attempting DAG application")
+    val resolved = WhiskApplication.resolveApplication(entityStore, entityName)
+    getEntity(resolved, Some { app: WhiskApplication =>
+      val appWithMergedParams = env.map(app.inherit) getOrElse app
+      doDagInvoke(user, appWithMergedParams, payload, blocking, waitOverride, result, entityStore)
+    })
+
   }
 
   private def doDagInvoke(user: Identity,
@@ -299,7 +306,7 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
                           blocking: Boolean,
                           waitOverride: FiniteDuration,
                           result: Boolean,
-                          entityStore: EntityStore)(implicit transif: TransactionId): RequestContext => Future[RouteResult] = {
+                          entityStore: EntityStore)(implicit transid: TransactionId): RequestContext => Future[RouteResult] = {
 
     val waitForResponse = if (blocking) Some(waitOverride) else None
     onComplete(invokeDag(user, actionWithMergedParams, payload, waitForResponse, entityStore, cause = None)) {

@@ -2,11 +2,12 @@ package org.apache.openwhisk.core.topbalancer
 
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.stream.ActorMaterializer
+import org.apache.openwhisk.common.TransactionId.childOf
 import org.apache.openwhisk.common.tracing.WhiskTracerProvider
 import org.apache.openwhisk.common.{Logging, TransactionId}
 import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
 import org.apache.openwhisk.core.connector.{ActivationMessage, DependencyInvocationMessage, DependencyInvocationMessageContext, MessageConsumer, MessageFeed, MessagingProvider, PartialPrewarmConfig, RunningActivation}
-import org.apache.openwhisk.core.containerpool.RuntimeResources
+import org.apache.openwhisk.core.containerpool.{Interval, RuntimeResources}
 import org.apache.openwhisk.core.database.{ActivationStoreProvider, CacheChangeNotification, UserContext}
 import org.apache.openwhisk.core.entity.SizeUnits.MB
 import org.apache.openwhisk.core.entity.{ActivationId, ActivationLogs, ActivationResponse, ByteSize, EntityName, EntityPath, ExecutableWhiskActionMetaData, FullyQualifiedEntityName, Identity, Parameters, SemVer, WhiskAction, WhiskActionMetaData, WhiskActivation, WhiskEntityReference, WhiskFunction}
@@ -33,7 +34,7 @@ class DependencyForwarding(whiskConfig: WhiskConfig,
   protected val controllerPrewarmConfig: Boolean =
     loadConfigOrThrow[Boolean](ConfigKeys.controllerDepPrewarm)
 
-  implicit val transid: TransactionId = TransactionId.depInvocation
+  val transactionId: TransactionId = TransactionId.depInvocation
   implicit val materializer: ActorMaterializer = ActorMaterializer()
   private val activationStore =
     SpiLoader.get[ActivationStoreProvider].instance(actorSystem, materializer, logging)
@@ -75,17 +76,18 @@ class DependencyForwarding(whiskConfig: WhiskConfig,
     // We're getting notice of a particular object finishing
     // need to schedule the next object in line
     // First, lookup the application and function this finished object is a part of.
+    implicit val transid: TransactionId = childOf(transactionId)
     logging.debug(this, s"scheduling dependency invocation message: ${msg}")
     val f = WhiskAction.get(entityStore, msg.getFQEN().toDocId) flatMap { whiskObject =>
       Identity.get(authStore, whiskObject.fullyQualifiedName(false).path.root).flatMap(identity => {
         // if the object has any dependencies, schedule them all.
         // if the object has no dependencies, it is the end of the function
         // encapsulate the dependency invocation message to function invocation message handler.
-        logging.debug(this, s"dependency msg with identity: ${identity}")
+//        logging.debug(this, s"dependency msg with identity: ${identity}")
         whiskObject.parentFunc map { pf =>
-          logging.debug(this, s"dependency msg with whiskObjectParentFunc: ${pf}")
+//          logging.debug(this, s"dependency msg with whiskObjectParentFunc: ${pf}")
           whiskObject.relationships map { rel =>
-            logging.debug(this, s"dependency msg with whisk object relationship: ${rel}")
+//            logging.debug(this, s"dependency msg with whisk object relationship: ${rel} ||latency: ${Interval.currentLatency()}")
             if (rel.dependents.isEmpty) {
               processFunctionInvocationMessage(pf, msg, identity, msg.getFQEN())
               // This will result in the next function in the chain being triggered.
@@ -118,12 +120,12 @@ class DependencyForwarding(whiskConfig: WhiskConfig,
                         functionActivationId = Some(msg.functionActivationId),
                         appActivationId = Some(msg.appActivationId)
                       )
-                      logging.debug(this, s"scheduling dependent object ${action.namespace}/${action.name}")
+                      logging.debug(this, s"scheduling dependent object ${action.namespace}/${action.name} ||latency: ${Interval.currentLatency()}")
                       val publishedMsg = topBalancer.publish(obj, message)
                       // once published, prewarm next objects in the DAG...
                       publishedMsg.onComplete(_ => {
                         if (controllerPrewarmConfig) {
-                          logging.debug(this, s"prewarming dependent object ${obj.namespace}, ${obj.name}}")
+                          logging.debug(this, s"prewarming dependent object ${obj.namespace}, ${obj.name} ||latency: ${Interval.currentLatency()}")
                           prewarmNextLevelDeps(message, obj)
                         }
                       })
@@ -145,19 +147,19 @@ class DependencyForwarding(whiskConfig: WhiskConfig,
    * @param func the function whose activation just completed
    * @param invocationMessage the final invocation message from the object DAG
    */
-  private def processFunctionInvocationMessage(func: WhiskEntityReference, invocationMessage: DependencyInvocationMessage, user: Identity, fqen: FullyQualifiedEntityName): Unit = {
+  private def processFunctionInvocationMessage(func: WhiskEntityReference, invocationMessage: DependencyInvocationMessage, user: Identity, fqen: FullyQualifiedEntityName)(implicit transid: TransactionId): Unit = {
     logging.debug(this, s"processFunctionInvocationMessage(${invocationMessage.appActivationId}): func: ${func}")
     WhiskFunction.get(entityStore, func.getDocId()) flatMap { wf =>
       val chillen = wf.children getOrElse Seq.empty
-      logging.debug(this, s"processFunctionInvocationMessage(${invocationMessage.appActivationId}): chillen: ${chillen}")
+      logging.debug(this, s"processFunctionInvocationMessage(${invocationMessage.appActivationId}): children: ${chillen}")
 
       if (chillen.isEmpty) {
         // post application response, there are no more functions in the DAG
-        logging.debug(this, s"processFunctionInvocationMessage(${invocationMessage.appActivationId}): postActivationResponse: ")
+        logging.debug(this, s"processFunctionInvocationMessage(${invocationMessage.appActivationId}): postActivationResponse: ||latency: ${Interval.currentLatency()}")
         postActivationResponse(invocationMessage.appActivationId, invocationMessage, user, fqen)
       } else {
         // there are more functions to be invoked after this one
-        logging.debug(this, s"processFunctionInvocationMessage(${invocationMessage.appActivationId}): invoking next chillen")
+        logging.debug(this, s"processFunctionInvocationMessage(${invocationMessage.appActivationId}): invoking next children")
         chillen map { nextFunc =>
           WhiskFunction.get(entityStore, nextFunc.getDocId()) flatMap { func =>
             DagExecutor.executeFunction(func, entityStore, (obj, funcId, corunning) => {
@@ -194,14 +196,15 @@ class DependencyForwarding(whiskConfig: WhiskConfig,
     }
   }
 
-  private def prewarmNextLevelDeps(activationMessage: ActivationMessage, obj: ExecutableWhiskActionMetaData): Future[Unit] = {
+  private def prewarmNextLevelDeps(activationMessage: ActivationMessage, obj: ExecutableWhiskActionMetaData)(implicit transid: TransactionId): Future[Unit] = {
     Future.successful(obj.relationships.map(relationships => {
       relationships.dependents.map(ref => {
         WhiskActionMetaData.get(entityStore, ref.getDocId()) flatMap { nextObj =>
           Future.successful(nextObj.toExecutableWhiskAction map { nextAction: ExecutableWhiskActionMetaData =>
             val ppc = Some(PartialPrewarmConfig(1000, RuntimeResources(1, ByteSize(256, MB), ByteSize(0, MB))))
-            val newMsg = activationMessage.copy(prewarmOnly = ppc)
-            topBalancer.publish(nextAction, newMsg)
+            implicit val tid: TransactionId = childOf(activationMessage.transid)
+            val newMsg = activationMessage.copy(transid = tid, prewarmOnly = ppc)
+            topBalancer.publish(nextAction, newMsg)(tid)
           })
         }
       })

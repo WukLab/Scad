@@ -20,7 +20,7 @@ def load_wskprops():
 
 class WskProps:
     def __init__(self, host: str = None, auth: str = None):
-        '''wsk CLI configuration variables 
+        '''wsk CLI configuration variables
         '''
         props = None
         if host is None or auth is None:
@@ -29,11 +29,11 @@ class WskProps:
                 host = props['APIHOST']
             if auth is None:
                 auth = props['AUTH']
-        
+
         self.host = host
         split = auth.split(':')
         self.auth = (split[0], split[1])
-    
+
     def __str__(self):
         return json.dumps({'host': self.host, 'auth': self.auth})
 
@@ -62,7 +62,8 @@ def send_request(req, verbose=False):
         print('request content: {}'.format(req.data))
     resp = s.send(prep, verify=False)
     content = resp.content.decode('utf-8')
-    print("API responded with {}".format(resp.status_code))
+    if verbose:
+        print("API responded with {}".format(resp.status_code))
     try:
         print(json.dumps(json.loads(content), indent=2))
     except json.JSONDecodeError as e:
@@ -74,7 +75,7 @@ def send_request(req, verbose=False):
 def do_get_activation(host, activation_id, auth, verbose=False):
     result = '{}/api/v1/namespaces/_/activations/{}/result'.format(host, activation_id)
     logs = '{}/api/v1/namespaces/_/activations/{}/logs'.format(host, activation_id)
-    for url in [result, logs]:    
+    for url in [result, logs]:
         req = requests.Request(url=url, method='GET', headers={'Content-Type': 'application/json'}, auth=auth)
         send_request(req, verbose=verbose)
 
@@ -96,20 +97,20 @@ def main():
     parser.add_argument('-v', '--verbose', help="enable to print debug logs", action='store_true')
 
     args = parser.parse_args()
-    
+
     wskprops = WskProps(args.host, args.auth)
-    
+
     json_content=None
     method = args.method.upper()
     if method == 'PUT':
         json_content = read_example(args.file)
 
     host = wskprops.host
-    
+
     # default to https like wsk cli
     if not host.startswith('http'):
-        host = 'https://' + host    
-    
+        host = 'https://' + host
+
     resp = None
     if method != 'GET':
         do_action_update(host, method, json_content, args.app, wskprops.auth, verbose=args.verbose)

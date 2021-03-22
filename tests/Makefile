@@ -5,7 +5,12 @@ build_runtimes:
 build_ow:
 	cd ../openwhisk && ./gradlew build -x test
 
-build: build_runtimes build_ow
+build: build_runtimes build_ow dist_docker
+
+cli:
+ifeq (,$(wildcard ../openwhisk/bin/wsk))
+	./run_ansible.sh downloadcli-github.yml
+endif
 
 dist_docker: build
 	cd ../openwhisk && ./gradlew distDocker
@@ -24,7 +29,9 @@ wipe:
 
 couchdb: start_couchdb initdb
 
-start_all:
+start_all: teardown couchdb wipe openwhisk apigw
+
+openwhisk:
 	./run_ansible.sh openwhisk.yml -e skip_pull_runtimes=true
 
 controller:
@@ -47,8 +54,8 @@ zk:
 
 teardown:
 	docker stop invoker0 || true
-	docker stop $(shell docker ps -aq)
-	docker rm $(shell docker ps -aq)
+	docker stop $(shell docker ps -q) || true
+	docker rm $(shell docker ps -aq) || true
 
 run_profiler:
 	../wskish/wskish delete
@@ -56,9 +63,22 @@ run_profiler:
 	./faas-profiler.sh WorkloadInvoker -c zac-test.json
 	./faas-profiler.sh WorkloadAnalyzer -p
 
+reset_db: wipe
+	../wskish/wskish put --file 2-node.json
+	../wskish/wskish post
+
+
 test: build teardown couchdb wipe start_all apigw
 	../wskish/wskish put --file 2-node.json
 	../wskish/wskish post
+
+run_test:
+	OPENWHISK_HOME="$(shell readlink -f ../openwhisk)" ./faas-profiler.sh configure.sh
+	./faas-profiler.sh WorkloadInvoker -c workloads/2-node-long.json
+	sleep 2
+
+analyze:
+	./faas-profiler.sh WorkloadAnalyzer -p
 
 build_ow_base:
 	cd ../openwhisk-base && ./gradlew distDocker

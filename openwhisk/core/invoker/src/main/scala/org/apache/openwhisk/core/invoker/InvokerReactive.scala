@@ -202,7 +202,7 @@ class InvokerReactive(
     val name = msg.action.name
     val actionid = FullyQualifiedEntityName(namespace, name).toDocId.asDocInfo(msg.revision)
     val subject = msg.user.subject
-    logging.debug(this, s"${actionid.id} $subject ${msg.activationId}")
+    logging.debug(this, s"handling activation message ${actionid.id} $subject ${msg.activationId}: ||latency: ${Interval.currentLatency()}")
 
     // caching is enabled since actions have revision id and an updated
     // action will not hit in the cache due to change in the revision id;
