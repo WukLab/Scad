@@ -52,8 +52,6 @@ if __name__ == '__main__':
         extra_url = "url,tcp://localhost:{};size,{};".format(
             server_port, memory_block_size)
         action.config_transport(transport_name, extra_url)
-        with cv:
-            cv.notify_all()
 
     config_thread = threading.Thread(
         target = delayed_config)

@@ -6,14 +6,16 @@ from functools import partial
 cdef class LibdAction:
     cdef clibd.libd_action * _c_action
     cdef public object transports
+    cdef public object request
     cdef public object cv
 
-    def __cinit__(self, cv, str aid, str server_url):
+    def __cinit__(self, cv, str aid, str server_url, request = None):
         self._c_action = clibd.libd_action_init(
             aid.encode('ascii'), server_url.encode('ascii'))
         if self._c_action is NULL:
             raise MemoryError()
         self.cv = cv
+        self.request = request
 
     # Python init part, I assume they have same objects
     def __init__(self, *args):
@@ -31,8 +33,11 @@ cdef class LibdAction:
         return clibd.libd_action_add_transport(self._c_action, c_durl)
 
     def config_transport(self, name, durl):
-        return clibd.libd_action_config_transport(
+        ret = clibd.libd_action_config_transport(
             self._c_action, name.encode('ascii'), durl.encode('ascii'))
+        with self.cv:
+            self.cv.notify_all()
+        return ret
 
     def get_transport(self, name, ttype):
         if name not in self.transports:
@@ -44,7 +49,6 @@ cdef class LibdAction:
             self.transports[name] = trans
         # raise exception if name is not found
         return self.transports[name]
-
     # Python APIs
     # Reset methods for reuse of this instance
 
