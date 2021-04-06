@@ -19,16 +19,15 @@ package org.apache.openwhisk.core.containerpool.test
 
 import java.net.InetSocketAddress
 import java.time.Instant
-
 import akka.actor.FSM.{CurrentState, SubscribeTransitionCallBack, Transition}
 import akka.actor.{ActorRef, ActorSystem, FSM}
 import akka.stream.scaladsl.Source
 import akka.testkit.{CallingThreadDispatcher, ImplicitSender, TestKit, TestProbe}
 import akka.util.ByteString
 import common.{LoggedFunction, StreamLogging, SynchronizedLoggedFunction, WhiskProperties}
+
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.atomic.AtomicInteger
-
 import akka.io.Tcp.{Close, CommandFailed, Connect, Connected}
 import org.junit.runner.RunWith
 import org.scalatest.junit.JUnitRunner
@@ -36,14 +35,9 @@ import org.scalatest.{BeforeAndAfterAll, FlatSpecLike, Matchers}
 import spray.json.DefaultJsonProtocol._
 import spray.json._
 import org.apache.openwhisk.common.{Logging, TransactionId}
+import org.apache.openwhisk.connector.lean.LeanProducer
 import org.apache.openwhisk.core.ack.ActiveAck
-import org.apache.openwhisk.core.connector.{
-  AcknowledegmentMessage,
-  ActivationMessage,
-  CombinedCompletionAndResultMessage,
-  CompletionMessage,
-  ResultMessage
-}
+import org.apache.openwhisk.core.connector.{AcknowledegmentMessage, ActivationMessage, CombinedCompletionAndResultMessage, CompletionMessage, MessageProducer, ResultMessage}
 import org.apache.openwhisk.core.containerpool.WarmingData
 import org.apache.openwhisk.core.containerpool._
 import org.apache.openwhisk.core.containerpool.logging.LogCollectingException
@@ -93,6 +87,8 @@ class ContainerProxyTests
     EntityName("actionName"),
     exec,
     limits = ActionLimits(concurrency = testConcurrencyLimit))
+
+  val msgProducer: MessageProducer = new LeanProducer(mutable.Map.empty);
 
   // create a transaction id to set the start time and control queue time
   val messageTransId = TransactionId(TransactionId.testing.meta.id)
@@ -327,7 +323,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, Some("myname"), resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace))
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer))
     registerCallback(machine)
     preWarm(machine)
 
@@ -357,7 +354,9 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace))
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer
+          ))
     registerCallback(machine)
 
     preWarm(machine)
@@ -402,7 +401,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace))
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer))
     registerCallback(machine)
     preWarm(machine)
 
@@ -466,7 +466,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace))
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer))
     registerCallback(machine)
     preWarm(machine)
 
@@ -517,7 +518,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace))
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer))
     registerCallback(machine)
     run(machine, Uninitialized)
 
@@ -558,7 +560,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace))
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer))
     registerCallback(machine)
 
     machine ! Run(noLogsAction, message)
@@ -597,7 +600,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace))
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer))
     registerCallback(machine)
 
     machine ! Run(noLogsAction, message)
@@ -655,7 +659,8 @@ class ContainerProxyTests
             poolConfig,
             healthchecks,
             pauseGrace = pauseGrace,
-            tcp = Some(tcpProbe.ref)))
+            tcp = Some(tcpProbe.ref),
+            msgProducer = msgProducer))
     registerCallback(machine)
     preWarm(machine)
 
@@ -781,7 +786,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace))
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer))
     registerCallback(machine)
     (factory, container, acker, store, collector, machine)
   }
@@ -825,7 +831,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace)
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer)
           .withDispatcher(CallingThreadDispatcher.Id))
     registerCallback(machine)
     preWarm(machine) //ends in Started state
@@ -940,7 +947,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace)
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer)
           .withDispatcher(CallingThreadDispatcher.Id))
     registerCallback(machine)
     preWarm(machine) //ends in Started state
@@ -1010,7 +1018,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace)
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer)
           .withDispatcher(CallingThreadDispatcher.Id))
     registerCallback(machine)
     preWarm(machine) //ends in Started state
@@ -1078,7 +1087,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace)
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer)
           .withDispatcher(CallingThreadDispatcher.Id))
     registerCallback(machine)
     preWarm(machine) //ends in Started state
@@ -1139,7 +1149,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace)
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer)
           .withDispatcher(CallingThreadDispatcher.Id))
     registerCallback(machine)
     preWarm(machine) //ends in Started state
@@ -1196,7 +1207,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace)
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer)
           .withDispatcher(CallingThreadDispatcher.Id))
     registerCallback(machine)
     //no prewarming
@@ -1254,7 +1266,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace)
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer)
           .withDispatcher(CallingThreadDispatcher.Id))
     registerCallback(machine)
     //no prewarming
@@ -1307,7 +1320,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace)
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer)
           .withDispatcher(CallingThreadDispatcher.Id))
     registerCallback(machine)
     //no prewarming
@@ -1368,7 +1382,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = timeout))
+            pauseGrace = timeout,
+            msgProducer = msgProducer))
     registerCallback(machine)
     preWarm(machine)
 
@@ -1445,7 +1460,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace))
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer))
     registerCallback(machine)
     machine ! Run(action, message)
     expectMsg(Transition(machine, Uninitialized, Running))
@@ -1491,7 +1507,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace))
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer))
     registerCallback(machine)
     machine ! Run(action, message)
     expectMsg(Transition(machine, Uninitialized, Running))
@@ -1544,7 +1561,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace))
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer))
     registerCallback(machine)
     machine ! Run(action, message)
     expectMsg(Transition(machine, Uninitialized, Running))
@@ -1583,7 +1601,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace))
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer))
     registerCallback(machine)
     machine ! Run(action, message)
     expectMsg(Transition(machine, Uninitialized, Running))
@@ -1621,7 +1640,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace))
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer))
     registerCallback(machine)
     machine ! Run(action, message)
     expectMsg(Transition(machine, Uninitialized, Running))
@@ -1663,7 +1683,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace))
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer))
     registerCallback(machine)
     run(machine, Uninitialized) // first run an activation
     timeout(machine) // times out Ready state so container suspends
@@ -1715,7 +1736,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace))
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer))
     registerCallback(machine)
     run(machine, Uninitialized) // first run an activation
     timeout(machine) // times out Ready state so container suspends
@@ -1767,7 +1789,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace))
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer))
     registerCallback(machine)
     run(machine, Uninitialized) // first run an activation
     //will be in Ready state now
@@ -1806,7 +1829,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(true),
-            pauseGrace = pauseGrace))
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer))
     registerCallback(machine)
     preWarm(machine)
 
@@ -1846,7 +1870,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace))
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer))
     registerCallback(machine)
     run(machine, Uninitialized)
     timeout(machine) // times out Ready state so container suspends
@@ -1893,7 +1918,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace))
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer))
     registerCallback(machine)
 
     // Start running the action
@@ -1953,7 +1979,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace))
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer))
     registerCallback(machine)
     run(machine, Uninitialized)
     timeout(machine)
@@ -2002,7 +2029,8 @@ class ContainerProxyTests
             InvokerInstanceId(0, resources = defaultUserResources),
             poolConfig,
             healthchecksConfig(),
-            pauseGrace = pauseGrace))
+            pauseGrace = pauseGrace,
+            msgProducer = msgProducer))
     registerCallback(machine)
 
     preWarm(machine)

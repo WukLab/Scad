@@ -42,7 +42,9 @@ class MessagingActiveAck(producer: MessageProducer, instance: InstanceId, eventS
       producer.send(topic = topic, msg).andThen {
         case Success(_) =>
           val info = if (recovery) s"recovery ${msg.messageType}" else msg.messageType
-          logging.info(this, s"posted $info of activation ${acknowledegment.activationId}")
+          logging.info(this, s"posted $info of activation ${acknowledegment.activationId} to ${topic}")
+        case Failure(exception) =>
+          logging.debug(this, s"Failed to post acknowledgement of ${acknowledegment.activationId} to ${topic}")
       }
     }
 

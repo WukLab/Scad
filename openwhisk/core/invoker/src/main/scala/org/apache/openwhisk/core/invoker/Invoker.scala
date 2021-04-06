@@ -25,8 +25,9 @@ import kamon.Kamon
 import org.apache.openwhisk.common.Https.HttpsConfig
 import org.apache.openwhisk.common._
 import org.apache.openwhisk.core.WhiskConfig._
-import org.apache.openwhisk.core.connector.{DependencyInvocationMessageContext, MessageProducer, MessagingProvider}
+import org.apache.openwhisk.core.connector.{MessageProducer, MessagingProvider}
 import org.apache.openwhisk.core.containerpool.{Container, ContainerPoolConfig}
+import org.apache.openwhisk.core.database.ArtifactStore
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size._
 import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
@@ -171,25 +172,31 @@ object Invoker {
 
     initKamon(assignedInvokerId)
 
-    val topicBaseName = "invoker"
-    val topicName = topicBaseName + assignedInvokerId
-
     val maxMessageBytes = Some(ActivationEntityLimit.MAX_ACTIVATION_LIMIT)
     val invokerInstance =
       InvokerInstanceId(assignedInvokerId, cmdLineArgs.uniqueName, cmdLineArgs.displayedName, poolConfig.resources)
 
     val msgProvider = SpiLoader.get[MessagingProvider]
-    if (msgProvider
-      .ensureTopic(config, topic = topicName, topicConfig = topicBaseName, maxMessageBytes = maxMessageBytes)
-      .isFailure) {
-      abort(s"failure during msgProvider.ensureTopic for topic $topicName")
+    val depInputTopic = invokerInstance.getDepInputTopic
+    val schedResultTopic = invokerInstance.getSchedResultTopic
+    Seq(
+      (invokerInstance.getMainTopic, "invoker", maxMessageBytes),
+      (depInputTopic, "invoker-depInput", None),
+      (schedResultTopic, "invoker-schedResult", None),
+    ).foreach {
+      case (topic, topicConfigurationKey, maxMsgSize) =>
+        if (msgProvider.ensureTopic(config, topic, topicConfigurationKey, maxMessageBytes = maxMsgSize).isFailure) {
+          abort(s"failure during msgProvider.ensureTopic for topic $topic")
+        }
     }
 
     val producer = msgProvider.getProducer(config, Some(ActivationEntityLimit.MAX_ACTIVATION_LIMIT))
+
     val invoker = try {
       SpiLoader.get[InvokerProvider].instance(config, invokerInstance, producer, poolConfig, limitConfig)
     } catch {
-      case e: Exception => abort(s"Failed to initialize reactive invoker: ${e.getMessage}")
+      case e: Exception =>
+        abort(s"Failed to initialize reactive invoker: ${e}")
     }
 
     val port = config.servicePort.toInt
@@ -203,11 +210,13 @@ object Invoker {
 
     // Start the runtime http service
     val runtimePort = config.servicePort.toInt + 1
-    val runtimeTopic = DependencyInvocationMessageContext.DEP_INVOCATION_TOPIC
-    logger.info(this, s"Start Runtime Server API at $runtimePort with topic $runtimeTopic")
+    logger.info(this, s"Start Runtime Server API at $runtimePort")
 
+    implicit val actorMaterializer: ActorMaterializer = ActorMaterializer.create(actorSystem)
+    implicit val entityStore: ArtifactStore[WhiskEntity] = WhiskEntityStore.datastore()
+    implicit val authStore: ArtifactStore[WhiskAuth] = WhiskAuthStore.datastore()
 
-    val invokerRuntimeServer = new InvokerRuntimeServer(producer, runtimeTopic)
+    val invokerRuntimeServer = new InvokerRuntimeServer()
     BasicHttpService.startHttpService(invokerRuntimeServer.route, runtimePort, httpsConfig)(
       actorSystem,
       ActorMaterializer.create(actorSystem), logger)

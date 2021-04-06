@@ -20,8 +20,8 @@ package org.apache.openwhisk.core.containerpool
 import akka.actor.Actor
 import akka.actor.ActorRef
 import akka.actor.Cancellable
-import java.time.Instant
 
+import java.time.Instant
 import akka.actor.Status.{Failure => FailureMessage}
 import akka.actor.{FSM, Props, Stash}
 import akka.event.Logging.InfoLevel
@@ -35,9 +35,9 @@ import akka.pattern.pipe
 import pureconfig.loadConfigOrThrow
 import pureconfig.generic.auto._
 import akka.stream.ActorMaterializer
+
 import java.net.InetSocketAddress
 import java.net.SocketException
-
 import org.apache.openwhisk.common.MetricEmitter
 import org.apache.openwhisk.common.TransactionId.systemPrefix
 
@@ -47,18 +47,14 @@ import spray.json._
 import org.apache.openwhisk.common.{AkkaLogging, Counter, LoggingMarkers, TransactionId}
 import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.ack.ActiveAck
-import org.apache.openwhisk.core.connector.{
-  ActivationMessage,
-  CombinedCompletionAndResultMessage,
-  CompletionMessage,
-  ResultMessage
-}
+import org.apache.openwhisk.core.connector.{ActivationMessage, CombinedCompletionAndResultMessage, CompletionMessage, MessageProducer, ResultMessage}
 import org.apache.openwhisk.core.containerpool.logging.LogCollectingException
 import org.apache.openwhisk.core.database.UserContext
 import org.apache.openwhisk.core.entity.ExecManifest.ImageName
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size._
 import org.apache.openwhisk.core.invoker.Invoker.LogsCollector
+import org.apache.openwhisk.core.scheduler.FinishActivation
 import org.apache.openwhisk.http.Messages
 
 import scala.concurrent.Future
@@ -277,7 +273,10 @@ class ContainerProxy(factory: (TransactionId,
                      activationErrorLoggingConfig: ContainerProxyActivationErrorLogConfig,
                      unusedTimeout: FiniteDuration,
                      pauseGrace: FiniteDuration,
-                     testTcp: Option[ActorRef])
+                     msgProducer: MessageProducer,
+                     testTcp: Option[ActorRef],
+                     resultWaiter: Option[ActorRef],
+                    )
     extends FSM[ContainerState, ContainerData]
     with Stash {
   implicit val ec = context.system.dispatcher
@@ -881,12 +880,23 @@ class ContainerProxy(factory: (TransactionId,
               val initRunInterval = initInterval
                 .map(i => Interval(runInterval.start.minusMillis(i.duration.toMillis), runInterval.end))
                 .getOrElse(runInterval)
-              ContainerProxy.constructWhiskActivation(
+              job.msg.appActivationId map { appId =>
+                job.action.relationships map { rel =>
+                  if (rel.dependents.isEmpty) {
+                    msgProducer.send("topsched", FinishActivation(appId, response, ActivationLogs(), SemVer(), Parameters()), 8)
+                  }
+                }
+              }
+              val activation  = ContainerProxy.constructWhiskActivation(
                 job,
                 initInterval,
                 initRunInterval,
                 runInterval.duration >= actionTimeout,
                 response)
+              resultWaiter.foreach(waiter => {
+                waiter ! activation
+              })
+            activation
           }
       }
       .recoverWith {
@@ -1031,7 +1041,10 @@ object ContainerProxy {
             activationErrorLogConfig: ContainerProxyActivationErrorLogConfig = activationErrorLogging,
             unusedTimeout: FiniteDuration = timeouts.idleContainer,
             pauseGrace: FiniteDuration = timeouts.pauseGrace,
-            tcp: Option[ActorRef] = None) =
+            msgProducer: MessageProducer,
+            tcp: Option[ActorRef] = None,
+            resultWaiter: Option[ActorRef] = None,
+           ) =
     Props(
       new ContainerProxy(
         factory,
@@ -1044,7 +1057,10 @@ object ContainerProxy {
         activationErrorLogConfig,
         unusedTimeout,
         pauseGrace,
-        tcp))
+        msgProducer,
+        tcp,
+        resultWaiter,
+      ))
 
   // Needs to be thread-safe as it's used by multiple proxies concurrently.
   private val containerCount = new Counter

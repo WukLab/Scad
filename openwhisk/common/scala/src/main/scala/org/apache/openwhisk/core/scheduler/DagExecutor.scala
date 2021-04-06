@@ -1,10 +1,14 @@
-package org.apache.openwhisk.core.topbalancer
+package org.apache.openwhisk.core.scheduler
 
 import org.apache.openwhisk.common.{Logging, TransactionId}
+import org.apache.openwhisk.core.connector.Message
+import org.apache.openwhisk.core.entity.{ActivationId, ActivationLogs, ActivationResponse, EntityName, EntityPath, ExecutableWhiskActionMetaData, Identity, Parameters, SemVer, WhiskActionMetaData, WhiskEntityReference, WhiskFunction}
 import org.apache.openwhisk.core.entity.types.EntityStore
-import org.apache.openwhisk.core.entity.{ActivationId, ExecutableWhiskActionMetaData, WhiskActionMetaData, WhiskEntityReference, WhiskFunction}
+import spray.json.{DefaultJsonProtocol, RootJsonFormat}
+import spray.json._
 
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.Try
 
 object DagExecutor {
   /**
@@ -22,7 +26,7 @@ object DagExecutor {
    */
   def executeFunction[T](func: WhiskFunction, entityStore: EntityStore,
                          invocation: (ExecutableWhiskActionMetaData, ActivationId, Set[ActivationId]) => Future[T])(
-    implicit transid: TransactionId, ex: ExecutionContext, logging: Logging): Future[Unit] = {
+                          implicit transid: TransactionId, ex: ExecutionContext, logging: Logging): Future[Unit] = {
     // Start the first objects of the first functions within the application.
     val funcId = ActivationId.generate()
     func.lookupObjectMetadata(entityStore) map { objs =>
@@ -53,4 +57,37 @@ object DagExecutor {
       }
     }
   }
+}
+
+case class IncompleteActivation(id: ActivationId, startTimeEpochMillis: Long, entityPath: EntityPath, actionName: EntityName, user: Identity) extends Message {
+  /**
+   * Serializes message to string. Must be idempotent.
+   */
+  override def serialize: String = IncompleteActivation.serdes.write(this).compactPrint
+}
+
+object IncompleteActivation extends DefaultJsonProtocol {
+  implicit val serdes: RootJsonFormat[IncompleteActivation] = jsonFormat5(IncompleteActivation.apply)
+}
+
+case class FinishActivation(id: ActivationId,
+                            response: ActivationResponse,
+                            logs: ActivationLogs = ActivationLogs(),
+                            version: SemVer = SemVer(),
+                            annotations: Parameters = Parameters()) extends Message {
+  /**
+   * Serializes message to string. Must be idempotent.
+   */
+  override def serialize: String = FinishActivation.serdes.write(this).compactPrint
+}
+
+object FinishActivation extends DefaultJsonProtocol {
+  implicit val serdes: RootJsonFormat[FinishActivation] = jsonFormat(FinishActivation.apply,
+    "id",
+    "response",
+    "logs",
+    "version",
+    "annotations")
+
+  def parse(msg: String): Try[FinishActivation] = Try(serdes.read(msg.parseJson))
 }

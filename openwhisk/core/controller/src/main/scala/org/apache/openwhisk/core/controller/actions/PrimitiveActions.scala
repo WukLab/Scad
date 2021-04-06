@@ -37,7 +37,7 @@ import org.apache.openwhisk.utils.ExecutionContextFactory.FutureExtensions
 import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.containerpool.Interval
 import org.apache.openwhisk.core.containerpool.RuntimeResources
-import org.apache.openwhisk.core.topbalancer.{DagExecutor, IncompleteActivation}
+import org.apache.openwhisk.core.scheduler.{DagExecutor, IncompleteActivation}
 
 import scala.collection.mutable.Buffer
 import scala.concurrent.duration._
@@ -731,7 +731,7 @@ protected[actions] trait PrimitiveActions {
                 corunning = Some(corunning.toSeq.map(x => RunningActivation(x))))
             })
         }
-      appActivator ! IncompleteActivation(appActivationId, Instant.now, application.namespace, application.name, user)
+      appActivator ! IncompleteActivation(appActivationId, Instant.now.toEpochMilli, application.namespace, application.name, user)
       Future.successful(Left(appActivationId))
     } recoverWith {
       case t: Throwable =>

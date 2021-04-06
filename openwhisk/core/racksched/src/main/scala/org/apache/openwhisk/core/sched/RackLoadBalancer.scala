@@ -29,12 +29,8 @@ import org.apache.openwhisk.core.WhiskConfig.kafkaHosts
 import org.apache.openwhisk.core.WhiskConfig.wskApiHost
 import org.apache.openwhisk.core.connector.AcknowledegmentMessage
 import org.apache.openwhisk.core.connector.{ActivationMessage, MessageFeed, MessageProducer, MessagingProvider}
-import org.apache.openwhisk.core.containerpool.{ContainerPoolConfig, Interval, RuntimeResources}
-import org.apache.openwhisk.core.entity.ControllerInstanceId
-import org.apache.openwhisk.core.entity.ResourceLimit
-import org.apache.openwhisk.core.entity.WhiskActionMetaData
-import org.apache.openwhisk.core.entity.WhiskEntityStore
-import org.apache.openwhisk.core.entity.{ActivationEntityLimit, ActivationId, ExecManifest, ExecutableWhiskActionMetaData, InstanceId, InvokerInstanceId, RackSchedInstanceId, TimeLimit, UUID, WhiskActivation}
+import org.apache.openwhisk.core.containerpool.{ContainerPoolConfig, RuntimeResources}
+import org.apache.openwhisk.core.entity.{ActivationEntityLimit, ActivationId, ExecManifest, ExecutableWhiskActionMetaData, FullyQualifiedEntityName, InstanceId, InvokerInstanceId, RackSchedInstanceId, ResourceLimit, TimeLimit, UUID, WhiskActionMetaData, WhiskActivation, WhiskEntityStore}
 import org.apache.openwhisk.core.loadBalancer.{ActivationEntry, FeedFactory, InvocationFinishedMessage, InvocationFinishedResult, InvokerHealth, ShardingContainerPoolBalancerConfig}
 import org.apache.openwhisk.spi.Spi
 import org.apache.openwhisk.spi.SpiLoader
@@ -43,6 +39,7 @@ import pureconfig._
 import pureconfig.generic.auto._
 import org.apache.openwhisk.core.entity.size._
 import org.apache.openwhisk.core.entity.types.EntityStore
+import org.apache.openwhisk.core.invoker.SchedulingDecision
 import org.apache.openwhisk.core.loadBalancer.ClusterConfig
 import org.apache.openwhisk.core.loadBalancer.CurrentInvokerPoolState
 import org.apache.openwhisk.core.loadBalancer.InvokerActor
@@ -54,12 +51,12 @@ import org.apache.openwhisk.core.loadBalancer.ShardingContainerPoolBalancer
 import org.apache.openwhisk.core.loadBalancer.ShardingContainerPoolBalancerState
 
 import java.nio.charset.StandardCharsets
-import java.time.Instant
 import java.util.concurrent.atomic.AtomicReference
 import scala.collection.concurrent.TrieMap
+import scala.collection.mutable
 import scala.concurrent.ExecutionContext
 import scala.concurrent.{Future, Promise}
-import scala.concurrent.duration.{DurationInt, FiniteDuration}
+import scala.concurrent.duration.{DurationInt, FiniteDuration, MINUTES}
 import scala.util.{Failure, Success}
 
 trait RackLoadBalancer {
@@ -109,7 +106,7 @@ trait RackLoadBalancerProvider extends Spi {
   def createFeedFactory(whiskConfig: WhiskConfig, instance: RackSchedInstanceId)(implicit actorSystem: ActorSystem,
                                                                                 logging: Logging): FeedFactory = {
 
-    val activeAckTopic = s"completed${instance.toString}"
+    val activeAckTopic = s"completed${instance.asString}"
     val maxActiveAcksPerPoll = 128
     val activeAckPollDuration = 1.second
 
@@ -149,6 +146,15 @@ class RackSimpleBalancer(config: WhiskConfig,
 
   protected val messageProducer: MessageProducer =
     messagingProvider.getProducer(config, Some(ActivationEntityLimit.MAX_ACTIVATION_LIMIT))
+
+  // map which based on a tuple-key stores the previously-scheduled location and two other values (id, int0, int1) where
+  // int0 represents the total scheduled messages based on this value
+  // int1 represent the max number of messages scheduled using this map
+  // once int0 == int1, then the key should be removed from the map.
+  // in the case of an error, the scheduling message will be removed after ~5 minutes if the number of expected scheduled
+  // messages does not come through.
+  // the key of the map is (app activation ID, function activation ID, scheduled function name)
+  val preScheduled: mutable.Map[(ActivationId, ActivationId, FullyQualifiedEntityName), (InvokerInstanceId, Int, Int)] = mutable.Map.empty
 
   /** Build a cluster of all loadbalancers */
   private val cluster: Option[Cluster] = if (loadConfigOrThrow[ClusterConfig](ConfigKeys.cluster).useClusterBootstrap) {
@@ -240,7 +246,6 @@ class RackSimpleBalancer(config: WhiskConfig,
       implicit val transid: TransactionId = activation.transid
       WhiskActionMetaData.resolveActionAndMergeParameters(entityStore, activation.action, activation.appActivationId) onComplete {
         case Success(metadata) =>
-          logging.debug(this, s"about to schedule: ${activation.appActivationId}: ||latency: ${Interval(activation.transid.meta.start, Instant.now()).duration.toMillis}")
           publish(metadata.toExecutableWhiskAction.get, activation)
         case Failure(exception) =>
           logging.error(this, s"Failed to publish rack activation: $exception")
@@ -261,23 +266,61 @@ class RackSimpleBalancer(config: WhiskConfig,
   /** 1. Publish a message to the rackLoadBalancer */
   override def publish(action: ExecutableWhiskActionMetaData, msg: ActivationMessage)(
     implicit transid: TransactionId): Future[Future[Either[ActivationId, WhiskActivation]]] = {
+    transid.mark(this, LoggingMarkers.RACKSCHED_SCHED_BEGIN)
     val isBlackboxInvocation = action.exec.pull
     val actionType = if (!isBlackboxInvocation) "managed" else "blackbox"
     val (invokersToUse, stepSizes) =
       if (!isBlackboxInvocation) (schedulingState.managedInvokers, schedulingState.managedStepSizes)
       else (schedulingState.blackboxInvokers, schedulingState.blackboxStepSizes)
-    val chosen = if (invokersToUse.nonEmpty) {
+    val chosen: Option[InvokerInstanceId] = if (invokersToUse.nonEmpty) {
       val hash = ShardingContainerPoolBalancer.generateHash(msg.user.namespace.name, action.fullyQualifiedName(false))
       val homeInvoker = hash % invokersToUse.size
       val stepSize = stepSizes(hash % stepSizes.size)
-      val invoker: Option[(InvokerInstanceId, Boolean)] = ShardingContainerPoolBalancer.schedule(
-        action.limits.concurrency.maxConcurrent,
-        action.fullyQualifiedName(true),
-        invokersToUse,
-        schedulingState.invokerSlots,
-        action.limits.resources.limits,
-        homeInvoker,
-        stepSize)
+      val defaultSchedule = () =>
+        ShardingContainerPoolBalancer.schedule(
+          action.limits.concurrency.maxConcurrent,
+          action.fullyQualifiedName(true),
+          invokersToUse,
+          schedulingState.invokerSlots,
+          action.limits.resources.limits,
+          homeInvoker,
+          stepSize)
+
+      val invoker: Option[(InvokerInstanceId, Boolean)] = msg.waitForContent match {
+        case Some(content) =>
+          if (content > 1) {
+            msg.appActivationId flatMap { appId =>
+              msg.functionActivationId flatMap { funcId =>
+                val key = (appId, funcId, msg.action)
+                preScheduled.get(key) match {
+                  case Some(value) =>
+                    // this message came through the scheduler before..return the same result
+                    if (value._2 + 1 >= value._3) {
+                      // we've reached the max number of messages to schedule..let's get rid of it
+                      preScheduled.remove(key)
+                      Some((value._1, false))
+                    } else {
+                      preScheduled.put(key, (value._1, value._2 + 1, value._3))
+                      Some((value._1, false))
+                    }
+                  case None =>
+                    // we have not seen the message yet..schedule the result, then store the scheduling message
+                    // and set a timer to remove it
+                    defaultSchedule() match {
+                      case Some((value: InvokerInstanceId, check)) =>
+                        preScheduled.put(key, (value, 1, content))
+                        actorSystem.getScheduler.scheduleOnce(FiniteDuration(5, MINUTES))(() => preScheduled.remove(key))
+                        Some((value, check))
+                      case _ => None
+                    }
+                }
+              }
+            }
+          } else {
+            defaultSchedule()
+          }
+        case None => defaultSchedule()
+      }
       invoker.foreach {
         case (_, true) =>
           val metric =
@@ -288,13 +331,11 @@ class RackSimpleBalancer(config: WhiskConfig,
           MetricEmitter.emitCounterMetric(metric)
         case _ =>
       }
-      invoker.map(_._1)
+      invoker.map { v => v._1 }
     } else {
       None
     }
-
-    chosen
-      .map { invoker =>
+    chosen.map { invoker =>
         // MemoryLimit() and TimeLimit() return singletons - they should be fast enough to be used here
         val resourceLimit = action.limits.resources
         val resourceLimitInfo = if (resourceLimit == ResourceLimit()) { "std" } else { "non-std" }
@@ -527,7 +568,7 @@ class RackSimpleBalancer(config: WhiskConfig,
         // the load balancer's activation map. Inform the invoker pool supervisor of the user action completion.
         // guard this
         invoker.foreach(invokerPool ! InvocationFinishedMessage(_, invocationResult))
-      case None if tid == TransactionId.invokerHealth =>
+      case None if tid == TransactionId.invokerHealth || (tid.hasParent && tid.meta.parent.get.id == TransactionId.invokerHealth.id) =>
         // Health actions do not have an ActivationEntry as they are written on the message bus directly. Their result
         // is important to pass to the invokerPool because they are used to determine if the invoker can be considered
         // healthy again.
@@ -563,23 +604,31 @@ class RackSimpleBalancer(config: WhiskConfig,
                                         invoker: InvokerInstanceId): Future[RecordMetadata] = {
     implicit val transid: TransactionId = msg.transid
 
-    val topic = s"invoker${invoker.toInt}"
+    val sentMsg = msg.copy(rootControllerIndex = rackschedInstance)
+    val topic = invoker.getMainTopic
 
     MetricEmitter.emitCounterMetric(LoggingMarkers.LOADBALANCER_ACTIVATION_START)
     val start = transid.started(
       this,
       LoggingMarkers.CONTROLLER_KAFKA,
-      s"posting topic '$topic' with activation id '${msg.activationId}'",
+      s"posting topic '$topic' with activation id '${sentMsg.activationId}'",
       logLevel = InfoLevel)
-
+    sentMsg.sendResultToInvoker.foreach(args => {
+      val originatingInvoker = args._1
+      val originalActivationId = args._2
+      producer.send(originatingInvoker.getSchedResultTopic, SchedulingDecision(originalActivationId, sentMsg.activationId, invoker, transid))
+        .failed.foreach(exception => {
+            logging.warn(this, s"Failed to send message to topic: ${originatingInvoker.getSchedResultTopic}: ${exception}")
+        })
+    })
     producer.send(topic, msg).andThen {
       case Success(status) =>
+        transid.mark(this, LoggingMarkers.RACKSCHED_SCHED_END)
         transid.finished(
-          this,
-          start,
-          s"posted to ${status.topic()}[${status.partition()}][${status.offset()}]",
-          logLevel = InfoLevel)
-        logging.debug(this, s"scheduled: ${msg.appActivationId}: ||latency: ${Interval(msg.transid.meta.start, Instant.now()).duration.toMillis}")
+        this,
+            start,
+        s"posted to ${status.topic()}[${status.partition()}][${status.offset()}]",
+            logLevel = InfoLevel)
       case Failure(_) => transid.failed(this, start, s"error on posting to topic $topic")
     }
   }
@@ -612,11 +661,11 @@ object RackLoadBalancer extends RackLoadBalancerProvider {
                                      sendActivationToInvoker: (MessageProducer, ActivationMessage, InvokerInstanceId) => Future[RecordMetadata],
                                      monitor: Option[ActorRef]): ActorRef = {
 
-        InvokerPool.prepare(new ControllerInstanceId(instance.toString), WhiskEntityStore.datastore())
+        InvokerPool.prepare(instance, WhiskEntityStore.datastore())
 
         actorRefFactory.actorOf(
           InvokerPool.props(
-            (f, i) => f.actorOf(InvokerActor.props(i, new ControllerInstanceId(instance.toString))),
+            (f, i) => f.actorOf(InvokerActor.props(i, instance)),
             (m, i) => sendActivationToInvoker(messagingProducer, m, i),
             messagingProvider.getConsumer(whiskConfig, s"health${instance.toString}", "health", maxPeek = 128),
             monitor))

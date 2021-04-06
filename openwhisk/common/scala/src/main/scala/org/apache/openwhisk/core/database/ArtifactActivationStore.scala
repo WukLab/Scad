@@ -21,7 +21,7 @@ import java.time.Instant
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import spray.json.JsObject
-import org.apache.openwhisk.common.{Logging, TransactionId}
+import org.apache.openwhisk.common.{Logging, LoggingMarkers, TransactionId}
 import org.apache.openwhisk.core.containerpool.Interval
 import org.apache.openwhisk.core.entity._
 
@@ -32,6 +32,7 @@ class ArtifactActivationStore(actorSystem: ActorSystem, actorMaterializer: Actor
     extends ActivationStore {
 
   implicit val executionContext = actorSystem.dispatcher
+  implicit val logger: Logging = logging
 
   private val artifactStore: ArtifactStore[WhiskActivation] =
     WhiskActivationStore.datastore()(actorSystem, logging, actorMaterializer)
@@ -39,13 +40,13 @@ class ArtifactActivationStore(actorSystem: ActorSystem, actorMaterializer: Actor
   def store(activation: WhiskActivation, context: UserContext)(
     implicit transid: TransactionId,
     notifier: Option[CacheChangeNotification]): Future[DocInfo] = {
-
     logging.debug(this, s"storing activation response: '${activation.activationId}' - ${activation.name}. ||latency: ${Interval.currentLatency()}")
 
     val res = WhiskActivation.put(artifactStore, activation)
 
     res onComplete {
       case Success(id) =>
+        transid.mark(this, LoggingMarkers.INVOKER_ACTIVATION_STORING)
         logging.debug(this, s"stored final activation response: ${activation.activationId}. - ${activation.name} ||latency: ${Interval.currentLatency()}")
 
       case Failure(t) =>

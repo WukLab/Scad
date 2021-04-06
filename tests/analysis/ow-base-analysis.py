@@ -14,39 +14,29 @@ import pandas
 
 
 CONTROLLER_NAME = 'controller0'
-RACKSCHED_NAME = 'racksched0'
 INVOKER_NAME = 'invoker0'
-LOG_TYPES = [CONTROLLER_NAME, RACKSCHED_NAME, INVOKER_NAME]
+LOG_TYPES = [CONTROLLER_NAME, INVOKER_NAME]
 
-FN_TOPSCHED_BEGIN = 'topsched_scheduler_begin'
-FN_TOPSCHED_END =   'topsched_scheduler_end'
-FN_RACKSCHED_BEGIN = 'racksched_scheduler_begin'
-FN_RACKSCHED_END =   'racksched_scheduler_end'
-FN_LEAVE_RESULT_WAITER =     'invoker_resultwaiter_leave'
-FN_LEAVE_ACTIVATION_WAITER = 'invoker_activationwaiter_leave'
-FN_AT_INVOKER =              'invoker_activation_start'
-FN_FINISH_INVOCATION =       'invoker_activationRun_finish'
+FN_CONTROLLER_START = 'controller_loadbalancer_start'
+FN_CONTROLLER_FINISH =   'controller_loadbalancer_finish'
+FN_INVOKER_START =     'invoker_activation_start'
+FN_INVOKER_FINISH = 'invoker_activationRun_finish'
+FN_CONTROLLER_ACT_FINISH = 'controller_blockingActivation_finish'
 
 FILTER_PRETTY = {
-    FN_TOPSCHED_BEGIN: 'CDF of latency (ms) for invocation setup',
-    FN_TOPSCHED_END: 'CDF of latency (ms) for top-level scheduling',
-    FN_RACKSCHED_BEGIN: 'CDF of latency (ms) for top-level --> rack comms (Kafka)',
-    FN_RACKSCHED_END: 'CDF of latency (ms) for rack scheduling',
-    FN_AT_INVOKER: 'CDF of latency (ms) for activation start (after leaving activation waiter)',
-    FN_LEAVE_RESULT_WAITER: 'CDF of time spent between leaving racksched and finishing invocation at the invoker',
-    FN_LEAVE_ACTIVATION_WAITER: 'CDF of latency between exiting racksched and beginning activation',
-    FN_FINISH_INVOCATION: 'CDF of latency (ms) for container invocation'
+    FN_CONTROLLER_START: 'CDF of latency (ms) for invocation setup',
+    FN_CONTROLLER_FINISH: 'CDF of latency (ms) for top-level scheduling',
+    FN_INVOKER_START: 'CDF of latency (ms) for LB --> Invoker comms (Kafka)',
+    FN_INVOKER_FINISH: 'CDF of latency (ms) for container execution',
+    FN_CONTROLLER_ACT_FINISH: 'CDF of latency (ms) for invoker --> LB comms (kafka)'
 }
 
 FILTERS = {
-    FN_TOPSCHED_BEGIN: CONTROLLER_NAME,
-    FN_TOPSCHED_END: CONTROLLER_NAME,
-    FN_RACKSCHED_BEGIN: RACKSCHED_NAME,
-    FN_RACKSCHED_END: RACKSCHED_NAME,
-    FN_LEAVE_RESULT_WAITER: INVOKER_NAME,
-    FN_LEAVE_ACTIVATION_WAITER: INVOKER_NAME,
-    FN_AT_INVOKER: INVOKER_NAME,
-    FN_FINISH_INVOCATION: INVOKER_NAME
+    FN_CONTROLLER_START: CONTROLLER_NAME,
+    FN_CONTROLLER_FINISH: CONTROLLER_NAME,
+    FN_INVOKER_START: INVOKER_NAME,
+    FN_INVOKER_FINISH: INVOKER_NAME,
+    FN_CONTROLLER_ACT_FINISH: CONTROLLER_NAME
 }
 
 filterset = set(FILTERS)
@@ -59,7 +49,8 @@ MARKER_REGEX = r'\[marker:.*?\]'
 TID_REGEX = r'\[(#tid_[A-z0-9].*?)\]'
 
 def get_logs(container_name):
-    return subprocess.check_output(shlex.split("docker logs {}".format(container_name))).decode('utf-8')
+    with open('/var/tmp/wsklogs/{cntr}/{cntr}_logs.log'.format(cntr=container_name)) as f:
+        return f.read()
 
 def reject_outliers(data, m=3):
     return data[abs(data - np.median(data)) < m * np.std(data)]
@@ -88,12 +79,12 @@ def do_individual_latencies():
     def regexmatch(x):
         match = re.findall(TID_REGEX, x)
         res = match
-        if len(res) < 2:
-            # print(x)
-            return None
-        return res[1]
+        # if len(res) < 2:
+        #     print(x)
+        #     return None
+        return res[0]
 
-    ctrl_logs = filter(lambda x: FN_TOPSCHED_BEGIN in x and HEALTH_ACTION not in x, logs[CONTROLLER_NAME])
+    ctrl_logs = filter(lambda x: FN_CONTROLLER_START in x and HEALTH_ACTION not in x, logs[CONTROLLER_NAME])
     tids = list(map(lambda x: regexmatch(x), ctrl_logs))
 
     df = pandas.DataFrame({'tid': tids})
@@ -116,18 +107,15 @@ def do_individual_latencies():
                 if filt not in line:
                     continue
                 time = get_latency_from_line(filt, line)
-                if time == 0 and filt != FN_TOPSCHED_BEGIN and filt != FN_TOPSCHED_END:
-                    print('$$$$$\ntime 0: {} {}\n{}\n$$$$'.format(transid, filt, line))
                 filttime[filt] = time
                 added = True
             if not added:
-                if filt == FN_TOPSCHED_END:
-                    print("################### \n[{}] didn't add for filter: {}\n{}".format(transid, filt, '\n'.join(log)))
-                    print("###################")
+                print("################### \n[{}] didn't add for filter: {}\n{}".format(transid, filt, '\n'.join(log)))
+                print("###################")
                 break
         print(filttime)
         # filter names now mapped to a latency..let's calculate the differences
-        filt_diffs[FN_TOPSCHED_BEGIN].append(filttime[FN_TOPSCHED_BEGIN])
+        filt_diffs[FN_CONTROLLER_START].append(filttime[FN_CONTROLLER_START])
         def add_time(prev_filt, curr_filt):
             try:
                 diff = filttime[curr_filt] - filttime[prev_filt]
@@ -139,13 +127,10 @@ def do_individual_latencies():
                 # raise e
                 pass
 
-        add_time(FN_TOPSCHED_BEGIN, FN_TOPSCHED_END)
-        add_time(FN_TOPSCHED_END, FN_RACKSCHED_BEGIN)
-        add_time(FN_RACKSCHED_BEGIN, FN_RACKSCHED_END)
-        add_time(FN_RACKSCHED_END, FN_LEAVE_ACTIVATION_WAITER)
-        add_time(FN_RACKSCHED_END, FN_AT_INVOKER)
-        add_time(FN_AT_INVOKER, FN_FINISH_INVOCATION)
-        add_time(FN_RACKSCHED_END, FN_LEAVE_RESULT_WAITER)
+        add_time(FN_CONTROLLER_START, FN_CONTROLLER_FINISH)
+        add_time(FN_CONTROLLER_FINISH, FN_INVOKER_START)
+        add_time(FN_INVOKER_START, FN_INVOKER_FINISH)
+        add_time(FN_INVOKER_FINISH, FN_CONTROLLER_ACT_FINISH)
 
         # [print(x) for x in tid_logs[transid]]
         # break

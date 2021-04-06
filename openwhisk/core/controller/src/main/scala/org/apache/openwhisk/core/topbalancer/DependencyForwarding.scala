@@ -10,8 +10,9 @@ import org.apache.openwhisk.core.connector.{ActivationMessage, DependencyInvocat
 import org.apache.openwhisk.core.containerpool.{Interval, RuntimeResources}
 import org.apache.openwhisk.core.database.{ActivationStoreProvider, CacheChangeNotification, UserContext}
 import org.apache.openwhisk.core.entity.SizeUnits.MB
-import org.apache.openwhisk.core.entity.{ActivationId, ActivationLogs, ActivationResponse, ByteSize, EntityName, EntityPath, ExecutableWhiskActionMetaData, FullyQualifiedEntityName, Identity, Parameters, SemVer, WhiskAction, WhiskActionMetaData, WhiskActivation, WhiskEntityReference, WhiskFunction}
+import org.apache.openwhisk.core.entity.{ActivationId, ActivationResponse, ByteSize, ExecutableWhiskActionMetaData, FullyQualifiedEntityName, Identity, WhiskAction, WhiskActionMetaData, WhiskActivation, WhiskEntityReference, WhiskFunction}
 import org.apache.openwhisk.core.entity.types.{AuthStore, EntityStore}
+import org.apache.openwhisk.core.scheduler.{DagExecutor, FinishActivation, IncompleteActivation}
 import org.apache.openwhisk.spi.SpiLoader
 import pureconfig.loadConfigOrThrow
 
@@ -20,7 +21,6 @@ import java.time.Instant
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import scala.util.{Failure, Success}
-
 
 class DependencyForwarding(whiskConfig: WhiskConfig,
                            topBalancer: TopBalancer)(
@@ -87,7 +87,6 @@ class DependencyForwarding(whiskConfig: WhiskConfig,
         whiskObject.parentFunc map { pf =>
 //          logging.debug(this, s"dependency msg with whiskObjectParentFunc: ${pf}")
           whiskObject.relationships map { rel =>
-//            logging.debug(this, s"dependency msg with whisk object relationship: ${rel} ||latency: ${Interval.currentLatency()}")
             if (rel.dependents.isEmpty) {
               processFunctionInvocationMessage(pf, msg, identity, msg.getFQEN())
               // This will result in the next function in the chain being triggered.
@@ -221,12 +220,6 @@ object DependencyForwarding {
 
 }
 
-case class IncompleteActivation(id: ActivationId, startTime: Instant, entityPath: EntityPath, actionName: EntityName, user: Identity)
-case class FinishActivation(id: ActivationId, response: ActivationResponse,
-                            logs: ActivationLogs = ActivationLogs(),
-                            version: SemVer = SemVer(),
-                            annotations: Parameters = Parameters())
-
 /**
  * This actor receives messages which allow it to track and store activations for "applications"
  *
@@ -259,13 +252,14 @@ case class AppActivator()(implicit val actorSystem: ActorSystem, materializer: A
           incomplete.actionName,
           incomplete.user.subject,
           fin.id,
-          incomplete.startTime,
+          Instant.ofEpochMilli(incomplete.startTimeEpochMillis),
           now,
           response = fin.response,
-          duration = Some(now.toEpochMilli - incomplete.startTime.toEpochMilli)
+          duration = Some(now.toEpochMilli - incomplete.startTimeEpochMillis)
         )
         activationStore.store(act, UserContext(incomplete.user)) flatMap { docInfo =>
-          logging.debug(this, s"application activation ${fin.id} stored with $docInfo")
+//          logging.debug(this, s"application activation ${fin.id} stored with $docInfo")
+
           Future.successful(())
         } recoverWith {
           case t: Throwable =>

@@ -12,7 +12,7 @@ ifeq (,$(wildcard ../openwhisk/bin/wsk))
 	./run_ansible.sh downloadcli-github.yml
 endif
 
-dist_docker: build
+dist_docker:
 	cd ../openwhisk && ./gradlew distDocker
 
 setup:
@@ -72,9 +72,12 @@ test: build teardown couchdb wipe start_all apigw
 	../wskish/wskish put --file 2-node.json
 	../wskish/wskish post
 
+
+test_ow: test run_test
+
 run_test:
 	OPENWHISK_HOME="$(shell readlink -f ../openwhisk)" ./faas-profiler.sh configure.sh
-	./faas-profiler.sh WorkloadInvoker -c workloads/2-node-long.json
+	./faas-profiler.sh WorkloadInvoker -c workloads/2-node.json
 	sleep 2
 
 analyze:
@@ -83,10 +86,17 @@ analyze:
 build_ow_base:
 	cd ../openwhisk-base && ./gradlew distDocker
 
-ow_base: build_ow
-	cd ../openwhisk-base && git apply ../ow-base.patch
+ow_base: build_ow_base
+	cd ../openwhisk-base && git reset HEAD --hard && git apply ../ow-base.patch
 	./ow_base_ansible.sh setup.yml
 	./ow_base_ansible.sh couchdb.yml
 	./ow_base_ansible.sh wipe.yml
 	./ow_base_ansible.sh initdb.yml
 	./ow_base_ansible.sh openwhisk.yml -e skip_pull_runtimes=true
+
+
+test_ow_base: ow_base
+	../openwhisk-base/bin/wsk -i action create action_test_function ow_base/action.js
+	../openwhisk-base/bin/wsk -i action create test-action --sequence /whisk.system/action_test_function,/whisk.system/action_test_function
+	./faas-profiler.sh WorkloadInvoker -c workloads/2-node-base-ow.json
+	./faas-profiler.sh WorkloadAnalyzer -p
