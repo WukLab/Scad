@@ -26,17 +26,17 @@ import sys, os, json, traceback, warnings
 ####################
 
 from disagg import LibdAction
-import threading, struct, os, requests
+import threading, struct, os
 
-class LibdRequest:
-    def __init__(self, aid, serverUrl):
-        self.aid = aid
-        self.surl = serverUrl
-    def __ep(self, api, data):
-        url = "{}/activation/{}/{}".format(self.surl, self.aid, api)
-        return requests.post(api, json.dumps(data))
-    def dependency(target = null, value = null, parallelism = null, dependency = null, functionActivationId = null, appActivationId = null):
-        data = {}
+# class LibdRequest:
+#     def __init__(self, aid, serverUrl):
+#         self.aid = aid
+#         self.surl = serverUrl
+#     def __ep(self, api, data):
+#         url = "{}/activation/{}/{}".format(self.surl, self.aid, api)
+#         return requests.post(api, json.dumps(data))
+#     def dependency(target = null, value = null, parallelism = null, dependency = null, functionActivationId = null, appActivationId = null):
+#         data = {}
 
 class LibdRuntime:
     def __init__(self):
@@ -44,7 +44,7 @@ class LibdRuntime:
         self.server_url = os.getenv('__OW_INVOKER_API_URL')
         self.cv = threading.Condition()
     def create_action(self, aid):
-        request = LibdRequest(aid, self.server_url)
+        request = None
         action = LibdAction(self.cv, aid, self.server_url, request)
         self.actions[aid] = action
         return action
