@@ -41,11 +41,10 @@ import threading, struct, os
 class LibdRuntime:
     def __init__(self):
         self.actions = {}
-        self.server_url = os.getenv('__OW_INVOKER_API_URL')
+        self.server_url = os.getenv('__OW_INVOKER_API_URL', 'localhost')
         self.cv = threading.Condition()
     def create_action(self, aid):
-        request = None
-        action = LibdAction(self.cv, aid, self.server_url, request)
+        action = LibdAction(self.cv, aid, self.server_url)
         self.actions[aid] = action
         return action
     def get_action(self, aid):

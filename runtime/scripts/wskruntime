@@ -106,6 +106,8 @@ if __name__ == '__main__':
             host = get_container_address(args.container)
             aid = gen_activationid(32)
             body = build_run(aid, transports = args.transport)
+            if args.transport is None:
+                del body['transports']
             call_host(host, '/run', body)
 
         elif action == 'reset':
