@@ -573,6 +573,7 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
       content.publish getOrElse false,
       WhiskActionsApi.amendAnnotations(content.annotations getOrElse Parameters(), exec),
       relationships = relationships,
+      runtimeType = content.runtimeType,
       parentFunc = parentFunc)
   }
 

@@ -671,8 +671,4 @@ object LoggingMarkers {
   val INVOKER_ACTIVATION_HANDLE: LogMarkerToken = LogMarkerToken(invoker, activation, "handle")(MeasurementUnit.time.microseconds)
   val INVOKER_ACTIVATION_STORING: LogMarkerToken = LogMarkerToken(invoker, activation, "storing")(MeasurementUnit.time.microseconds)
 
-
-  val INVOKER_ACTIVATION_SCHEDULE = LogMarkerToken(invoker, "schedule", mark)(MeasurementUnit.time.microseconds)
-  val INVOKER_ACTIVATION_IN_RESULT_WAITER = LogMarkerToken(invoker, "inreswaiter", mark)(MeasurementUnit.time.microseconds)
-  val INVOKER_ACTIVATION_IN_ACTIVATION_WAITER = LogMarkerToken(invoker, "inactivationwater", mark)(MeasurementUnit.time.microseconds)
 }

@@ -37,7 +37,7 @@
                         },
                         "reactive": {
                             "minCount": 1,
-                            "maxCount": 10,
+                            "maxCount": 4,
                             "ttl": "2 minutes",
                             "threshold": 1,
                             "increment": 1

@@ -147,14 +147,14 @@ class InvokerReactive(
     }
   })
 
+  private val msgProducer: MessageProducer = msgProvider.getProducer(config)
+
   // This waiter holds onto new activation messages which don't contain all of the necessary content (parameters/arguments)
   // until those empty argument arrive.
   // empty arguments arrive from the depInputConsumer
   private val activationWaiter: ActorRef = actorSystem.actorOf(Props {
-    new ActivationWaiter(activationProcessor)
+    new ActivationWaiter(activationProcessor, msgProducer)
   })
-
-  private val msgProducer: MessageProducer = msgProvider.getProducer(config)
   private val dependencyScheduler: ActorRef = actorSystem.actorOf(Props {
     // instance ID doesn't matter as current impl only supports one topscheduler. The topic is always the same.
     new DepInvoker(instance, new TopSchedInstanceId("0"), msgProducer)

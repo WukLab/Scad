@@ -252,7 +252,7 @@ case class WhiskActionPut(exec: Option[Exec] = None,
                           name: Option[String] = Some("default")) {
 
   protected[core] def replace(exec: Exec) = {
-    WhiskActionPut(Some(exec), parameters, limits, version, publish, annotations, relationships = relationships)
+    WhiskActionPut(Some(exec), parameters, limits, version, publish, annotations, relationships = relationships, runtimeType = runtimeType)
   }
 
   /**
@@ -264,7 +264,7 @@ case class WhiskActionPut(exec: Option[Exec] = None,
         val newExec = SequenceExec(components map { c =>
           FullyQualifiedEntityName(c.path.resolveNamespace(userNamespace), c.name)
         })
-        WhiskActionPut(Some(newExec), parameters, limits, version, publish, annotations, relationships = relationships)
+        WhiskActionPut(Some(newExec), parameters, limits, version, publish, annotations, relationships = relationships, runtimeType = runtimeType)
       case _ => this
     } getOrElse this
   }

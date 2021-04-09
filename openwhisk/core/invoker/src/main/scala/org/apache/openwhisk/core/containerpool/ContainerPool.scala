@@ -350,7 +350,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     case c: LibdTransportConfig =>
       activationMap(c.activationId) ! c
 
-    // Handles braod cast for having new address
+    // Handles broadcast for having new address
     case TransportReady(activationId, transportAddress) =>
       val config = transportAddress.toConfigString
       activationMap(activationId) ! LibdTransportConfig(activationId, config)

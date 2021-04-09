@@ -251,17 +251,11 @@ class ResultWaiter(producer: MessageProducer)(implicit val logging: Logging) ext
               logging.error(this, s"Got two WhiskActivation messages for same activation ID: ${act.activationId}")
             case Right(sched: SchedulingDecision) =>
               // send to topic
-              producer.send(sched.invoker.getDepInputTopic, DepResultMessage(act.activationId, sched.nextActivationId, act))
-              val duration = java.time.Duration.between(enter, Instant.now).toMillis
-              sched.transid.mark(this, LoggingMarkers.INVOKER_ACTIVATION_LEAVE_RESULT_WAITER)
-              logging.debug(this, s"[marker:invoker_resultwaiter_leave:${duration}]")
-              activations.remove(act.activationId)
-              timers.cancel(act.activationId)
+              sendResponse(act, sched, enter)
           }
         case None =>
           // store in map
-          activations.put(act.activationId, (Instant.now, Left(act)))
-          timers.startSingleTimer(act.activationId, ExpirationTick(act.activationId), Duration(5, MINUTES))
+          addEntry(act.activationId, Left(act))
       }
     case sched: SchedulingDecision =>
       activations.get(sched.originalActivationId) match {
@@ -269,21 +263,34 @@ class ResultWaiter(producer: MessageProducer)(implicit val logging: Logging) ext
           value match {
             case Left(act: WhiskActivation) =>
               // send to topic
-              producer.send(sched.invoker.getDepInputTopic, DepResultMessage(act.activationId, sched.nextActivationId, act))
-              val duration = java.time.Duration.between(enter, Instant.now).toMillis
-              logging.debug(this, s"[marker:invoker_resultwaiter_leave:${duration}]")()
-              sched.transid.mark(this, LoggingMarkers.INVOKER_ACTIVATION_LEAVE_RESULT_WAITER)
-              activations.remove(sched.originalActivationId)
-              timers.cancel(sched.originalActivationId)
+              sendResponse(act, sched, enter)
             case Right(sched: SchedulingDecision) =>
               logging.error(this, s"Got two SchedulingDecision messages for same activation ID: ${sched.originalActivationId}")
           }
         case None =>
           // store in map
-          timers.startSingleTimer(sched.originalActivationId, ExpirationTick(sched.originalActivationId), Duration(5, MINUTES))
-          activations.put(sched.originalActivationId, (Instant.now(), Right(sched)))
+          addEntry(sched.originalActivationId, Right(sched))
       }
     case exp: ExpirationTick => activations.remove(exp.id)
+  }
+
+  def addEntry(id: ActivationId, value: Either[WhiskActivation, SchedulingDecision]): Unit = {
+    timers.startSingleTimer(id, ExpirationTick(id), Duration(5, MINUTES))
+    activations.put(id, (Instant.now(), value))
+  }
+
+  def sendResponse(act: WhiskActivation, sched: SchedulingDecision, enter: Instant): Unit = {
+    implicit val transid: TransactionId = sched.transid;
+    producer.send(sched.invoker.getDepInputTopic, DepResultMessage(act.activationId, sched.nextActivationId, act))
+    val duration = java.time.Duration.between(enter, Instant.now).toMillis
+    sched.transid.mark(this, LoggingMarkers.INVOKER_ACTIVATION_LEAVE_RESULT_WAITER)
+    if (act.response.isSuccess) {
+      logging.debug(this, s"[marker:invoker_resultwaiter_leave:${duration}]")
+    } else {
+      logging.warn(this, s"invoker activation failed for ${act.activationId}, removing from waiter")
+    }
+    activations.remove(act.activationId)
+    timers.cancel(act.activationId)
   }
 }
 
@@ -291,7 +298,7 @@ class ActivationWait()(implicit val logging: Logging) {
   var activationMsg: Option[ActivationMessage] = None
   var results: mutable.ListBuffer[DepResultMessage] = new mutable.ListBuffer[DepResultMessage]()
 
-  def hasAllDeps(): Boolean = activationMsg match {
+  def hasAllDeps: Boolean = activationMsg match {
     case Some(msg) =>
       msg.waitForContent match {
         case Some(value) =>
@@ -300,6 +307,7 @@ class ActivationWait()(implicit val logging: Logging) {
       }
     case _ => false
   }
+
   def addActivationMsg(msg: ActivationMessage): Unit = {
     activationMsg match {
       case Some(act) =>
@@ -308,6 +316,20 @@ class ActivationWait()(implicit val logging: Logging) {
         activationMsg = Some(msg)
     }
   }
+
+  def getErrors: Option[String]  = {
+    val res = results.filter(!_.whiskActivation.response.isSuccess)
+    if (res.isEmpty) {
+      None
+    } else {
+      Some(
+        res.map(_.whiskActivation.response.statusCode)
+          .map(_.toString)
+          .reduce((x1, x2) => s"$x1|$x2")
+      )
+    }
+  }
+
   def addDepResult(depResultMessage: DepResultMessage): Unit = {
     results += depResultMessage
   }
@@ -321,44 +343,64 @@ class ActivationWait()(implicit val logging: Logging) {
   }
 }
 
-class ActivationWaiter(runActor: ActorRef)(implicit logging: Logging) extends Actor with Timers {
+class ActivationWaiter(runActor: ActorRef, msgProducer: MessageProducer)(implicit logging: Logging) extends Actor with Timers {
   val activations: mutable.Map[ActivationId, (Instant, ActivationWait)] = mutable.Map.empty
 
   override def receive: Receive = {
     case act: ActivationMessage =>
       activations.get(act.activationId) match {
         case Some((enter: Instant, value: ActivationWait)) =>
-          value.addActivationMsg(act)
-          if (value.hasAllDeps()) {
-            runActor ! act.copy(content = Some(value.joinDeps()), waitForContent = None)
-            act.transid.mark(this, LoggingMarkers.INVOKER_ACTIVATION_LEAVE_ACTIVATION_WAITER)
-            activations.remove(act.activationId)
-            timers.cancel(act.activationId)
-          }
+          addDepResult(value, activationMsg = Some(act))
         case None =>
           // store in map
-          val container = new ActivationWait();
-          container.addActivationMsg(act)
-          activations.put(act.activationId, (Instant.now(), container))
-          timers.startSingleTimer(act.activationId, ExpirationTick(act.activationId), Duration(5, MINUTES))
+          newContainer(act.activationId, activationMsg = Some(act))
       }
     case res: DepResultMessage =>
       activations.get(res.nextActivationId) match {
         case Some((enter: Instant, value: ActivationWait)) =>
-          value.addDepResult(res)
-          if (value.hasAllDeps()) {
-            val act = value.activationMsg.get
-            runActor ! act.copy(content = Some(value.joinDeps()), waitForContent = None)
-            act.transid.mark(this, LoggingMarkers.INVOKER_ACTIVATION_LEAVE_ACTIVATION_WAITER)
-            activations.remove(act.activationId)
-            timers.cancel(act.activationId)
-          }
+          addDepResult(value, depResultMessage = Some(res))
         case None =>
           // store in map
-          val container = new ActivationWait();
-          container.addDepResult(res)
-          activations.put(res.nextActivationId, (Instant.now, container))
-          timers.startSingleTimer(res.nextActivationId, ExpirationTick(res.nextActivationId), Duration(5, MINUTES))
+          newContainer(res.nextActivationId, Some(res))
       }
+  }
+
+  def addDepResult(currentWait: ActivationWait, depResultMessage: Option[DepResultMessage] = None, activationMsg: Option[ActivationMessage] = None): Unit = {
+    depResultMessage.foreach(dep => {
+      currentWait.addDepResult(dep)
+    })
+    activationMsg.foreach(msg => {
+      currentWait.addActivationMsg(msg)
+    })
+
+    if (currentWait.hasAllDeps){
+      val act = currentWait.activationMsg.get
+      val errMsg: Option[String] = currentWait.getErrors
+      logging.debug(this, s"activationWait err messages is ${errMsg}")
+      if (errMsg.isEmpty) {
+        runActor ! act.copy(content = Some(currentWait.joinDeps()), waitForContent = None)
+        act.transid.mark(this, LoggingMarkers.INVOKER_ACTIVATION_LEAVE_ACTIVATION_WAITER)
+      } else {
+        logging.debug(this, "activation failed because not all dependencies were success")
+        act.appActivationId.map(appId => {
+          msgProducer.send("topsched", FinishActivation(appId, ActivationResponse.applicationError(errMsg.get)))
+        })
+      }
+      activations.remove(act.activationId)
+      timers.cancel(act.activationId)
+    }
+  }
+
+  def newContainer(activationId: ActivationId, res: Option[DepResultMessage] = None, activationMsg: Option[ActivationMessage] = None): Unit = {
+    logging.debug(this, s"Adding new activationWait container; ${activationId}")
+    val container = new ActivationWait();
+    res foreach { dep =>
+      container.addDepResult(dep)
+    }
+    activationMsg foreach { msg =>
+      container.addActivationMsg(msg)
+    }
+    activations.put(activationId, (Instant.now, container))
+    timers.startSingleTimer(activationId, ExpirationTick(activationId), Duration(5, MINUTES))
   }
 }

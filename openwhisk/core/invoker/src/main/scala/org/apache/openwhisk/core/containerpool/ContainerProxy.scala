@@ -521,7 +521,7 @@ class ContainerProxy(factory: (TransactionId,
 
   when(Ready, stateTimeout = pauseGrace) {
     case Event(job: Run, data: WarmedData) =>
-      implicit val transid = job.msg.transid
+      implicit val transid: TransactionId = job.msg.transid
       activeCount += 1
       val newData = data.withResumeRun(job)
       initializeAndRun(data.container, job, true)
@@ -610,7 +610,7 @@ class ContainerProxy(factory: (TransactionId,
       val res = data.getContainer
           .foreach(_.addAction("", action.actionName, action.activationId, Some(action.transports)))
 
-      stay
+      stay()
 
     case Event(action : LibdTransportConfig, data) =>
       val tidOpt = runBuffer.find(_.msg.activationId == action.activationId).map(_.msg.transid)
@@ -619,7 +619,7 @@ class ContainerProxy(factory: (TransactionId,
       val res = data.getContainer
           .foreach(_.addTransport(action.activationId, action.transport))
 
-      stay
+      stay()
   }
 
   // Unstash all messages stashed while in intermediate state
