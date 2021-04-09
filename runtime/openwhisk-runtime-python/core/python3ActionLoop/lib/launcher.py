@@ -132,8 +132,6 @@ while True:
   payload = {}
   action = None
   transports = []
-  print("before keys", file=stderr)
-  stderr.flush()
   for key in args:
     print("on key", key, args[key], file=stderr)
     stderr.flush()
@@ -145,13 +143,9 @@ while True:
       transports = args['transports']
     else:
       env["__OW_%s" % key.upper()]= args[key]
-  print("after keys", file=stderr)
-  stderr.flush()
   if action != None and transports != None:
     for trans in transports:
       action.add_transport(trans)
-  print("after actions", file=stderr)
-  stderr.flush()
 
   res = {}
   # Here the funciton is in the same thread
