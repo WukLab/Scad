@@ -55,7 +55,8 @@ RUN pip install \
     scrapy==1.5.1 \
     simplejson==3.16.0 \
     virtualenv==16.0.0 \
-    twisted==18.7.0
+    twisted==18.7.0 \
+    numpy==1.20.2
 
 RUN mkdir -p /action
 WORKDIR /

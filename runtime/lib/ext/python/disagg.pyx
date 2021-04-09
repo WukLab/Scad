@@ -1,16 +1,21 @@
 cimport clibd
+from libc cimport errno
 from functools import partial
 
 # Pack APIs to pure python objects
 cdef class LibdAction:
     cdef clibd.libd_action * _c_action
     cdef public object transports
+    cdef public object request
+    cdef public object cv
 
-    def __cinit__(self, str aid, str server_url):
+    def __cinit__(self, cv, str aid, str server_url, request = None):
         self._c_action = clibd.libd_action_init(
             aid.encode('ascii'), server_url.encode('ascii'))
         if self._c_action is NULL:
             raise MemoryError()
+        self.cv = cv
+        self.request = request
 
     # Python init part, I assume they have same objects
     def __init__(self, *args):
@@ -28,8 +33,11 @@ cdef class LibdAction:
         return clibd.libd_action_add_transport(self._c_action, c_durl)
 
     def config_transport(self, name, durl):
-        return clibd.libd_action_config_transport(
+        ret = clibd.libd_action_config_transport(
             self._c_action, name.encode('ascii'), durl.encode('ascii'))
+        with self.cv:
+            self.cv.notify_all()
+        return ret
 
     def get_transport(self, name, ttype):
         if name not in self.transports:
@@ -41,20 +49,21 @@ cdef class LibdAction:
             self.transports[name] = trans
         # raise exception if name is not found
         return self.transports[name]
-
     # Python APIs
     # Reset methods for reuse of this instance
 
 cdef class LibdTransport:
     cdef clibd.libd_transport * _c_trans
     cdef object action
+    cdef object cv
     def __cinit__(self, LibdAction action, str name, *argv):
         self.action = action
         self._c_trans = clibd.libd_action_get_transport(
                 action._c_action, name.encode('ascii'))
-        # TODO: check this error
+        # TODO: spin here if we cannot get a transport
         if self._c_trans is NULL:
             raise MemoryError()
+    # we do not need to have __dealloc__ for all transports, clib will handle this
 
 cdef class LibdTransportRDMA(LibdTransport):
     # use of buf is required
@@ -82,12 +91,25 @@ cdef class LibdTransportRDMA(LibdTransport):
     def read(self, size, addr, int offset = 0):
         if (self.initd == False):
             raise MemoryError()
-        return clibd.libd_trdma_read(self._c_trans, size, addr,
+        # block here
+        while True:
+            ret = clibd.libd_trdma_read(self._c_trans, size, addr,
                     self._c_buf + offset)
+            if ret != -errno.EAGAIN:
+                return ret
+            # TODO: can be interrupted before it get the lock.
+            with self.action.cv:
+                self.action.cv.wait()
 
-    def wirte(self, size, addr, int offset = 0):
+    def write(self, size, addr, int offset = 0):
         if (self.initd == False):
             raise MemoryError()
-        return clibd.libd_trdma_write(self._c_trans, size, addr,
+        # block here
+        while True:
+            ret = clibd.libd_trdma_write(self._c_trans, size, addr,
                     self._c_buf + offset)
+            if ret != -errno.EAGAIN:
+                return ret
+            with self.action.cv:
+                self.action.cv.wait()
 

@@ -52,9 +52,12 @@ cleanup:
 static int _init(struct libd_transport *trans) {
     init_config_for(trans, struct tcp_rdma_state);
 
+    debug_map_print(trans->tstate->config);
+
     dprintf("start setup for %s", trans->tstate->name);
 
     init_config_require(url, id);
+    init_config_require(size, config_to_ull);
     init_config_set(sock, 0);
     init_config_set(sock_initd, 0);
 

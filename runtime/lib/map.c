@@ -58,3 +58,12 @@ int _map_free(map *m) {
     free(m->values);
     return 0;
 }
+
+#ifdef DEBUG
+#include <stdio.h>
+void _debug_map_print(map *m) {
+    for (int i = 0; i < m->size; i++) {
+        printf("%s -> %s\n", (char *)m->keys[i], (char *)m->values[i]);
+    }
+}
+#endif
