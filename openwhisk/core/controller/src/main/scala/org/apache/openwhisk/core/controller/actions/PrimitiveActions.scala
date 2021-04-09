@@ -158,11 +158,11 @@ protected[actions] trait PrimitiveActions {
     cause: Option[ActivationId],
     functionId: Option[ActivationId] = None,
     appId: Option[ActivationId] = None,
-    corunning: Option[Seq[RunningActivation]] = None)(implicit transid: TransactionId): Future[Either[ActivationId, WhiskActivation]] = {
+    corunning: Option[Seq[RunningActivation]] = None,
+    activationId: Option[ActivationId] = None)(implicit transid: TransactionId): Future[Either[ActivationId, WhiskActivation]] = {
 
     // merge package parameters with action (action parameters supersede), then merge in payload
     val args = action.parameters merge payload
-    val activationId = activationIdFactory.make()
 
     val startActivation = transid.started(
       this,
@@ -178,7 +178,7 @@ protected[actions] trait PrimitiveActions {
       FullyQualifiedEntityName(action.namespace, action.name, Some(action.version), action.binding),
       action.rev,
       user,
-      activationId, // activation id created here
+      activationId.getOrElse(activationIdFactory.make()), // activation id created here if not supplied
       activeAckTopicIndex,
       waitForResponse.isDefined,
       args,
@@ -723,12 +723,13 @@ protected[actions] trait PrimitiveActions {
         // Start the first objects of the first functions within the application.
         val objResults = startingFuncs map { func =>
           DagExecutor.executeFunction(funcmap(func), entityStore,
-            (obj, funcid, corunning) => {
+            (obj, funcid, corunning, objId) => {
               logging.debug(this, s"invokeSimpleAction (finished db lookup on initial invocation) latency: ${Interval.currentLatency()}")
               invokeSimpleAction(user, obj, payload, None, cause,
                 functionId = Some(funcid),
                 appId = Some(appActivationId),
-                corunning = Some(corunning.toSeq.map(x => RunningActivation(x))))
+                corunning = Some(corunning.toSeq.map(x => RunningActivation(x))),
+                activationId = Some(objId))
             })
         }
       appActivator ! IncompleteActivation(appActivationId, Instant.now.toEpochMilli, application.namespace, application.name, user)

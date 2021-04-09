@@ -137,7 +137,6 @@ class DefaultTopBalancer(config: WhiskConfig,
 
   implicit val entityStore: EntityStore = WhiskEntityStore.datastore()
   implicit val authStore: AuthStore = WhiskAuthStore.datastore()
-  val dependencyScheduler: ActorRef = actorSystem.actorOf(Props(new DependencyForwarding(config, this)))
 
   protected[DefaultTopBalancer] def processSchedulingMessage(bytes: Array[Byte]): Future[Unit] = Future {
     val raw = new String(bytes, StandardCharsets.UTF_8)

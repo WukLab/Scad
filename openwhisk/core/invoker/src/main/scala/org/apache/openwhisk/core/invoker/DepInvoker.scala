@@ -140,13 +140,13 @@ class DepInvoker(invokerInstance: InvokerInstanceId, topSchedInstanceId: TopSche
 //        logging.debug(this, s"processFunctionInvocationMessage(${invocationMessage.appActivationId}): invoking next children")
         chillen map { nextFunc =>
           WhiskFunction.get(entityStore, nextFunc.getDocId()) flatMap { func =>
-            DagExecutor.executeFunction(func, entityStore, (obj, funcId, corunning) => {
+            DagExecutor.executeFunction(func, entityStore, (obj, funcId, corunning, objId) => {
               val message = ActivationMessage(
                 transid,
                 FullyQualifiedEntityName(obj.namespace, obj.name, Some(obj.version), obj.binding),
                 obj.rev,
                 user,
-                ActivationId.generate(),
+                objId,
                 topSchedInstanceId,
                 blocking = false,
                 None,

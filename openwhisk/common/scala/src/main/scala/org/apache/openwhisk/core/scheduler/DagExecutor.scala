@@ -25,7 +25,7 @@ object DagExecutor {
    * @return
    */
   def executeFunction[T](func: WhiskFunction, entityStore: EntityStore,
-                         invocation: (ExecutableWhiskActionMetaData, ActivationId, Set[ActivationId]) => Future[T])(
+                         invocation: (ExecutableWhiskActionMetaData, ActivationId, Set[ActivationId], ActivationId) => Future[T])(
                           implicit transid: TransactionId, ex: ExecutionContext, logging: Logging): Future[Unit] = {
     // Start the first objects of the first functions within the application.
     val funcId = ActivationId.generate()
@@ -48,7 +48,7 @@ object DagExecutor {
       val x = startingObjs zip activationIds map { obj =>
         (objMap(obj._1).toExecutableWhiskAction, obj._2)
       } map { execObj =>
-        invocation.apply(execObj._1.get, funcId, activationIds - execObj._2)
+        invocation.apply(execObj._1.get, funcId, activationIds - execObj._2, execObj._2)
       }
     } recoverWith {
       case t: Throwable => {
