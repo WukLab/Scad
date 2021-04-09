@@ -14,10 +14,10 @@ typedef struct {
 int _map_init(map *m, int ksize, const char * kt);
 
 #define map_insert(m,k,v) (_map_insert(&(m),(k),(v)))
-int _map_insert(map *m, void *key, void *value);
+int _map_insert(map *m, const void *key, const void *value);
 
 #define map_get(vt,m,k) ((vt *)_map_get(&(m),k))
-void * _map_get(map *m, void *key);
+void * _map_get(map *m, const void *key);
 
 /* Do not free the space for keys and values */
 #define map_free(m) _map_free(&(m))

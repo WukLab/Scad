@@ -16,6 +16,7 @@
 
 /* Plugin */
 // user functions
+extern const char * libd_plugins_name[];
 extern const struct libd_p * libd_plugins[];
 extern const int num_plugins;
 
@@ -24,13 +25,13 @@ struct libd_plugin {
     struct libd_pstate *pstate;
     struct libd_action *action;
 
-    struct libd_p * _impl;
+    const struct libd_p * _impl;
 };
 
 struct libd_p {
-    const char * const name;
     int (*init)      (struct libd_plugin *);
     int (*terminate) (struct libd_plugin *);
+    int (*invoke)    (struct libd_plugin *, int, void *);
 };
 
 // when adding transport, need to put this one at right place!
@@ -48,6 +49,9 @@ struct libd_plugin_callback {
     int state;
 };
 
+// Call plugin from outside
+int libd_plugin_invoke(struct libd_action * action,
+        const char * name, int cmd, void * args);
 // register a callback for transport
 int libd_plugin_reg_callback(struct libd_plugin *plugin, struct libd_transport *trans,
                              struct libd_plugin_callback *callback);
@@ -115,11 +119,13 @@ int libd_transport_terminate (struct libd_transport * trans); // any -> terminat
 struct libd_action {
     char aid[128];
     char server_url[256];
+    char post_url[256];
+
     map_of(string, struct libd_transport *) transports;
     map_of(string, struct libd_plugin *) plugins;
 };
 
-struct libd_action * libd_action_init(char * aid, char * server_url);
+struct libd_action * libd_action_init(char * aid, int argc, char ** argv);
 int libd_action_free(struct libd_action * action);
 
 int libd_action_add_transport(struct libd_action * action, char * durl);

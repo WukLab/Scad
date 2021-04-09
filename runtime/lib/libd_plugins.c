@@ -9,7 +9,7 @@ const char * libd_plugins_name[] = {
 };
 
 const struct libd_p * libd_plugins[] = {
-    monitor_plugin,
+    ((struct libd_p *)&monitor_plugin),
 };
 
-const int num_plugins = sizeof(libd_transports_name) / sizeof(char *);
+const int num_plugins = sizeof(libd_plugins_name) / sizeof(char *);

@@ -12,7 +12,7 @@ PLUGINS_OBJS := $(patsubst $(PLUGINS)/%.c,$(PLUGINS)/%.o,$(PLUGINS_SRCS))
 
 DYN_OBJS   := $(TRANSPORTS_OBJS) $(INTERFACES_OBJS) $(PLUGINS_OBJS)
 UTIL_OBJS  := map.o durl.o
-OBJECTS    := libd.o libd_transport.o libd_transports.o $(UTIL_OBJS) $(DYN_OBJS)
+OBJECTS    := libd.o libd_plugin.o libd_plugins.o libd_transport.o libd_transports.o $(UTIL_OBJS) $(DYN_OBJS)
 TARGETS    := libd.so
 
 LD       := gcc

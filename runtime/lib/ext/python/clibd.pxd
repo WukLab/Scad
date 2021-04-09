@@ -15,12 +15,16 @@ cdef extern from "libd.h":
     # int libd_transport_terminate (libd_transport* trans);
 
     # Actions interfaces
-    libd_action * libd_action_init(char* aid, char* server_url);
+    libd_action * libd_action_init(char* aid, int argc, char ** argv);
     int libd_action_free(libd_action* action);
 
     int libd_action_add_transport(libd_action* action, char* durl);
     int libd_action_config_transport(libd_action* action, char* name, char* durl);
     libd_transport* libd_action_get_transport(libd_action* action, char* name);
+
+    # plugin
+    int libd_plugin_invoke(libd_action * action,
+                    const char * name, int cmd, void * args);
 
 # Interfaces for different transport
 # RDMA Interface

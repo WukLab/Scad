@@ -155,7 +155,6 @@ while True:
   aid = None
   transports = []
   for key in args:
-    print("on key", key, args[key], file=stderr)
     stderr.flush()
     if key == "value":
       payload = args["value"]
@@ -178,10 +177,13 @@ while True:
   except Exception as ex:
     print(traceback.format_exc(), file=stderr)
     res = {"error": str(ex)}
-  # TODO: terminate actions after finish?
   resjson = json.dumps(res, ensure_ascii=False).encode('utf-8')
   out.write(resjson)
   out.write(b'\n')
   stdout.flush()
   stderr.flush()
   out.flush()
+  # terminate actions after finish?
+  if action != None:
+    _runtime.terminate_action(aid)
+

@@ -1,30 +1,53 @@
 cimport clibd
 from libc cimport errno
+from libc.stdlib cimport malloc, free
 from functools import partial
 
 # Pack APIs to pure python objects
 cdef class LibdAction:
     cdef clibd.libd_action * _c_action
     cdef public object transports
-    cdef public object request
     cdef public object cv
 
-    def __cinit__(self, cv, str aid, str server_url, request = None):
+    def __cinit__(self, cv, str aid, **kwargs):
+        # prepare args for init call
+        strargs = []
+        for k, v in kwargs.items():
+            strargs.append(('+' + k).encode('ascii'))
+            if isinstance(v, list):
+                for i in v:
+                    strargs.append(str(i).encode('ascii'))
+            else:
+                strargs.append(str(v).encode('ascii'))
+        cdef int argc = len(strargs)
+        cdef char ** argv = <char **>malloc(argc * sizeof(char *))
+        for i in range(argc):
+            argv[i] = strargs[i]
+
+        self.cv = cv
         self._c_action = clibd.libd_action_init(
-            aid.encode('ascii'), server_url.encode('ascii'))
+            aid.encode('ascii'), argc, argv)
         if self._c_action is NULL:
             raise MemoryError()
-        self.cv = cv
-        self.request = request
+
+        free(argv)
 
     # Python init part, I assume they have same objects
-    def __init__(self, *args):
+    def __init__(self, *args, **kwargs):
         self.transports = {}
 
-    # del will call free
+    # make sure action structure is freed.
     def __dealloc__(self):
         if self._c_action is not NULL:
             clibd.libd_action_free(self._c_action)
+
+    def terminate(self):
+        if self._c_action is not NULL:
+            clibd.libd_action_free(self._c_action)
+        self._c_action = NULL
+
+    def profile(self, int point):
+        clibd.libd_plugin_invoke(self._c_action, b"monitor", point, NULL)
 
     # Member Functions
     def add_transport(self, durl):

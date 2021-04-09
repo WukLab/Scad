@@ -6,18 +6,54 @@
 #include "map.h"
 #include "durl.h"
 
-struct libd_action * libd_action_init(char * aid, char * server_url) {
+static void _init_plugin (struct libd_action *action, const char * name) {
+    struct libd_plugin * plugin = calloc(1, sizeof(struct libd_plugin));
+    plugin->pstate = NULL;
+    plugin->action = action;
+
+    for (int j = 0; j < num_plugins; j++) {
+        if (strcmp(libd_plugins_name[j], name) == 0) {
+            dprintf("plugin init %s", name);
+            map_insert(action->plugins, name, plugin);
+            plugin->_impl = libd_plugins[j];
+            plugin->_impl->init(plugin);
+            return;
+        }
+    }
+
+    // If we reach this point, we cannot find valid impl
+    free(plugin);
+}
+
+struct libd_action * libd_action_init(char * aid, int argc, char ** args) {
     struct libd_action * action =
         (struct libd_action *)calloc(1, sizeof(struct libd_action));
-    map_init(action->transports, string);
 
     strcpy(action->aid, aid);
-    strcpy(action->server_url, server_url);
+    map_init(action->transports, string);
 
     // TODO: init of plugins
     map_init(action->plugins, string);
-    dprintf("Action %s initd\n", aid);
 
+    for (int i = 0; i < argc; i++) {
+        if (args[i][0] == '+') {
+            dprintf("setting option %s for action %s", args[i], aid);
+            // active plugins
+            if (strcmp("+plugins", args[i]) == 0) {
+                for (++i; i < argc && args[i][0] != '+'; i++)
+                    _init_plugin(action, args[i]);
+            }
+            // set post url
+            else if (strcmp("+post_url", args[i]) == 0) {
+                strcpy(action->post_url, args[++i]);
+            }
+            else if (strcmp("+server_url", args[i]) == 0) {
+                strcpy(action->server_url, args[++i]);
+            }
+        }
+    }
+
+    dprintf("Action %s initd with argc %d\n", aid, argc);
     return action;
 }
 
@@ -32,6 +68,11 @@ int libd_action_free(struct libd_action * action) {
     map_free(action->transports);
 
     // TODO: free of plugins
+    for (int i = 0; i < action->plugins.size; i++) {
+        struct libd_plugin * plugin = action->plugins.values[i];
+        plugin->_impl->terminate(plugin);
+        free(plugin);
+    }
     map_free(action->plugins);
 
     free(action);
