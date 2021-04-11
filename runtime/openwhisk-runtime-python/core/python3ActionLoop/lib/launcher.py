@@ -28,6 +28,9 @@ import sys, os, json, traceback, warnings
 from disagg import LibdAction
 import threading, struct, os
 
+def debug(*args):
+    print(*args, file=stderr)
+    stderr.flush()
 # class LibdRequest:
 #     def __init__(self, aid, serverUrl):
 #         self.aid = aid
@@ -41,8 +44,20 @@ import threading, struct, os
 class LibdRuntime:
     def __init__(self):
         self.actions = {}
+        self.stash_msgs = {}
         self.server_url = os.getenv('__OW_INVOKER_API_URL', 'localhost')
         self.cv = threading.Condition()
+    def stash(self,aid,func,*args):
+        print("stash request", aid, func, args, file=stderr)
+        stderr.flush()
+        self.stash_msgs.setdefault(aid, []).append((func, args))
+    def unstash(self, aid):
+        print("unstash request", aid, file=stderr)
+        stderr.flush()
+        if aid in self.stash_msgs:
+            for func,args in self.stash_msgs[aid]:
+                func(self, *args)
+            del self.stash_msgs[aid]
     def create_action(self, aid):
         action = LibdAction(self.cv, aid, self.server_url)
         self.actions[aid] = action
@@ -59,9 +74,14 @@ def _act_add        (runtime, params, body):
 def _trans_add      (runtime, params, body):
     runtime.get_action(params[0]).add_transport(**body)
 def _trans_config   (runtime, params, body):
-    action = runtime.get_action(params[0])
-    action.config_transport(params[1], body['durl'])
-    action.cv.notify_all()
+    debug('try to config', params, body)
+    if params[0] in runtime.actions:
+        debug('call config', params, body)
+        action = runtime.get_action(params[0])
+        action.config_transport(params[1], body['durl'])
+        debug('finish config', params, body)
+    else:
+        runtime.stash(params[0], _trans_config, params, body)
 
 cmd_funcs = {
     # create action
@@ -82,9 +102,10 @@ def handle_message(fifoName, runtime):
             msg = json.loads(content)
             body = json.loads(msg.get('body', "{}"))
             params = msg.get('params', [])
+            debug('get cmd', params, body)
             cmd_funcs[msg['cmd']](runtime, params, body)
     finally:
-        stderr.write('Error happens in FIFO thread')
+        print('Error happens in FIFO thread', file=stderr)
         stderr.flush()
 
 # start libd monitor thread, this will keep up for one initd function
@@ -131,6 +152,7 @@ while True:
   # TODO: log error at this phase
   payload = {}
   action = None
+  aid = None
   transports = []
   for key in args:
     print("on key", key, args[key], file=stderr)
@@ -138,6 +160,7 @@ while True:
     if key == "value":
       payload = args["value"]
     elif key == 'activation_id':
+      aid = args['activation_id']
       action = _runtime.create_action(args['activation_id'])
     elif key == 'transports':
       transports = args['transports']
@@ -146,6 +169,7 @@ while True:
   if action != None and transports != None:
     for trans in transports:
       action.add_transport(trans)
+    _runtime.unstash(aid)
 
   res = {}
   # Here the funciton is in the same thread

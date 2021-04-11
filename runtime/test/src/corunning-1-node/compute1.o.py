@@ -13,7 +13,7 @@ def main(args, action):
     int_value = 12345
 
     # get connection to memory object by name
-    trans = action.get_transport('mem1', 'rdma')
+    trans = action.get_transport('memory', 'rdma')
 
     # register buffer for rdma
     trans.reg(1024)

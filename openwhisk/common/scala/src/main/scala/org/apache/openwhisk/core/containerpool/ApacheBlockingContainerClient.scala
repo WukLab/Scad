@@ -24,12 +24,12 @@ import java.time.Instant
 import org.apache.commons.io.IOUtils
 import org.apache.http.{HttpHeaders, NoHttpResponseException}
 import org.apache.http.client.config.RequestConfig
-import org.apache.http.client.methods.{HttpPost, HttpRequestBase}
+import org.apache.http.client.methods._
 import org.apache.http.client.utils.{HttpClientUtils, URIBuilder}
 import org.apache.http.conn.HttpHostConnectException
 import org.apache.http.entity.StringEntity
 import org.apache.http.impl.NoConnectionReuseStrategy
-import org.apache.http.impl.client.HttpClientBuilder
+import org.apache.http.impl.client.{CloseableHttpClient, HttpClientBuilder}
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager
 import org.apache.http.util.EntityUtils
 import spray.json._
@@ -107,16 +107,37 @@ protected class ApacheBlockingContainerClient(hostname: String,
     }
   }
 
+  def call(method: String, endpoint: String, body: JsValue, retry: Boolean = false)(
+    implicit tid: TransactionId): Future[Either[ContainerHttpError, ContainerResponse]]  = {
+
+    val entity = new StringEntity(body.compactPrint, StandardCharsets.UTF_8)
+    entity.setContentType("application/json")
+
+    val request = RequestBuilder.create(method)
+    request.setUri(baseUri.setPath(endpoint).build)
+    request.addHeader(HttpHeaders.ACCEPT, "application/json")
+    request.setEntity(entity)
+
+    Future {
+      blocking {
+        execute(request.build().asInstanceOf[HttpRequestBase], timeout, maxConcurrent, retry,
+          conn = newConnection)
+      }
+    }
+
+  }
+
   // Annotation will make the compiler complain if no tail recursion is possible
   @tailrec private def execute(
     request: HttpRequestBase,
     timeout: FiniteDuration,
     maxConcurrent: Int,
     retry: Boolean,
-    reschedule: Boolean = false)(implicit tid: TransactionId): Either[ContainerHttpError, ContainerResponse] = {
+    reschedule: Boolean = false,
+    conn: CloseableHttpClient = connection)(implicit tid: TransactionId): Either[ContainerHttpError, ContainerResponse] = {
     val start = Instant.now
 
-    Try(connection.execute(request)).map { response =>
+    Try(conn.execute(request)).map { response =>
       val containerResponse = Option(response.getEntity)
         .map { entity =>
           val statusCode = response.getStatusLine.getStatusCode
@@ -193,7 +214,8 @@ protected class ApacheBlockingContainerClient(hostname: String,
     .setSocketTimeout(timeout.toMillis.toInt)
     .build
 
-  private val connection = HttpClientBuilder.create
+  // TODO DEPCTG: change this to non-blocking
+  private def newConnection = HttpClientBuilder.create
     .setDefaultRequestConfig(httpconfig)
     // Connections are not reused by most of the available runtimes. To circumvent any issues we might have regarding
     // connections randomly breaking due to our pause/resume cycle, we don't reuse connections at all.
@@ -216,6 +238,7 @@ protected class ApacheBlockingContainerClient(hostname: String,
     .useSystemProperties()
     .disableAutomaticRetries()
     .build
+  private val connection = newConnection
 }
 
 case class ApacheClientConfig(retryNoHttpResponseException: Boolean)

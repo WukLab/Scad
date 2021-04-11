@@ -93,9 +93,9 @@
                 "kind": "python:3",
                 "default": true,
                 "image": {
-                    "prefix": "openwhisk",
-                    "name": "python3action",
-                    "tag": "nightly"
+                    "prefix": "whisk",
+                    "name": "actionloop-python-v3.7",
+                    "tag": "latest"
                 },
                 "deprecated": false,
                 "attached": {

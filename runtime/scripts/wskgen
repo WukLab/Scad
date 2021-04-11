@@ -46,10 +46,10 @@ def filemeta(f):
 
 def gen_obj(meta, source):
     # process memory objects
-    memory_source = "function main(params,action) {let t = action.get_transport('server','rdma_server');let ret = t.serve();return {payload: 'serve'};}"
+    memory_source = "function main(params,action) {let t = action.get_transport('memory','rdma_server');let ret = t.serve();return {payload: 'serve'};}"
     annotations = {}
     if meta['type'] == 'memory':
-        kind = 'node:14'
+        kind = 'nodejs:14'
         source = memory_source
         annotations['exec'] = 'javascript'
     else:

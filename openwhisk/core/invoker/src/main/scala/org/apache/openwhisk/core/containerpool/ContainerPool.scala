@@ -104,7 +104,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   // We need to have a actionId, which maps an actionId to activationId
   // This can happens in both side of the work
   var activationMap : Map[ActivationId, ActorRef] = Map.empty
-  val addressBook = new CorunningAddressBook(self)
+  val addressBook = new CorunningAddressBook(this)
 
 
   def logContainerStart(r: Run, containerState: String, activeActivations: Int, container: Option[Container]): Unit = {
@@ -213,43 +213,49 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
             // Pre run actions, Add map to the buffer
             activationMap = activationMap + (r.msg.activationId -> actor)
+
             // We also log this into the run message
+            // TODO: generate default.
+            val defaultAddresses = LibdAPIs.Transport.getDefaultTransport(r.action)
             val fetchedAddresses = for {
               runtime <- r.action.runtimeType
+              if LibdAPIs.Transport.needWait(runtime)
               seq <- r.msg.siblings
-              transports <- seq
-                .map { ra =>
-                  val aid = r.msg.activationId
-                  val name = LibdAPIs.Transport.getName(ra)
-                  val impl = LibdAPIs.Transport.getImpl(ra, runtime)
-                  logging.warn(this, s"Finding dependency for $aid:$name:$impl")
-                  // Need wait here?
-                  if (LibdAPIs.Transport.needWait(runtime))
-                    addressBook.postWait(r.msg.activationId, TransportRequest(name, impl, aid))
-                               .map (_.toConfigString)
-                  else None
-                }.filter(_.nonEmpty)
-                .toList
-                .traverse(identity)
-            } yield transports
+            } yield seq.map { ra =>
+              val aid = r.msg.activationId
+              val name = LibdAPIs.Transport.getName(ra)
+              val impl = LibdAPIs.Transport.getImpl(ra, runtime)
+              addressBook
+                .postWait(ra.objActivation, TransportRequest.config(name, impl, aid))
+                .toFullString
+            }
+            val transports =
+              (defaultAddresses.getOrElse(Seq.empty) ++ fetchedAddresses.getOrElse(Seq.empty)) match {
+                case seq if seq.isEmpty => None
+                case s                  => Some(s)
+              }
 
-            logging.debug(this, s"Get activation for ${r.msg.action} with id ${r.msg.activationId}: addresses ${fetchedAddresses}: run msg: $r")
-            actor ! r.copy(corunningConfig = fetchedAddresses)
+            logging.debug(this, s"Get activation for ${r.msg.action} with id ${r.msg.activationId}: addresses ${transports}: run msg: $r")
+            actor ! r.copy(corunningConfig = transports)
 
             // Post run actions
-            // TODO: Wait until we have a real ip?
             for {
-              containerIp <- container.map(_.addr.host)
               runtime <- r.action.runtimeType
+              if LibdAPIs.Transport.needSignal(runtime)
               seq <- r.msg.siblings
             } yield seq.map { ra =>
               val name = LibdAPIs.Transport.getName(ra)
               val port = LibdAPIs.Transport.getPort(ra)
-              logging.debug(this, s"emit dependency for ${r.msg.activationId}:$name:$port")
-              // Need wait here?
-              if (LibdAPIs.Transport.needSignal(runtime))
-                addressBook.signalReady(r.msg.activationId, name,
-                  TransportAddress.TCPTransport(containerIp, port))
+
+              container.map(_.addr.host) match {
+                case None =>
+                  addressBook.prepareSignal(actor,
+                      r.msg.activationId, name, TransportAddress(port.toString))
+                  logging.debug(this, s"signal prepared, ${actor}")
+                case Some(containerIp) =>
+                  addressBook.signalReady(r.msg.activationId, name,
+                  TransportAddress.TCPTransport(containerIp, port.toString))
+              }
             }
 
             logContainerStart(r, containerState, newData.activeActivationCount, container)
@@ -315,6 +321,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     case NeedWork(data: PreWarmedData) =>
       prewarmStartingPool = prewarmStartingPool - sender()
       prewarmedPool = prewarmedPool + (sender() -> data)
+      // try to signal for cold container
 
     // Container got removed
     case ContainerRemoved(replacePrewarm) =>
@@ -344,16 +351,9 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
         adjustPrewarmedContainer(false, false) //in case a prewarm is removed due to health failure or crash
       }
 
-    // Forward messages back to containers
-    case c: LibdActionConfig =>
-      activationMap(c.activationId) ! c
-    case c: LibdTransportConfig =>
-      activationMap(c.activationId) ! c
-
-    // Handles broadcast for having new address
-    case TransportReady(activationId, transportAddress) =>
-      val config = transportAddress.toConfigString
-      activationMap(activationId) ! LibdTransportConfig(activationId, config)
+      // Handles cold start
+    case ColdStarted(data) =>
+      addressBook.signalReady(sender(), data.container.addr.host)
 
     // Handles end of objects
     case ObjectEnd(activationId) =>
@@ -505,7 +505,6 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
    * Calculate if there is enough free resources within a given pool.
    *
    * @param pool The pool, that has to be checked, if there is enough free memory.
-   * @param memory The amount of memory to check.
    * @return true, if there is enough space for the given amount of memory.
    */
   def hasPoolSpaceFor[A](pool: Map[A, ContainerData], resources: RuntimeResources): Boolean = {
