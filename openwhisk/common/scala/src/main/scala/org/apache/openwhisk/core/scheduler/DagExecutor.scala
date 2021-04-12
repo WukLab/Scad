@@ -1,7 +1,7 @@
 package org.apache.openwhisk.core.scheduler
 
 import org.apache.openwhisk.common.{Logging, TransactionId}
-import org.apache.openwhisk.core.connector.Message
+import org.apache.openwhisk.core.connector.{Message, RunningActivation}
 import org.apache.openwhisk.core.entity.{ActivationId, ActivationLogs, ActivationResponse, EntityName, EntityPath, ExecutableWhiskActionMetaData, Identity, Parameters, SemVer, WhiskActionMetaData, WhiskEntityReference, WhiskFunction}
 import org.apache.openwhisk.core.entity.types.EntityStore
 import spray.json.{DefaultJsonProtocol, RootJsonFormat}
@@ -25,7 +25,7 @@ object DagExecutor {
    * @return
    */
   def executeFunction[T](func: WhiskFunction, entityStore: EntityStore,
-                         invocation: (ExecutableWhiskActionMetaData, ActivationId, Set[ActivationId], ActivationId) => Future[T])(
+                         invocation: (ExecutableWhiskActionMetaData, ActivationId, Seq[RunningActivation], RunningActivation) => Future[T])(
                           implicit transid: TransactionId, ex: ExecutionContext, logging: Logging): Future[Unit] = {
     // Start the first objects of the first functions within the application.
     val funcId = ActivationId.generate()
@@ -44,11 +44,11 @@ object DagExecutor {
       }
       // this one should be immutable, and we will make a copy for each new object we plan to schedule with that
       // particular object's activation id removed from the copied set.
-      val activationIds: Set[ActivationId] = startingObjs.map(_ => ActivationId.generate()).toSet
+      val activationIds: Set[RunningActivation] = startingObjs.map(o => RunningActivation(o.toFQEN().toString, ActivationId.generate())).toSet
       val x = startingObjs zip activationIds map { obj =>
         (objMap(obj._1).toExecutableWhiskAction, obj._2)
       } map { execObj =>
-        invocation.apply(execObj._1.get, funcId, activationIds - execObj._2, execObj._2)
+        invocation.apply(execObj._1.get, funcId, (activationIds - execObj._2).toSeq, execObj._2)
       }
     } recoverWith {
       case t: Throwable => {

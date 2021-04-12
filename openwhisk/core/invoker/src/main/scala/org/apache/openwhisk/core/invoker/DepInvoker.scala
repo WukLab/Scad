@@ -72,20 +72,20 @@ class DepInvoker(invokerInstance: InvokerInstanceId, topSchedInstanceId: TopSche
               // schedule the next set of dependencies
               // generate the new activationIds
               // Use RunningActivation type so invokers can update the DB with network address
-              val siblingActivations: Set[ActivationId] = rel.dependents.map(_ => ActivationId.generate()).toSet
+              val siblingActivations: Set[RunningActivation] = rel.dependents.map(x => RunningActivation(x.toFQEN().toString, ActivationId.generate())).toSet
               // for all of the next objects to be activated, get the action metadata and publish
               // to the load balancer
               rel.dependents zip siblingActivations map {
                 case (child, newActivationId) =>
                   WhiskActionMetaData.get(entityStore, child.getDocId()) flatMap { action =>
                     action.toExecutableWhiskAction map { obj =>
-                      val sibs = (siblingActivations - newActivationId).map(x => RunningActivation(x))
+                      val sibs = (siblingActivations - newActivationId)
                       val message = ActivationMessage(
                         transid,
                         FullyQualifiedEntityName(action.namespace, action.name, Some(action.version), action.binding),
                         action.rev,
                         identity,
-                        newActivationId, // activation id created here
+                        newActivationId.objActivation, // activation id created here
                         topSchedInstanceId,
                         blocking = false,
                         msg.content,
@@ -146,7 +146,7 @@ class DepInvoker(invokerInstance: InvokerInstanceId, topSchedInstanceId: TopSche
                 FullyQualifiedEntityName(obj.namespace, obj.name, Some(obj.version), obj.binding),
                 obj.rev,
                 user,
-                objId,
+                objId.objActivation,
                 topSchedInstanceId,
                 blocking = false,
                 None,
@@ -154,7 +154,7 @@ class DepInvoker(invokerInstance: InvokerInstanceId, topSchedInstanceId: TopSche
                 obj.parameters.lockedParameters(invocationMessage.content.map(_.fields.keySet).getOrElse(Set.empty)),
                 cause = Some(invocationMessage.activationId),
                 WhiskTracerProvider.tracer.getTraceContext(transid),
-                siblings = Some(corunning.toSeq.map(id => RunningActivation(id))),
+                siblings = Some(corunning),
                 functionActivationId = Some(funcId),
                 appActivationId = Some(invocationMessage.appActivationId),
                 waitForContent = Some(1),

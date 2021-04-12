@@ -527,7 +527,8 @@ case class _RunningActivation(activationId: ActivationId,
                               needSignal: Boolean
                              )
 
-case class RunningActivation(objActivation: ActivationId,
+case class RunningActivation(objName: String,
+                             objActivation: ActivationId,
 //                             transportName: String, // Name of the transport, should be same on both side // removed temporarily
 //                             transportType: String, // type of transport, // derived from object at invoker side
                              transportImpl: String, // Implementation of transport
@@ -551,11 +552,12 @@ case class RunningActivation(objActivation: ActivationId,
 
 object RunningActivation extends DefaultJsonProtocol with DocumentFactory[RunningActivation] {
 
-  def apply(objActivation: ActivationId): RunningActivation = {
-    RunningActivation(objActivation, "tcp", true, true)
+  def apply(objName: String, objActivation: ActivationId): RunningActivation = {
+    RunningActivation(objName, objActivation, "tcp", needWait = true, needSignal = true)
   }
 
   implicit val serdes: RootJsonFormat[RunningActivation] = jsonFormat(RunningActivation.apply,
+    "objName",
   "objActivation",
   "transportImpl",
     "needWait",

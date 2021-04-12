@@ -728,8 +728,8 @@ protected[actions] trait PrimitiveActions {
               invokeSimpleAction(user, obj, payload, None, cause,
                 functionId = Some(funcid),
                 appId = Some(appActivationId),
-                corunning = Some(corunning.toSeq.map(x => RunningActivation(x))),
-                activationId = Some(objId))
+                corunning = Some(corunning),
+                activationId = Some(objId.objActivation))
             })
         }
       appActivator ! IncompleteActivation(appActivationId, Instant.now.toEpochMilli, application.namespace, application.name, user)
