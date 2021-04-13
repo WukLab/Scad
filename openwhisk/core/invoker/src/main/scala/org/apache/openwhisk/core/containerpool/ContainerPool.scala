@@ -236,6 +236,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
               }
 
             logging.debug(this, s"Get activation for ${r.msg.action} with id ${r.msg.activationId}: addresses ${transports}: run msg: $r")
+            logging.debug(this, s"siblings ${r.msg.siblings} -> ${r.msg.siblings.map(_.map(_.objName))}")
             actor ! r.copy(corunningConfig = transports)
 
             // Post run actions
@@ -244,7 +245,8 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
               if LibdAPIs.Transport.needSignal(runtime)
               seq <- r.msg.siblings
             } yield seq.map { ra =>
-              val name = LibdAPIs.Transport.getName(ra)
+              // Here we post self's name
+              val name = r.action.name.name
               val port = LibdAPIs.Transport.getPort(ra)
 
               container.map(_.addr.host) match {

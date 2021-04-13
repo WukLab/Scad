@@ -10,8 +10,6 @@ import copyreg
 import collections
 import json
 
-
-
 def action_setup():
     # some parameters to set up trans; 
     activation_id = "0000"

@@ -73,7 +73,7 @@ object LibdAPIs {
           case _        => None
         }
 
-    def getName(ra: RunningActivation): String = "memory"
+    def getName(ra: RunningActivation): String = ra.objName.split('/').last
     def getImpl(ra: RunningActivation, runtimeType: String): String = runtimeType match {
       case "memory" => s"rdma_${ra.transportImpl.toLowerCase()}_server"
       case _        => s"rdma_${ra.transportImpl.toLowerCase()}"

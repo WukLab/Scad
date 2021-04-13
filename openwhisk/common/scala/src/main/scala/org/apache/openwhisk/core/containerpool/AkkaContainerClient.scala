@@ -97,7 +97,7 @@ protected class AkkaContainerClient(
 
     //create the request
     val req = Marshal(body).to[MessageEntity].map { b =>
-      HttpRequest(akkaMethod, endpoint, entity = b)
+      HttpRequest(akkaMethod, '/' + endpoint, entity = b)
         .withHeaders(Accept(MediaTypes.`application/json`))
     }
 

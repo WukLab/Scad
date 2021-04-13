@@ -32,9 +32,5 @@ def main(context_dict, action):
     # byteDict = pickle.dumps(context_dict)
     # @todo write to file
     buffer_pool_lib.write_params(context_dict)
+    return context_dict
 
-
-
-action = buffer_pool_lib.action_setup()
-context_dict = dict()
-main(context_dict, action)
