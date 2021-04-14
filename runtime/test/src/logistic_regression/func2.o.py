@@ -1,40 +1,30 @@
-import struct
-import threading
-import time
+#@ type: compute
+#@ parents:
+#@   - func1
+#@ dependents:
+#@   - func3
+#@ corunning:
+#@   mem1:
+#@     trans: mem1
+#@     type: rdma
+
 import pickle
 import random
-import sys
-import copy
-import codecs
-import copyreg
-import collections
 import numpy as np
 import json
-import jsonpickle
 import base64
 from random import randrange
-from types import SimpleNamespace
 import disaggrt.buffer_pool_lib as buffer_pool_lib
 from disaggrt.rdma_array import remote_array
 
-def read_params():
-    with open('context.json', 'r') as outfile:
-        return json.load(outfile)
-    return {}
-
-def write_params(params):
-    with open('context.json', 'w') as outfile:
-        json.dump(params, outfile)
-
 def main(params, action):
     # read metadata to setup
-    action = buffer_pool_lib.action_setup()
-    transport_name = 'client1'
-    trans = action.get_transport(transport_name, 'rdma')
+    trans = action.get_transport('mem1', 'rdma')
     trans.reg(buffer_pool_lib.buffer_size)
-    context_dict_in_b64 = params["func1"]
+    context_dict_in_b64 = params["func1"]['meta']
     context_dict_in_byte = base64.b64decode(context_dict_in_b64)
     context_dict = pickle.loads(context_dict_in_byte)
+
     buffer_pool = buffer_pool_lib.buffer_pool(trans, context_dict["buffer_pool_metadata"])
     load_csv_dataset_remote = remote_array(buffer_pool, metadata=context_dict["remote_input"])
     dataset = load_csv_dataset_remote.materialize()
@@ -69,10 +59,5 @@ def main(params, action):
     context_dict["remote_cv_split"] = remote_cv_split.get_array_metadata()
     context_dict["buffer_pool_metadata"] = buffer_pool.get_buffer_metadata()
     context_dict_in_byte = pickle.dumps(context_dict)
-    params["func2"] = base64.b64encode(context_dict_in_byte).decode("ascii")    
-    write_params(params)
+    return {'meta': base64.b64encode(context_dict_in_byte).decode("ascii")}
 
-
-action = buffer_pool_lib.action_setup()
-params = read_params()
-main(params, action)

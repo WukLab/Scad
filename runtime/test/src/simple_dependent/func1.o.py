@@ -16,7 +16,7 @@ import codecs
 import copyreg
 import collections
 import numpy as np
-import json
+from base64 import b64encode
 
 import disaggrt.buffer_pool_lib as buffer_pool_lib
 from disaggrt.rdma_array import remote_array
@@ -31,5 +31,7 @@ def main(params, action):
     context_dict = dict()
     context_dict["rdma_array"] = rdma_array.get_array_metadata()
     buffer_pool_metadata = buffer_pool.get_buffer_metadata()
-    return {'meta': json.dumps([buffer_pool_metadata, context_dict])}
+
+    meta = pickle.dumps([context_dict, buffer_pool_metadata])
+    return {'meta': b64encode(meta).decode('ascii')}
 

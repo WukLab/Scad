@@ -1,37 +1,32 @@
-import struct
-import threading
-import time
+#@ type: compute
+#@ parents:
+#@   - func2
+#@ corunning:
+#@   mem1:
+#@     trans: mem1
+#@     type: rdma
+
 import pickle
-import sys
-import copy
-import codecs
-import copyreg
-import collections
 import numpy as np
 import json
 import base64
 from math import exp
 from random import randrange
-from types import SimpleNamespace
 import disaggrt.buffer_pool_lib as buffer_pool_lib
 from disaggrt.rdma_array import remote_array
 
-def read_params():
-    with open('context.json', 'r') as outfile:
-        return json.load(outfile)
-    return {}
-
 # read metadata to setup
 def main(params, action):
-    transport_name = 'client1'
-    trans = action.get_transport(transport_name, 'rdma')
+    # Load from previous memory
+    trans = action.get_transport('mem1', 'rdma')
     trans.reg(buffer_pool_lib.buffer_size)
-    context_dict_in_b64 = params["func2"]
+    context_dict_in_b64 = params["func2"]['meta']
     context_dict_in_byte = base64.b64decode(context_dict_in_b64)
     context_dict = pickle.loads(context_dict_in_byte)
     buffer_pool = buffer_pool_lib.buffer_pool(trans, context_dict["buffer_pool_metadata"])
     remote_cv_split_metadata = context_dict["remote_cv_split"]
     remote_cv_split = remote_array(buffer_pool, metadata=remote_cv_split_metadata)
+
     evaluate_algorithm_folds = remote_cv_split.materialize()
     evaluate_algorithm_folds = evaluate_algorithm_folds.tolist()
     # processing
@@ -83,11 +78,6 @@ def main(params, action):
         evaluate_algorithm_scores.append(evaluate_algorithm_accuracy)
     virtual_return_register_8 = evaluate_algorithm_scores
     scores = virtual_return_register_8
-    print(('Scores: %s' % scores))
-    print(('Mean Accuracy: %.3f%%' % (sum(scores) / float(len(scores)))))
 
-action = buffer_pool_lib.action_setup()
-params = read_params()
-main(params, action)
-
+    return {'scores': scores, 'accuracy', (sum(scores) / float(len(scores)))}
 
