@@ -262,35 +262,3 @@ class buffer_pool:
             cur_buf_offset = cur_buf_offset + begin_offset
         fetched_value = self.get_buffer_slice(cur_buf_offset, cur_block_size)
         return ["fetch_success", fetched_value]
-
-
-
-# return params
-def read_params():
-    context_file = "virtual_file"
-    f = open(context_file, 'rb')
-    context_dict_in_byte = f.read()
-    context_dict = pickle.loads(context_dict_in_byte)
-    print(context_dict)
-    # read the size of context dict
-    # trans.read(4, addr = 0, offset = 0)
-    # context_dict_in_byte_size = struct.unpack_from('@I', trans.buf[0:])[0]
-    # trans.read(context_dict_in_byte_size, addr=4, offset = 0)
-    # print("read context dictionary with size in byte: {0}".format(context_dict_in_byte_size))
-    # context_dict_in_byte = trans.buf[0:0 + context_dict_in_byte_size]
-    # first load from memoryslice to byte; then load byte to original data type
-    # context_dict = pickle.loads(pickle.loads(context_dict_in_byte))
-    return context_dict
-
-# write params to remote memory
-def write_params(context_dict):
-    context_file = "virtual_file"
-    f = open(context_file, 'wb')
-    context_dict_in_byte = pickle.dumps(context_dict)
-    f.write(context_dict_in_byte)
-    # context_dict_in_byte_size = len(context_dict_in_byte)
-    # size_of_int = 4
-    # struct.pack_into('@I', trans.buf, 0, context_dict_in_byte_size)
-    # print("write context dictionary with size in byte: {0}".format(context_dict_in_byte_size))
-    # trans.buf[size_of_int:size_of_int + context_dict_in_byte_size] = context_dict_in_byte
-    # trans.write(size_of_int + context_dict_in_byte_size, addr = 0, offset = 0)
