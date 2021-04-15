@@ -44,11 +44,13 @@ object DagExecutor {
       }
       // this one should be immutable, and we will make a copy for each new object we plan to schedule with that
       // particular object's activation id removed from the copied set.
-      val activationIds: Set[RunningActivation] = startingObjs.map(o => RunningActivation(o.toFQEN().toString, ActivationId.generate())).toSet
-      val x = startingObjs zip activationIds map { obj =>
+      val objSeq = startingObjs.toSeq
+      val activations: Seq[RunningActivation] = objSeq.map(o => RunningActivation(o.toFQEN().toString, ActivationId.generate()))
+      val siblingSet: Set[RunningActivation] = activations.toSet
+      val x = objSeq zip activations map { obj =>
         (objMap(obj._1).toExecutableWhiskAction, obj._2)
       } map { execObj =>
-        invocation.apply(execObj._1.get, funcId, (activationIds - execObj._2).toSeq, execObj._2)
+        invocation.apply(execObj._1.get, funcId, (siblingSet - execObj._2).toSeq, execObj._2)
       }
     } recoverWith {
       case t: Throwable => {

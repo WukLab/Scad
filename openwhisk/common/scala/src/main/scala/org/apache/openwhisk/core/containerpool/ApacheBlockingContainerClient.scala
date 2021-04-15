@@ -100,6 +100,8 @@ protected class ApacheBlockingContainerClient(hostname: String,
     request.addHeader(HttpHeaders.ACCEPT, "application/json")
     request.setEntity(entity)
 
+    logging.warn(this, s"BlockingClient: Send POST, ${endpoint}:POST -> $body")
+
     Future {
       blocking {
         execute(request, timeout, maxConcurrent, retry, reschedule)
@@ -118,11 +120,17 @@ protected class ApacheBlockingContainerClient(hostname: String,
     request.addHeader(HttpHeaders.ACCEPT, "application/json")
     request.setEntity(entity)
 
+    logging.warn(this, s"BlockingClient: Libd, ${endpoint}:$method -> $body")
+
+    val callConn = newConnection
     Future {
       blocking {
         execute(request.build().asInstanceOf[HttpRequestBase], timeout, maxConcurrent, retry,
-          conn = newConnection)
+          conn = callConn)
       }
+    }.map { v =>
+      callConn.close()
+      v
     }
 
   }
@@ -136,6 +144,8 @@ protected class ApacheBlockingContainerClient(hostname: String,
     reschedule: Boolean = false,
     conn: CloseableHttpClient = connection)(implicit tid: TransactionId): Either[ContainerHttpError, ContainerResponse] = {
     val start = Instant.now
+
+    logging.warn(this, s"BlockingClient: execute, ${request.getURI}:${request.getMethod} -> $request")
 
     Try(conn.execute(request)).map { response =>
       val containerResponse = Option(response.getEntity)
@@ -204,7 +214,7 @@ protected class ApacheBlockingContainerClient(hostname: String,
   private val maxResponseBytes = maxResponse.toBytes
   private val truncationBytes = truncation.toBytes
 
-  private val baseUri = new URIBuilder()
+  private def baseUri = new URIBuilder()
     .setScheme("http")
     .setHost(hostname)
 

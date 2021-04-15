@@ -494,6 +494,7 @@ case class DependencyInvocationMessage(action: String,
                                        functionActivationId: ActivationId,
                                        appActivationId: ActivationId,
                                        transactionId: TransactionId,
+                                       corunning: Option[Seq[RunningActivation]] = None,
                                        )
     extends Message {
 
@@ -515,7 +516,8 @@ object DependencyInvocationMessage extends DefaultJsonProtocol {
   "dependency",
   "appActivationId",
   "functionActivationId",
-  "transid")
+  "transid",
+  "corunning")
 }
 
 // An connection for an object

@@ -93,6 +93,7 @@ func (ap *ActionProxy) runHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(response)))
 	numBytesWritten, err := w.Write(response)
+	Debug("Bytes Written %d", numBytesWritten)
 
 	// flush output
 	if f, ok := w.(http.Flusher); ok {

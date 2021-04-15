@@ -79,5 +79,5 @@ def main(params, action):
     virtual_return_register_8 = evaluate_algorithm_scores
     scores = virtual_return_register_8
 
-    return {'scores': scores, 'accuracy', (sum(scores) / float(len(scores)))}
+    return {'scores': scores, 'accuracy': (sum(scores) / float(len(scores)))}
 

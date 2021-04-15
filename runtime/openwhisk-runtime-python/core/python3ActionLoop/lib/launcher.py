@@ -179,7 +179,8 @@ while True:
     print(traceback.format_exc(), file=stderr)
     res = {"error": str(ex)}
   # TODO: terminate actions after finish?
-  out.write(json.dumps(res, ensure_ascii=False).encode('utf-8'))
+  resjson = json.dumps(res, ensure_ascii=False).encode('utf-8')
+  out.write(resjson)
   out.write(b'\n')
   stdout.flush()
   stderr.flush()

@@ -7,12 +7,12 @@ import org.apache.openwhisk.common.TransactionId.childOf
 import org.apache.openwhisk.common.tracing.WhiskTracerProvider
 import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.connector.{ActivationMessage, DependencyInvocationMessage, Message, MessageProducer, PartialPrewarmConfig, RunningActivation}
-import org.apache.openwhisk.core.containerpool.{Interval, RuntimeResources}
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.database.CacheChangeNotification
 import org.apache.openwhisk.core.entity.SizeUnits.MB
-import org.apache.openwhisk.core.entity.{ActivationId, ActivationResponse, ByteSize, ExecutableWhiskActionMetaData, FullyQualifiedEntityName, Identity, InvokerInstanceId, TopSchedInstanceId, WhiskAction, WhiskActionMetaData, WhiskActivation, WhiskEntityReference, WhiskFunction}
+import org.apache.openwhisk.core.entity.{ActivationId, ActivationResponse, ByteSize, ExecutableWhiskActionMetaData, FullyQualifiedEntityName, Identity, InvokerInstanceId, TopSchedInstanceId, WhiskAction, WhiskActionMetaData, WhiskActivation}
 import org.apache.openwhisk.core.entity.types.{AuthStore, EntityStore}
-import org.apache.openwhisk.core.scheduler.{DagExecutor, FinishActivation}
+import org.apache.openwhisk.core.scheduler.FinishActivation
 import pureconfig.loadConfigOrThrow
 import spray.json.{DefaultJsonProtocol, RootJsonFormat}
 import spray.json._
@@ -47,7 +47,8 @@ class DepInvoker(invokerInstance: InvokerInstanceId, topSchedInstanceId: TopSche
             dependency = Seq.empty,
             functionActivationId = functionActivationId,
             appActivationId = appActivationId,
-            transactionId = invoke.transid
+            transactionId = invoke.transid,
+            corunning = invoke.siblings
           )
         }
       }
@@ -72,20 +73,38 @@ class DepInvoker(invokerInstance: InvokerInstanceId, topSchedInstanceId: TopSche
               // schedule the next set of dependencies
               // generate the new activationIds
               // Use RunningActivation type so invokers can update the DB with network address
-              val siblingActivations: Set[RunningActivation] = rel.dependents.map(x => RunningActivation(x.toFQEN().toString, ActivationId.generate())).toSet
+              val siblingActivations: Seq[RunningActivation] = rel.dependents.map(x => RunningActivation(x.toFQEN().toString, ActivationId.generate()))
+              val siblingSet: Set[RunningActivation] = siblingActivations.toSet
               // for all of the next objects to be activated, get the action metadata and publish
               // to the load balancer
+
               rel.dependents zip siblingActivations map {
-                case (child, newActivationId) =>
+                case (child, newActivation) =>
                   WhiskActionMetaData.get(entityStore, child.getDocId()) flatMap { action =>
                     action.toExecutableWhiskAction map { obj =>
-                      val sibs = (siblingActivations - newActivationId)
+
+                      var sibs = (siblingSet - newActivation)
+
+                      obj.relationships map { objRel =>
+                        msg.corunning map { prevObjCorunning =>
+                          val corunNames = objRel.corunning.map(_.toString()).toSet
+                          // corunning objects which are part of the corunning set for this object *and* came from the
+                          // activation message of the object which is requesting our scheduling
+                          val corunsToInclude = prevObjCorunning.filter(p => corunNames.contains(p.objName))
+                          // now we need to add them to the sibling set. Currently the sibling set only contains the
+                          // siblings which are directly scheduled by the parent object, but may not include siblings
+                          // which were started from the parent object.
+                          sibs = sibs ++ corunsToInclude
+                        }
+                      }
+                      val msgsToWait = obj.relationships.map(x => x.parents.size)
+
                       val message = ActivationMessage(
                         transid,
                         FullyQualifiedEntityName(action.namespace, action.name, Some(action.version), action.binding),
                         action.rev,
                         identity,
-                        newActivationId.objActivation, // activation id created here
+                        newActivation.objActivation, // activation id created here
                         topSchedInstanceId,
                         blocking = false,
                         msg.content,
@@ -97,7 +116,7 @@ class DepInvoker(invokerInstance: InvokerInstanceId, topSchedInstanceId: TopSche
                         functionActivationId = Some(msg.functionActivationId),
                         appActivationId = Some(msg.appActivationId),
                         sendResultToInvoker = Some((invokerInstance, msg.activationId)),
-                        waitForContent = Some(rel.parents.size), // the number of input messages required to run this object
+                        waitForContent = msgsToWait, // the number of input messages required to run this object
                       )
                       transid.mark(this, LoggingMarkers.INVOKER_DEP_SCHED)
                       publishToTopBalancer(message)
@@ -116,63 +135,6 @@ class DepInvoker(invokerInstance: InvokerInstanceId, topSchedInstanceId: TopSche
         }
         Future.successful(())
       })
-    }
-  }
-
-  /**
-   * Begin the activation of the next function in the application DAG.
-   *
-   * @param func the function whose activation just completed
-   * @param invocationMessage the final invocation message from the object DAG
-   */
-  private def processFunctionInvocationMessage(func: WhiskEntityReference, invocationMessage: DependencyInvocationMessage, user: Identity, fqen: FullyQualifiedEntityName)(implicit transid: TransactionId): Unit = {
-//    logging.debug(this, s"processFunctionInvocationMessage(${invocationMessage.appActivationId}): func: ${func}")
-    WhiskFunction.get(entityStore, func.getDocId()) flatMap { wf =>
-      val chillen = wf.children getOrElse Seq.empty
-//      logging.debug(this, s"processFunctionInvocationMessage(${invocationMessage.appActivationId}): children: ${chillen}")
-
-      if (chillen.isEmpty) {
-        // post application response, there are no more functions in the DAG
-        transid.mark(this, LoggingMarkers.INVOKER_DEP_FUNC_POST)
-        postActivationResponse(invocationMessage.appActivationId, invocationMessage, user, fqen)
-      } else {
-        // there are more functions to be invoked after this one
-//        logging.debug(this, s"processFunctionInvocationMessage(${invocationMessage.appActivationId}): invoking next children")
-        chillen map { nextFunc =>
-          WhiskFunction.get(entityStore, nextFunc.getDocId()) flatMap { func =>
-            DagExecutor.executeFunction(func, entityStore, (obj, funcId, corunning, objId) => {
-              val message = ActivationMessage(
-                transid,
-                FullyQualifiedEntityName(obj.namespace, obj.name, Some(obj.version), obj.binding),
-                obj.rev,
-                user,
-                objId.objActivation,
-                topSchedInstanceId,
-                blocking = false,
-                None,
-                obj.parameters.initParameters,
-                obj.parameters.lockedParameters(invocationMessage.content.map(_.fields.keySet).getOrElse(Set.empty)),
-                cause = Some(invocationMessage.activationId),
-                WhiskTracerProvider.tracer.getTraceContext(transid),
-                siblings = Some(corunning),
-                functionActivationId = Some(funcId),
-                appActivationId = Some(invocationMessage.appActivationId),
-                waitForContent = Some(1),
-              )
-              publishToTopBalancer(message)
-                .onComplete(_ => {
-                  // once published, prewarm next objects in the DAG...
-                  if (controllerPrewarmConfig) {
-                    logging.debug(this, s"prewarming dependent object ${obj.namespace}, ${obj.name} ||latency: ${Interval.currentLatency()}")
-                    prewarmNextLevelDeps(message, obj)
-                  }
-                })
-              Future.successful(message)
-            })
-          }
-        }
-      }
-      Future.successful(())
     }
   }
 

@@ -19,8 +19,8 @@ GO_RUNTIME=openwhisk-runtime-go
 
 build:
 	cp -r ../../../$(GO_RUNTIME) .
-	cp -r ../../../lib ./libd
-	cp -r ../../disaggrt ./disaggrt
+	cp -p -r ../../../lib ./libd
+	cp -p -r ../../disaggrt ./disaggrt
 	docker build -t $(IMG) .
 
 clean:

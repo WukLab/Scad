@@ -78,9 +78,13 @@ cdef class LibdTransportRDMA(LibdTransport):
     def __init__(self, *args):
         self.initd = False
 
-    def reg(self, size):
-        self._c_buf = <char *> clibd.libd_trdma_reg(
-            self._c_trans, size, self._c_buf)
+    def reg(self, size, LibdTransportRDMA trans = None):
+        if trans != None:
+            self._c_buf = <char *> clibd.libd_trdma_reg(
+                self._c_trans, size, <void *>trans._c_buf)
+        else:
+            self._c_buf = <char *> clibd.libd_trdma_reg(
+                self._c_trans, size, self._c_buf)
 
         if self._c_buf is NULL:
             raise MemoryError()
