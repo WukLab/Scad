@@ -31,7 +31,7 @@ class remote_array_metadata:
         # currently offset is the byte offset
         # with element_byte we could get index offset
         self.begin_offset = begin_offset
-        self.end_offset = begin_offset
+        self.end_offset = end_offset
         self.shape = array_shape
     
     def __getstate__(self):
@@ -126,10 +126,11 @@ class remote_array():
         end_page_id = self.get_page_id_from_idx(end_idx)
         start_block_offset = self.get_block_offset_from_idx(start_idx)
         end_block_offset = self.get_block_offset_from_idx(end_idx)
-        # print("offset start: {0} end: {1}".format(start_block_offset, end_block_offset))
         slice_page_list = list(range(start_page_id, end_page_id+1))
         cur_metadata = self.metadata
-        slice_metadata = remote_array_metadata(slice_page_list, cur_metadata.element_typestr, cur_metadata.element_byte, cur_metadata.element_per_block, start_block_offset, end_block_offset, cur_metadata.shape)
+        cur_shape = list(cur_metadata.shape)
+        cur_shape[0] = end_idx - start_idx
+        slice_metadata = remote_array_metadata(slice_page_list, cur_metadata.element_typestr, cur_metadata.element_byte, cur_metadata.element_per_block, start_block_offset, end_block_offset, tuple(cur_shape))
         return remote_array(self.buffer_pool, metadata = slice_metadata)
 
     # load remote_array[start_idx:end_idx) to local buffer; read only
@@ -138,7 +139,6 @@ class remote_array():
         if start_idx == -1:
             start_idx = 0
         if end_idx == -1:
-            print(self.metadata.shape)
             end_idx = prod(self.metadata.shape)
         start_page_id = self.get_page_id_from_idx(start_idx)
         end_page_id = self.get_page_id_from_idx(end_idx)
