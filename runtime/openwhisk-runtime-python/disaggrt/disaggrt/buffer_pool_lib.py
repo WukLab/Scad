@@ -50,12 +50,14 @@ buffer_size = page_buffer_size
 # current strategy is to use list of numpy array
 
 class local_page_node:
-    def __init__(self, begin_offset, id = -1):
+    def __init__(self, begin_offset, id = -1, block_size = -1):
         self.id = id
         # offset indicates location in buffer
         self.begin_offset = begin_offset
         self.free_offset = self.begin_offset
         self.dirty_bit = 0
+        if block_size != -1:
+            self.set_block_size(block_size)
         self.prev = None
         self.next = None
 
@@ -178,6 +180,8 @@ class buffer_pool:
                 cur_remote_node = self.remote_table[page_id_list[i]]
                 cur_buf_offset = (self.cur_free_page_idx + i) * page_size + metadata_reserve_mem
                 self.trans.read(cur_remote_node.block_size, addr=cur_remote_node.begin_addr, offset=cur_buf_offset)
+                # update local page table
+                self.page_table[page_id_list[i]] = local_page_node(cur_buf_offset, page_id_list[i], cur_remote_node.block_size)
             self.offset_table[self.cur_free_page_idx + i] = page_id_list[i]
         self.cur_free_page_idx = self.cur_free_page_idx + request_page_num
         return ret_buf_offset
@@ -252,13 +256,19 @@ class buffer_pool:
         # page id are not in mem
         if cur_buf_offset == -1:
             cur_buf_offset = self.get_buffer_offset(page_id_list, True)
-        cur_block_size = (len(page_id_list) - 1) * page_size
+        full_block_size = self.page_table[page_id_list[-1]].get_block_size()
+        if begin_offset != -1:
+            cur_buf_offset = cur_buf_offset + begin_offset
         if end_offset == -1:
-            last_block_size = self.page_table[page_id_list[-1]].get_block_size()
+            last_block_size = full_block_size
         else:
             last_block_size = end_offset
-        cur_block_size = cur_block_size + last_block_size
-        if begin_offset == -1:
-            cur_buf_offset = cur_buf_offset + begin_offset
+        if len(page_id_list) == 1:
+            cur_block_size = last_block_size - begin_offset
+        else:
+            cur_block_size = last_block_size + full_block_size - begin_offset
+            if len(page_id_list) > 2:
+                cur_block_size = cur_block_size + (len(page_id_list) - 2) * full_block_size
+        print("reading from buffer pool start offset: {0}, block_size: {1}".format(cur_buf_offset, cur_block_size))
         fetched_value = self.get_buffer_slice(cur_buf_offset, cur_block_size)
         return ["fetch_success", fetched_value]
