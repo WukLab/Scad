@@ -1,45 +1,10 @@
 from disagg import *
-import struct
-import threading
-import time
-import pickle
 import sys
 import copy
-import codecs
-import copyreg
-import collections
+import bisect
+from collections import OrderedDict
 import json
-
-def action_setup():
-    # some parameters to set up trans; 
-    activation_id = "0000"
-    server_url = "0000"
-    transport_name = 'client1'
-    server_port = 2333
-    memory_block_size = buffer_size
-    # @todo should be read from a config
-
-    cv = threading.Condition()
-    # in real launch, this part will be handled by serverless system
-    action = LibdAction(cv, activation_id, server_url)
-
-    transport_url = "{};rdma_tcp;".format(transport_name)
-    action.add_transport(transport_url)
-
-    def delayed_config():
-        time.sleep(5)
-        extra_url = "url,tcp://localhost:{};size,{};".format(
-            server_port, memory_block_size)
-        action.config_transport(transport_name, extra_url)
-        with cv:
-            cv.notify_all()
-
-    config_thread = threading.Thread(
-        target = delayed_config)
-    config_thread.start()
-    config_thread.join()
-    return action
-
+import math
 
 # global parameters
 page_size = 256
@@ -50,225 +15,154 @@ buffer_size = page_buffer_size
 # current strategy is to use list of numpy array
 
 class local_page_node:
-    def __init__(self, begin_offset, id = -1, block_size = -1):
-        self.id = id
-        # offset indicates location in buffer
-        self.begin_offset = begin_offset
-        self.free_offset = self.begin_offset
-        self.dirty_bit = 0
-        if block_size != -1:
-            self.set_block_size(block_size)
-        self.prev = None
-        self.next = None
+    def __init__(self, page_id, remote_addr, block_size = 0, dirty_bit = False):
+        global page_size
+        self.id = page_id
+        self.begin_offset = self.id * page_size
+        self.remote_addr = remote_addr
+        # @maybe different object are stored in the same page 
+        self.block_size = block_size
+        self.free_offset = self.begin_offset + self.block_size + 1
+        self.dirty_bit = dirty_bit
 
-    def write_to_remote_if_dirty(self, trans, remote_addr, write_size):
-        if self.dirty_bit == 1:
-            trans.write(write_size, remote_addr, self.begin_offset)
+    def write_to_remote_if_dirty(self, trans):
+        if self.dirty_bit:
+            trans.write(self.block_size, self.remote_addr, self.begin_offset)
 
     def get_free_space(self):
-        return page_size - self.get_block_size()
-
-    def set_block_size(self, cur_block_size):
-        self.free_offset = self.begin_offset + cur_block_size + 1
-
-    def get_block_size(self):
-        return self.free_offset - self.begin_offset - 1
-
-    def write_to_local(self, buf, data):
-        # @todo currently we do not support finer granularity in a page so reset free_offset each time
-        self.free_offset = self.begin_offset
-        data_size = len(data)
-        buf[self.free_offset:self.free_offset + data_size] = data
-        self.free_offset = self.free_offset + data_size + 1
-        self.dirty_bit = 1
-
-    def set_id(self, id):
-        self.id = id
-
-class remote_page_node:
-    def __init__(self, begin_addr, block_size = 0):
-        self.begin_addr = begin_addr
-        self.block_size = block_size
+        return page_size - self.block_size
     
-    def set_block_size(self, block_size):
-        self.block_size = block_size
-
-    def __getstate__(self):
-        return self.__dict__.copy()
-
-    def __setstate__(self, dict):
-        self.__dict__ = dict
+    def set_block_size(self, cur_block_size):
+        self.block_size = cur_block_size
 
 class buffer_metadata:
-    def __init__(self, page_seq, remote_addr, remote_table):
+    def __init__(self, page_seq, remote_addr):
         self.page_seq = page_seq
-        self.remote_addr = remote_addr
-        self.remote_table = remote_table
-        
+        self.remote_addr = remote_addr        
     def __getstate__(self):
         return self.__dict__.copy()
-
     def __setstate__(self, dict):
         self.__dict__ = dict
 
-
 class buffer_pool:
-    def __init__(self, trans, metadata = None):
+    def __init__(self, trans, remote_addr = 0):
         '''
-        @todo currently, assume append only
         @todo currently, assume read write is sync
         assumptions 
         current workload -> overall memory needed by the working set are not extremely larger than t
         '''
         self.trans = trans
-        # page_id -> page_node (only page in local)
+        # page_id -> local page node 
         self.page_table = dict()
+        # remote addr -> page_id
+        self.remote_metadata_dict = OrderedDict()
         self.cur_free_page_idx = 0
-        if metadata is None:
-            # reserve space for metadata communication
-            self.remote_addr = metadata_reserve_mem
-            self.page_seq = 0
-            # page_id -> begin_addr (currently we do full page write)
-            self.remote_table = dict()
-        else:
-            # set up buffer pool with metadata
-            self.remote_addr = metadata.remote_addr
-            self.remote_table = metadata.remote_table
-            self.page_seq = metadata.page_seq
+        self.remote_addr = int(remote_addr)
         assert(page_buffer_size % page_size == 0)
         self.buffer_page_num = int(page_buffer_size / page_size)
-        # map buf_offset = idx * blocksize -> page_id
-        self.offset_table = [-1] * self.buffer_page_num 
-
-    def gen_new_id(self):
-        res = self.page_seq
-        self.page_seq = self.page_seq + 1    
-        return res
 
     def get_buffer_metadata(self):
-        # @todo this is not what we should do; just for rush ddl, i flush local page_table before sending out metadata
-        for local_page_id in self.page_table:
-            cur_local_page = self.page_table[local_page_id]
-            cur_remote_page = self.remote_table[local_page_id]
-            cur_local_page.write_to_remote_if_dirty(self.trans, cur_remote_page.begin_addr, cur_remote_page.block_size)
-        return buffer_metadata(self.page_seq, self.remote_addr, self.remote_table)
+        for page_id, page_node in self.page_table.items():
+            if page_node.dirty_bit:
+                page_node.write_to_remote_if_dirty(self.trans)
+        return self.remote_addr
+    
+    def page_table_upate(self, mem_size, page_id_base, remote_addr, dirty=False):
+        global page_size
+        remote_addr_iter = remote_addr
+        for buf_iter in range(0, mem_size, page_size): 
+            cur_page_id = math.floor(buf_iter / page_size) + page_id_base
+            cur_page_block_size = min(page_size, mem_size - buf_iter)
+            self.page_table[cur_page_id] = local_page_node(cur_page_id, remote_addr_iter, block_size=cur_page_block_size, dirty_bit=dirty)
+            remote_addr_iter = remote_addr_iter + cur_page_block_size
 
     # update buffer to get request_page_num free space in local buffer
-    # in read mode, we will also pull related page id to local
-    def get_buffer_offset(self, page_id_list, isRead=False):
+    # if we also want to fetch the data , we will also pull related page
+    def get_buffer_offset(self, mem_size, remote_addr=-1):
         global page_size
-        request_page_num = len(page_id_list)
+        request_page_num = math.ceil(mem_size / page_size)
         cur_available_page_num = self.buffer_page_num - self.cur_free_page_idx
         if self.buffer_page_num < request_page_num:
             print("request page exceed all buffer mem; stop app")
             exit(1)
         if cur_available_page_num < request_page_num:
-            last_flush_page_id = -1
-            # evict first cur_available_page_num page to remote memory
-            for i in range(cur_available_page_num):
-                prev_page_id = self.offset_table[i]
-                if last_flush_page_id != prev_page_id:
-                    prev_local_node = self.page_table[prev_page_id]
-                    prev_remote_page = self.remote_table[prev_page_id]
-                    prev_local_node.write_to_remote_if_dirty(self.trans, prev_remote_page.begin_addr, prev_remote_page.block_size)
-                    last_flush_page_id = prev_page_id
+            # evict page to remote memory
+            for prev_page_id in range(request_page_num):
+                prev_local_node = self.page_table[prev_page_id]
+                prev_local_node.write_to_remote_if_dirty(self.trans)
+                if prev_local_node.remote_addr in self.remote_metadata_dict:
+                    self.remote_metadata_dict.pop(prev_local_node.remote_addr)
             self.cur_free_page_idx = 0
-        ret_buf_offset = self.cur_free_page_idx * page_size + metadata_reserve_mem
-        for i in range(request_page_num):
-            # read each page into corresponding local buffer offset
-            if isRead:
-                cur_remote_node = self.remote_table[page_id_list[i]]
-                cur_buf_offset = (self.cur_free_page_idx + i) * page_size + metadata_reserve_mem
-                self.trans.read(cur_remote_node.block_size, addr=cur_remote_node.begin_addr, offset=cur_buf_offset)
-                # update local page table
-                self.page_table[page_id_list[i]] = local_page_node(cur_buf_offset, page_id_list[i], cur_remote_node.block_size)
-            self.offset_table[self.cur_free_page_idx + i] = page_id_list[i]
+        last_page_id = self.cur_free_page_idx + request_page_num - 1
+        ret_buf_offset = self.cur_free_page_idx * page_size
+        if remote_addr != -1:
+            self.fetch_remote_to_buffer(ret_buf_offset, remote_addr, mem_size)
+            self.page_table_upate(mem_size, self.cur_free_page_idx, remote_addr)
+            # store the mem_size and the first page_id
+            self.remote_metadata_dict[remote_addr] = [mem_size, ret_buf_offset]
         self.cur_free_page_idx = self.cur_free_page_idx + request_page_num
         return ret_buf_offset
         
-    def get_remote_addr_from_id(self, page_id):
-        cur_remote_page_node = self.remote_table[page_id]
-        return cur_remote_page_node.begin_addr
-    
-    def get_block_size_from_id(self, page_id):
-        cur_remote_page_node = self.remote_table[page_id]
-        return cur_remote_page_node.block_size
-
     def get_buffer_slice(self, begin_offset, slice_size):
         return self.trans.buf[begin_offset:begin_offset+slice_size]
 
-    def find_pages_in_mem(self, page_id_list):
+    def find_object_in_mem(self, remote_addr, mem_size):
         global page_size
-        expect_buf_offset = -1
-        for cur_page_id in page_id_list:
-            if cur_page_id in self.page_table:
-                cur_page_node = self.page_table[cur_page_id]
-                if expect_buf_offset == -1 or expect_buf_offset == cur_page_node.begin_offset:
-                    expect_buf_offset = cur_page_node.begin_offset + page_size
-                else:
-                    # @todo add logic deal with partial page
-                    return -1
+
+    def write_to_buffer(self, buf_offset, data, mem_size):
+        self.trans.buf[buf_offset:buf_offset + mem_size] = data
+
+    def update_buffer_to_remote(self, buf_offset, remote_addr, mem_size):
+        self.trans.write(mem_size, remote_addr, buf_offset)
+
+    def fetch_remote_to_buffer(self, buf_offset, remote_addr, mem_size):
+        self.trans.read(mem_size, remote_addr, buf_offset)
+
+    # @todo for now only consider write to new memory
+    def write(self, data, remote_addr = -1):
+        # @todo check whether there is enough memory left
+        global page_size
+        cur_mem_size = len(data)
+        # update local page table
+        if remote_addr == -1:
+            remote_addr = self.remote_addr
+            cur_buf_offset = self.get_buffer_offset(cur_mem_size)
+            cur_page_id = cur_buf_offset / page_size
+            self.remote_metadata_dict[remote_addr] = [cur_mem_size, cur_buf_offset]
+            self.write_to_buffer(cur_buf_offset, data, cur_mem_size)
+            self.page_table_upate(cur_mem_size, cur_page_id, remote_addr, dirty=True)
+            self.remote_addr = remote_addr + cur_mem_size
+            return remote_addr
+
+    def find_offset_of_remote_addr(self, remote_addr, mem_size):
+        if remote_addr in self.remote_metadata_dict:
+            cur_object_mem_size, cur_object_begin_offset = self.remote_metadata_dict[remote_addr]
+            if mem_size <= cur_object_mem_size:
+                # get page_offset
+                return cur_object_begin_offset
             else:
+                # requesting obejct larger than we currently stored 
                 return -1
-        return self.page_table[page_id_list[0]].begin_offset
-
-    # write data to remote memory and update metadata
-    def write(self, data, cur_page_id = -1):
-        global page_size
-        write_size = len(data)
-        # get cur_page_node
-        cur_page_node = None
-        # write to old page
-        if cur_page_id != -1:
-            if cur_page_id not in self.page_table:
-                # fetch page from remote; build page node withs lru replacer update offset
-                page_remote_addr = self.get_remote_addr_from_id(cur_page_id)
-                cur_buf_offset = self.get_buffer_offset([cur_page_id])
-                # read remote_addr to victim page offset
-                self.trans.read(write_size, addr=page_remote_addr, offset=cur_buf_offset)
-                # build page node
-                cur_page_node = local_page_node(cur_buf_offset, cur_page_id)
-            else:
-                cur_page_node = self.page_table[cur_page_id]
-            # update data into remote memory, for simplicity we make memory aligned
+        address_keys = self.remote_metadata_dict.keys()
+        left_possible_index = bisect.bisect_left(address_keys, remote_addr)
+        if left_possible_index == 0:
+            return -1
+        possible_remote_addr = address_keys[left_possible_index-1]
+        possible_object_mem_size, possible_object_page_offset = self.remote_metadata_dict[possible_remote_addr]
+        if (remote_addr + mem_size) < (possible_remote_addr + possible_object_mem_size):
+            cur_object_begin_offset = possible_object_page_offset + (remote_addr - possible_remote_addr)
+            return cur_object_begin_offset
         else:
-            # write to new page; gen page_id check free list first; update remote addr
-            cur_page_id = self.gen_new_id()
-            # build page node withs lru replacer update offset; update buf 
-            cur_buf_offset = self.get_buffer_offset([cur_page_id])
-            cur_page_node = local_page_node(cur_buf_offset, cur_page_id)
-            cur_page_id = cur_page_node.id
-            assert(cur_page_id != -1)
-            # update remote table only when we create page_id; page_id 1:1 remote_addr
-            self.remote_table[cur_page_id] = remote_page_node(self.remote_addr, write_size)
-            self.remote_addr = self.remote_addr + page_size
+            return -1
 
-        assert(cur_page_node.id != -1)
-        # @todo this could be improved in finer granularity
-        cur_page_node.write_to_local(self.trans.buf, data)
-        self.page_table[cur_page_id] = cur_page_node
-        return cur_page_id
+    def read(self, remote_addr, mem_size):
+        # check wether in the pool already
+        cur_begin_offset = self.find_offset_of_remote_addr(remote_addr, mem_size)
+        if cur_begin_offset != -1:
+            return True, self.get_buffer_slice(cur_begin_offset, mem_size)
+        # not in local, pull from remote
+        cur_begin_offset = self.get_buffer_offset(mem_size, remote_addr)
+        return True, self.get_buffer_slice(cur_begin_offset, mem_size)
 
-    # return a list ["fetch_{success/fail}", fetch_data]
-    def read(self, page_id_list, begin_offset = -1, end_offset = -1):
-        global page_size
-        cur_buf_offset = self.find_pages_in_mem(page_id_list)
-        # page id are not in mem
-        if cur_buf_offset == -1:
-            cur_buf_offset = self.get_buffer_offset(page_id_list, True)
-        full_block_size = self.page_table[page_id_list[-1]].get_block_size()
-        if begin_offset != -1:
-            cur_buf_offset = cur_buf_offset + begin_offset
-        if end_offset == -1:
-            last_block_size = full_block_size
-        else:
-            last_block_size = end_offset
-        if len(page_id_list) == 1:
-            cur_block_size = last_block_size - begin_offset
-        else:
-            cur_block_size = last_block_size + full_block_size - begin_offset
-            if len(page_id_list) > 2:
-                cur_block_size = cur_block_size + (len(page_id_list) - 2) * full_block_size
-        print("reading from buffer pool start offset: {0}, block_size: {1}".format(cur_buf_offset, cur_block_size))
-        fetched_value = self.get_buffer_slice(cur_buf_offset, cur_block_size)
-        return ["fetch_success", fetched_value]
+
+    
