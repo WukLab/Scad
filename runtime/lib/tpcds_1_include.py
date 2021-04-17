@@ -1,17 +1,11 @@
 import pickle
-# import sys
-# import copy
-# import codecs
-# import copyreg
-# import collections
 import os
 import datetime
 import pandas as pd
 import numpy as np
 import tpcds_data_schema
-
-import buffer_pool_lib
-from rdma_array import remote_array
+import disaggrt.buffer_pool_lib as buffer_pool_lib
+from disaggrt.rdma_array import remote_array
 
 # query_name = '1'
 
