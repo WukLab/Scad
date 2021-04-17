@@ -48,9 +48,10 @@ scheme_in = {
         }
 
 def main(_, action):
-    print("[tpcds] step1: begin")
+    tag_print = "step1"
+    print(f"[tpcds] {tag_print}: begin")
 
-    print("[tpcds] step1: start reading csv")
+    print(f"[tpcds] {tag_print}: start reading csv")
     tableurl = "http://localhost:8123/date_dim.csv"
     csv = urllib.request.urlopen(tableurl)
 
@@ -62,12 +63,12 @@ def main(_, action):
             usecols=range(len(names)-1), 
             dtype=scheme_in,
             na_values = "-")
-    print("[tpcds] step1: finish reading csv")
+    print(f"[tpcds] {tag_print}: finish reading csv")
 
     df = df[df['d_year']==2000][['d_date_sk']]
 
     # build transport
-    print("[tpcds] starting writing back")
+    print(f"[tpcds] {tag_print}: starting writing back")
     trans = action.get_transport('1_out_mem', 'rdma')
     trans.reg(buffer_pool_lib.buffer_size)
 

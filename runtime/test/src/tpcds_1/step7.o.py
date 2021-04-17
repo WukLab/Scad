@@ -1,9 +1,9 @@
 #@ type: compute
 #@ dependents:
-#@   - step3
+#@   - step8
 #@ corunning:
-#@   2_out_mem:
-#@     trans: 2_out_mem
+#@   7_out_mem:
+#@     trans: 7_out_mem
 #@     type: rdma
 
 import pickle
@@ -17,34 +17,43 @@ import disaggrt.buffer_pool_lib as buffer_pool_lib
 from disaggrt.rdma_array import remote_array
 
 scheme_in = {
-        "sr_returned_date_sk":np.dtype(np.float32),
-        "sr_return_time_sk":np.dtype(np.float32),
-        "sr_item_sk":np.dtype(np.float32),
-        "sr_customer_sk":np.dtype(np.float32),
-        "sr_cdemo_sk":np.dtype(np.float32),
-        "sr_hdemo_sk":np.dtype(np.float32),
-        "sr_addr_sk":np.dtype(np.float32),
-        "sr_store_sk":np.dtype(np.float32),
-        "sr_reason_sk":np.dtype(np.float32),
-        "sr_ticket_number":np.dtype(np.float32),
-        "sr_return_quantity":np.dtype(np.float32),
-        "sr_return_amt":np.dtype(np.float32),
-        "sr_return_tax":np.dtype(np.float32),
-        "sr_return_amt_inc_tax":np.dtype(np.float32),
-        "sr_fee":np.dtype(np.float32),
-        "sr_return_ship_cost":np.dtype(np.float32),
-        "sr_refunded_cash":np.dtype(np.float32),
-        "sr_reversed_charge":np.dtype(np.float32),
-        "sr_store_credit":np.dtype(np.float32),
-        "sr_net_loss":np.dtype(np.float32)
-    }
+    "s_store_sk": np.dtype(np.float32),
+    "s_store_id": np.dtype(16),
+    "s_rec_start_date": np.dtype('S10'),
+    "s_rec_end_date": np.dtype('S10'),
+    "s_closed_date_sk": np.dtype(np.float32),
+    "s_store_name": np.dtype(50),
+    "s_number_employees": np.dtype(np.float32),
+    "s_floor_space": np.dtype(np.float32),
+    "s_hours": np.dtype(20),
+    "s_manager": np.dtype(40),
+    "s_market_id": np.dtype(np.float32),
+    "s_geography_class": np.dtype(100),
+    "s_market_desc": np.dtype(100),
+    "s_market_manager": np.dtype(40),
+    "s_division_id": np.dtype(np.float32),
+    "s_division_name": np.dtype(50),
+    "s_company_id": np.dtype(np.float32),
+    "s_company_name": np.dtype(50),
+    "s_street_number": np.dtype(10),
+    "s_street_name": np.dtype(60),
+    "s_street_type": np.dtype(15),
+    "s_suite_number": np.dtype(10),
+    "s_city": np.dtype(60),
+    "s_county": np.dtype(30),
+    "s_state": np.dtype(2),
+    "s_zip": np.dtype(10),
+    "s_country": np.dtype(20),
+    "s_gmt_offset": np.dtype(np.float32),
+    "s_tax_precentage": np.dtype(np.float32),
+}
 
 def main(_, action):
-    tag_print = "step2"
+    tag_print = "step7"
     print(f"[tpcds] {tag_print}: begin")
 
     print(f"[tpcds] {tag_print}: start reading csv")
-    tableurl = "http://localhost:8123/store_returns.csv"
+    tableurl = "http://localhost:8123/store.csv"
     csv = urllib.request.urlopen(tableurl)
 
     names = list(scheme_in.keys()) + ['']
@@ -57,15 +66,12 @@ def main(_, action):
             na_values = "-")
     print(f"[tpcds] {tag_print}: finish reading csv")
 
-    # Why use this variable here?
-    wanted_columns = ['sr_customer_sk',
-        'sr_store_sk',
-        'sr_return_amt',
-        'sr_returned_date_sk']
+    df = df[['s_state', 's_store_sk']]
+    df = df[df['s_state'] == 'TN']
 
     # build transport
     print(f"[tpcds] {tag_print}: starting writing back")
-    trans = action.get_transport('2_out_mem', 'rdma')
+    trans = action.get_transport('7_out_mem', 'rdma')
     trans.reg(buffer_pool_lib.buffer_size)
 
     # write back
