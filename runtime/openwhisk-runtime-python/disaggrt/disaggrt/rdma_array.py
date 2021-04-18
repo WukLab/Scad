@@ -115,6 +115,7 @@ class remote_array():
         cur_shape[0] = end_idx - start_idx
         slice_mem_size = end_addr - start_addr
         slice_metadata = remote_array_metadata(start_addr, slice_mem_size, cur_metadata.dtype, cur_metadata.element_byte, cur_metadata.element_per_block,tuple(cur_shape))
+
         return remote_array(self.buffer_pool, metadata = slice_metadata)
 
     # load remote_array[start_idx:end_idx) to local buffer; read only

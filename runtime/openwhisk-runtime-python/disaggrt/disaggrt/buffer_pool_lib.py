@@ -15,6 +15,7 @@ buffer_size = page_buffer_size
 # current strategy is to use list of numpy array
 
 class local_page_node:
+
     def __init__(self, page_id, remote_addr, block_size = 0, dirty_bit = False):
         global page_size
         self.id = page_id
@@ -93,6 +94,7 @@ class buffer_pool:
                 if prev_local_node.remote_addr in self.remote_metadata_dict:
                     self.remote_metadata_dict.pop(prev_local_node.remote_addr)
             self.cur_free_page_idx = 0
+
         last_page_id = self.cur_free_page_idx + request_page_num - 1
         ret_buf_offset = self.cur_free_page_idx * page_size
         if remote_addr != -1:
@@ -100,6 +102,7 @@ class buffer_pool:
             self.page_table_upate(mem_size, self.cur_free_page_idx, remote_addr)
             # store the mem_size and the first page_id
             self.remote_metadata_dict[remote_addr] = [mem_size, ret_buf_offset]
+
         self.cur_free_page_idx = self.cur_free_page_idx + request_page_num
         return ret_buf_offset
         
@@ -175,6 +178,3 @@ class buffer_pool:
         # not in local, pull from remote
         cur_begin_offset = self.get_buffer_offset(mem_size, remote_addr)
         return True, self.get_buffer_slice(cur_begin_offset, mem_size)
-
-
-    
