@@ -8,7 +8,7 @@ import math
 
 # global parameters
 page_size = 256
-page_buffer_size = 655360
+page_buffer_size = 655360000
 metadata_reserve_mem = 0
 buffer_size = page_buffer_size
 # @todo hint prefetch
@@ -113,10 +113,22 @@ class buffer_pool:
         self.trans.buf[buf_offset:buf_offset + mem_size] = data
 
     def update_buffer_to_remote(self, buf_offset, remote_addr, mem_size):
-        self.trans.write(mem_size, remote_addr, buf_offset)
-
+        stride_size = 1024
+        for i in range(0, mem_size, stride_size):
+            cur_write_size = min(stride_size, mem_size - i)
+            print("reading data from {0} with size {1}".format(remote_addr, cur_write_size))
+            self.trans.write(cur_write_size, remote_addr, buf_offset)
+            remote_addr = remote_addr + cur_write_size
+            buf_offset = buf_offset + cur_write_size
+            
     def fetch_remote_to_buffer(self, buf_offset, remote_addr, mem_size):
-        self.trans.read(mem_size, remote_addr, buf_offset)
+        stride_size = 1024
+        for i in range(0, mem_size, stride_size):
+            cur_read_size = min(stride_size, mem_size - i)
+            print("reading data from {0} with size {1}".format(remote_addr, cur_read_size))
+            self.trans.read(cur_read_size, remote_addr, buf_offset)
+            remote_addr = remote_addr + cur_read_size
+            buf_offset = buf_offset + cur_read_size
 
     # @todo for now only consider write to new memory
     def write(self, data, remote_addr = -1):

@@ -17,8 +17,8 @@ def parse_typestr(element_typestr):
     return int(byte_char)
 
 class remote_array_metadata:
-    def __init__(self, remote_addr, mem_size, element_typestr, element_byte, element_per_block, array_shape):
-        self.element_typestr = element_typestr
+    def __init__(self, remote_addr, mem_size, dtype, element_byte, element_per_block, array_shape):
+        self.dtype = dtype
         self.element_byte = element_byte
         self.element_per_block = element_per_block 
         self.remote_addr = remote_addr
@@ -59,17 +59,12 @@ class remote_array():
                 print("write data failure due to start address prblem")
                 exit(1)
             else:
-                self.metadata = remote_array_metadata(remote_start_addr, mem_size, element_typestr, element_byte, element_per_block, array_shape)
+                self.metadata = remote_array_metadata(remote_start_addr, mem_size, input_ndarray.dtype, element_byte, element_per_block, array_shape)
         else:
             self.metadata = metadata
         
     def get_array_from_buf(self, buf):
-        element_typestr = self.metadata.element_typestr
-        if element_typestr[1:] == "i4":
-            return np.frombuffer(buf, dtype=np.int32)
-        elif element_typestr[1:] == "f8":
-            return np.frombuffer(buf, dtype=np.float64)
-        print("element type mismatch")
+        return np.frombuffer(buf, dtype=self.metadata.dtype)
 
     def get_page_id_from_idx(self, idx):
         page_id_list = self.metadata.page_id_list
@@ -119,7 +114,7 @@ class remote_array():
         cur_shape = list(cur_metadata.shape)
         cur_shape[0] = end_idx - start_idx
         slice_mem_size = end_addr - start_addr
-        slice_metadata = remote_array_metadata(start_addr, slice_mem_size, cur_metadata.element_typestr, cur_metadata.element_byte, cur_metadata.element_per_block,tuple(cur_shape))
+        slice_metadata = remote_array_metadata(start_addr, slice_mem_size, cur_metadata.dtype, cur_metadata.element_byte, cur_metadata.element_per_block,tuple(cur_shape))
         return remote_array(self.buffer_pool, metadata = slice_metadata)
 
     # load remote_array[start_idx:end_idx) to local buffer; read only
@@ -132,11 +127,13 @@ class remote_array():
         start_addr = self.get_remote_addr_from_idx(start_idx)
         end_addr = self.get_remote_addr_from_idx(end_idx)
         cur_mem_size = end_addr - start_addr
+        print("fetching mem from {0} with size {1}".format(start_addr, cur_mem_size))
         fetch_status, fetch_data = self.buffer_pool.read(start_addr, cur_mem_size)
         if fetch_status != True:
             print("fetch_status: {0}; page invalid getting block".format(fetch_status))
             exit(1)
         self.local_array = self.get_array_from_buf(fetch_data)
         # restore shape
+        # assert(self.local_array != None)
         self.local_array.shape = self.metadata.shape
         return self.local_array
