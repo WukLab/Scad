@@ -112,7 +112,7 @@ static void inline query_cpu_usage(char ** bufp, int procf, struct monitor_pstat
 
     float percent = 0;
     if (tsdiff != 0)
-        diff * (1000 / HERTZ_VALUE) / tsdiff;
+        percent = diff * (1000 / HERTZ_VALUE) / tsdiff;
 
     // print to output
     bytes = sprintf(*bufp, ",%f", percent);
