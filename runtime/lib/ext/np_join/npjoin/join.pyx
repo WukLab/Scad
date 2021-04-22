@@ -3,6 +3,7 @@ from cython import Py_ssize_t
 
 cnp.import_array()
 
+import numpy as np
 cimport numpy as cnp
 from numpy cimport (
     float32_t,
@@ -28,11 +29,22 @@ def structured_array_merge(
     intp_t [::1] left_indexer, intp_t [::1] right_indexer,
     list left_fields, list right_fields):
 
-    # get new dtype
+    cdef:
+        Py_ssize_t size
 
+    # get new dtype
+    left_dtypes = [(name, t) for name, t
+                             in left.dtype.fields.items()
+                             if name in left_fields]
+    right_dtypes = [(name, t) for name, t
+                             in right.dtype.fields.items()
+                             if name in right_fields]
+    merged_dtypes = np.dtype(left_dtypes + right_dtypes)
+
+    size = len(left_indexer) * merged_dtypes.itemsize
     # allocate new array on buffer
-    # TODO: buf size
-    joined = np.asarray(buf, dtype = merged_dtype)
+    # TODO: buf size, check padding
+    joined = np.asarray(buf[:size], dtype = merged_dtypes)
 
     # assign col by col, using numpy
     # TODO: better copy algorithm
@@ -47,8 +59,8 @@ def join_on_table_float32(
     Float32HashTable hashtable,
     const intp_t[::1] left_sorter,
     const intp_t[::1] left_counter,
-    const intp_t[::1] left_groups,
-    const ndarray[float32_t] right
+    uint64_t left_groups,
+    ndarray[float32_t] right
     ):
 
     cdef:
@@ -56,20 +68,20 @@ def join_on_table_float32(
 
     right_factor = hashtable.lookup(right)
     return join_on(left_groups, left_sorter, left_counter, right_factor)
-    
 
 def prepare_join_float32(
-    const ndarray[:] left
+    ndarray[float32_t] left
     ):
     cdef:
         int64_t size
         int64_t unique_size
         Float32HashTable hashtable
         ndarray[intp_t] left_index
-        ndarray[float32] left_unique
+        ndarray[float32_t] left_unique
 
     size = len(left)
-    hashtable = HashTable(size)
+    # TODO: check this size
+    hashtable = Float32HashTable(size)
     # TODO: na?
     left_unique, left_index = hashtable.factorize(left)
     unique_size = len(left_unique)
@@ -77,18 +89,17 @@ def prepare_join_float32(
     return hashtable, left_sorter, left_count, unique_size
 
 @cython.boundscheck(False)
-@cython.wraparound(False)
 def join_on(
-    int64_t ngroup,
-    const intp_t[:] left_sorter,
-    const intp_t[:] left_counter,
-    ndarray[intp_t] right):
+    int64_t ngroups,
+    const intp_t[::1] left_sorter,
+    const intp_t[::1] left_count,
+    const intp_t[::1] right):
 
     cdef:
         Py_ssize_t i, j, k, count = 0
         ndarray[intp_t] right_sorter
         ndarray[intp_t] right_count
-        ndarray[intp_t] right_indexer
+        ndarray[intp_t] left_indexer, right_indexer
         intp_t lc, rc
         Py_ssize_t loc, left_pos = 0, right_pos = 0, position = 0
         Py_ssize_t offset
@@ -96,10 +107,11 @@ def join_on(
     # get indexer from existing table
     right_sorter, right_count = groupsort_indexer(right, ngroups)
     with nogil:
-        for i in range(1, max_groups + 1):
+        for i in range(1, ngroups + 1):
+            lc = left_count[i]
             rc = right_count[i]
             if rc > 0 and lc > 0:
-                count += left_count[i] * rc
+                count += lc * rc
 
     # start joining, build on left
     left_pos = left_count[0]
@@ -110,7 +122,7 @@ def join_on(
     right_indexer = np.empty(count, dtype=np.intp)
 
     with nogil:
-        for i in range(1, max_groups + 1):
+        for i in range(1, ngroups + 1):
             lc = left_count[i]
             rc = right_count[i]
 
@@ -135,20 +147,21 @@ def join_on(
 def deindex(
     const intp_t[:] values,
     const intp_t[:] indexer,
-    intp_t[::1] out
 ):
     cdef:
         Py_ssize_t i, n, idx
         intp_t fv
+        ndarray[intp_t] out
 
     n = indexer.shape[0]
-
-    fv = fill_value
+    out = np.empty(n, dtype=np.intp)
+    fv = -1
 
     with nogil:
         for i in range(n):
             idx = indexer[i]
             out[i] = values[idx]
+    return out
 
 @cython.boundscheck(False)
 @cython.wraparound(False)

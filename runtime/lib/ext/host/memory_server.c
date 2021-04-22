@@ -20,7 +20,7 @@ int main(int argc, char *argv[]) {
         sprintf(server_config, server_template, default_port, SIZE);
 
     struct libd_action * action =
-        libd_action_init(ACTIVATION_ID, SERVER_URL);
+        libd_action_init(ACTIVATION_ID, 0, NULL);
     libd_action_add_transport(action, server_config);
 
     struct libd_transport * trans =

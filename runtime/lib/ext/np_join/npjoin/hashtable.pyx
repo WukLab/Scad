@@ -25,8 +25,21 @@ from numpy.math cimport NAN
 
 cnp.import_array()
 
+#######
+# inline util
+cdef extern from "numpy/npy_common.h":
+    int64_t NPY_MIN_INT64
 
-from npjoin cimport util
+cdef inline int64_t get_nat():
+    return NPY_MIN_INT64
+
+cdef class C_NAType:
+    pass
+
+cdef C_NAType C_NA
+#
+########
+
 from npjoin.khash cimport (
     KHASH_TRACE_DOMAIN,
     are_equivalent_float32_t,
@@ -39,12 +52,35 @@ from npjoin.khash cimport (
     khcomplex128_t,
     khiter_t,
 )
-from pandas._libs.missing cimport checknull
+
+# Check null
+cpdef bint checknull(object val):
+    """
+    Return boolean describing of the input is NA-like, defined here as any
+    of:
+     - None
+     - nan
+     - NaT
+     - NA
+    Parameters
+    ----------
+    val : object
+    Returns
+    -------
+    bool
+    Notes
+    -----
+    The difference between `checknull` and `checknull_old` is that `checknull`
+    does *not* consider INF or NEGINF to be NA.
+    """
+    return val is C_NA
+
+# start of python
 
 def get_hashtable_trace_domain():
     return KHASH_TRACE_DOMAIN
 
-cdef int64_t NPY_NAT = util.get_nat()
+cdef int64_t NPY_NAT = get_nat()
 SIZE_HINT_LIMIT = (1 << 20) + 7
 
 

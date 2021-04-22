@@ -1,5 +1,12 @@
-from setuptools import Extension, setup
+from Cython import Tempita
 from Cython.Build import cythonize
+import numpy
+from setuptools import (
+        Command,
+        Extension,
+        setup,
+        )
+from setuptools.command.build_ext import build_ext as _build_ext
 import os
 
 # options
@@ -10,12 +17,50 @@ def p(path):
     return os.path.join(cur_dir, path)
 
 # general settings
+macros = []
+
 extra_compile_args = []
 extra_link_args = []
 if debugging_symbols_requested:
 	extra_compile_args.append("-g")
 	extra_compile_args.append("-UNDEBUG")
 	extra_compile_args.append("-O0")
+
+# general helpers
+
+def srcpath(name=None, suffix=".pyx", subdir="src"):
+    return os.path.join("npjoin", subdir, name + suffix)
+
+class build_ext(_build_ext):
+    @classmethod
+    def render_templates(cls, pxifiles):
+        for pxifile in pxifiles:
+            # build pxifiles first, template extension must be .pxi.in
+            print(f"randering file", pxifile)
+            assert pxifile.endswith(".pxi.in")
+            outfile = pxifile[:-3]
+
+            if (
+                os.path.exists(outfile)
+                and os.stat(pxifile).st_mtime < os.stat(outfile).st_mtime
+            ):
+                # if .pxi.in is not updated, no need to output .pxi
+                continue
+
+            with open(pxifile) as f:
+                tmpl = f.read()
+            pyxcontent = Tempita.sub(tmpl)
+
+            with open(outfile, "w") as f:
+                f.write(pyxcontent)
+
+    def build_extensions(self):
+        # if building from c files, don't need to
+        # generate template output
+        if _CYTHON_INSTALLED:
+            self.render_templates(_pxifiles)
+
+        super().build_extensions()
 
 # handles PXI inputs
 _pxi_dep_template = {
@@ -38,21 +83,21 @@ klib_include = ["npjoin/klib"]
 
 # handles extension
 ext_data = {
-    "_libs.hashtable": {
-        "pyxfile": "_libs/hashtable",
+    "hashtable": {
+        "pyxfile": "hashtable",
         "include": klib_include,
         "depends": (
-            ["pandas/_libs/src/klib/khash_python.h", "pandas/_libs/src/klib/khash.h"]
+            ["npjoin/klib/khash_python.h", "npjoin/src/klib/khash.h"]
             + _pxi_dep["hashtable"]
         ),
     },
-	"_libs.join": {"pyxfile": "_libs/join", "include": klib_include},
+	"join": {"pyxfile": "join", "include": klib_include},
 }
 
 extensions = []
 
 for name, data in ext_data.items():
-    source_suffix = suffix if suffix == ".pyx" else data.get("suffix", ".c")
+    source_suffix = ".pyx"
 
     sources = [srcpath(data["pyxfile"], suffix=source_suffix, subdir="")]
 
@@ -74,13 +119,14 @@ for name, data in ext_data.items():
 
     extensions.append(obj)
 
+def _cythonize(extensions, *args, **kwargs):
+    kwargs["nthreads"] = 16
+    build_ext.render_templates(_pxifiles)
+    return cythonize(extensions, *args, **kwargs)
+
 # main setup function
 setup(
-    name = "disagg-python",
-    ext_modules = cythonize([Extension("disagg", [p("disagg.pyx")],
-            include_dirs = [p('../../include')],
-            library_dirs=[p('../..')],
-            libraries = ['d', 'nanomsg', 'curl'])],
-        language_level=3)
+    name = "npjoin",
+    ext_modules = _cythonize(extensions, language_level=3)
     )
 

@@ -112,7 +112,6 @@ int main() {
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
-#include "../inline_helper.h"
 
 
 // hooks for memory allocator, C-runtime allocator used per default
@@ -179,7 +178,7 @@ typedef khuint_t khiter_t;
 
 
 // specializations of https://github.com/aappleby/smhasher/blob/master/src/MurmurHash2.cpp
-khuint32_t __inline__ murmur2_32to32(khuint32_t k){
+khuint32_t static __inline__ murmur2_32to32(khuint32_t k){
     const khuint32_t SEED = 0xc70f6907UL;
     // 'm' and 'r' are mixing constants generated offline.
     // They're not really 'magic', they just happen to work well.
@@ -211,7 +210,7 @@ khuint32_t __inline__ murmur2_32to32(khuint32_t k){
 //    - the same case for 32bit and 64bit builds
 //    - no performance difference could be measured compared to a possible x64-version
 
-khuint32_t __inline__ murmur2_32_32to32(khuint32_t k1, khuint32_t k2){
+khuint32_t static __inline__ murmur2_32_32to32(khuint32_t k1, khuint32_t k2){
     const khuint32_t SEED = 0xc70f6907UL;
     // 'm' and 'r' are mixing constants generated offline.
     // They're not really 'magic', they just happen to work well.
@@ -245,7 +244,7 @@ khuint32_t __inline__ murmur2_32_32to32(khuint32_t k1, khuint32_t k2){
     return h;
 }
 
-khuint32_t __inline__ murmur2_64to32(khuint64_t k){
+khuint32_t static __inline__ murmur2_64to32(khuint64_t k){
     khuint32_t k1 = (khuint32_t)k;
     khuint32_t k2 = (khuint32_t)(k >> 32);
 
@@ -265,7 +264,7 @@ khuint32_t __inline__ murmur2_64to32(khuint64_t k){
 #define kroundup32(x) (--(x), (x)|=(x)>>1, (x)|=(x)>>2, (x)|=(x)>>4, (x)|=(x)>>8, (x)|=(x)>>16, ++(x))
 #endif
 
-static const double __ac_HASH_UPPER = 0.77;
+#define __ac_HASH_UPPER (0.77d)
 
 #define KHASH_DECLARE(name, khkey_t, khval_t)		 					\
 	typedef struct {													\
@@ -423,7 +422,7 @@ static const double __ac_HASH_UPPER = 0.77;
 	}
 
 #define KHASH_INIT(name, khkey_t, khval_t, kh_is_map, __hash_func, __hash_equal) \
-	KHASH_INIT2(name, __inline__, khkey_t, khval_t, kh_is_map, __hash_func, __hash_equal)
+	KHASH_INIT2(name, static __inline__, khkey_t, khval_t, kh_is_map, __hash_func, __hash_equal)
 
 /* --- BEGIN OF HASH FUNCTIONS --- */
 
@@ -442,7 +441,7 @@ static const double __ac_HASH_UPPER = 0.77;
   @param  key   The integer [khuint64_t]
   @return       The hash value [khuint_t]
  */
-__inline__ khuint_t kh_int64_hash_func(khuint64_t key)
+static __inline__ khuint_t kh_int64_hash_func(khuint64_t key)
 {
     return (khuint_t)((key)>>33^(key)^(key)<<11);
 }
@@ -456,7 +455,7 @@ __inline__ khuint_t kh_int64_hash_func(khuint64_t key)
   @param  s     Pointer to a null terminated string
   @return       The hash value
  */
-__inline__ khuint_t __ac_X31_hash_string(const char *s)
+static __inline__ khuint_t __ac_X31_hash_string(const char *s)
 {
 	khuint_t h = *s;
 	if (h) for (++s ; *s; ++s) h = (h << 5) - h + *s;
@@ -473,7 +472,7 @@ __inline__ khuint_t __ac_X31_hash_string(const char *s)
  */
 #define kh_str_hash_equal(a, b) (strcmp(a, b) == 0)
 
-__inline__ khuint_t __ac_Wang_hash(khuint_t key)
+static __inline__ khuint_t __ac_Wang_hash(khuint_t key)
 {
     key += ~(key << 15);
     key ^=  (key >> 10);

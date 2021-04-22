@@ -80,13 +80,13 @@ void traced_free(void* ptr){
 // predisposed to superlinear running times (see GH 36729 for comparison)
 
 
-khuint64_t __inline__ asuint64(double key) {
+khuint64_t static __inline__ asuint64(double key) {
     khuint64_t val;
     memcpy(&val, &key, sizeof(double));
     return val;
 }
 
-khuint32_t __inline__ asuint32(float key) {
+khuint32_t static __inline__ asuint32(float key) {
     khuint32_t val;
     memcpy(&val, &key, sizeof(float));
     return val;
@@ -95,7 +95,7 @@ khuint32_t __inline__ asuint32(float key) {
 #define ZERO_HASH 0
 #define NAN_HASH  0
 
-khuint32_t __inline__ kh_float64_hash_func(double val){
+khuint32_t static __inline__ kh_float64_hash_func(double val){
     // 0.0 and -0.0 should have the same hash:
     if (val == 0.0){
         return ZERO_HASH;
@@ -108,7 +108,7 @@ khuint32_t __inline__ kh_float64_hash_func(double val){
     return murmur2_64to32(as_int);
 }
 
-khuint32_t __inline__ kh_float32_hash_func(float val){
+khuint32_t static __inline__ kh_float32_hash_func(float val){
     // 0.0 and -0.0 should have the same hash:
     if (val == 0.0f){
         return ZERO_HASH;
@@ -133,10 +133,10 @@ KHASH_MAP_INIT_FLOAT64(float64, size_t)
 
 KHASH_MAP_INIT_FLOAT32(float32, size_t)
 
-khint32_t __inline__ kh_complex128_hash_func(khcomplex128_t val){
+khint32_t static __inline__ kh_complex128_hash_func(khcomplex128_t val){
     return kh_float64_hash_func(val.real)^kh_float64_hash_func(val.imag);
 }
-khint32_t __inline__ kh_complex64_hash_func(khcomplex64_t val){
+khint32_t static __inline__ kh_complex64_hash_func(khcomplex64_t val){
     return kh_float32_hash_func(val.real)^kh_float32_hash_func(val.imag);
 }
 
@@ -160,7 +160,7 @@ KHASH_MAP_INIT_COMPLEX128(complex128, size_t)
 #define kh_exist_complex128(h, k) (kh_exist(h, k))
 
 
-int __inline__ pyobject_cmp(PyObject* a, PyObject* b) {
+int static __inline__ pyobject_cmp(PyObject* a, PyObject* b) {
 	int result = PyObject_RichCompareBool(a, b, Py_EQ);
 	if (result < 0) {
 		PyErr_Clear();
@@ -176,7 +176,7 @@ int __inline__ pyobject_cmp(PyObject* a, PyObject* b) {
 }
 
 
-khint32_t __inline__ kh_python_hash_func(PyObject* key){
+khint32_t static __inline__ kh_python_hash_func(PyObject* key){
     // For PyObject_Hash holds:
     //    hash(0.0) == 0 == hash(-0.0)
     //    hash(X) == 0 if X is a NaN-value
@@ -222,6 +222,7 @@ KHASH_SET_INIT_PYOBJECT(pyset)
 #define kh_exist_pymap(h, k) (kh_exist(h, k))
 #define kh_exist_pyset(h, k) (kh_exist(h, k))
 
+#if 0
 KHASH_MAP_INIT_STR(strbox, kh_pyobject_t)
 
 typedef struct {
@@ -231,13 +232,13 @@ typedef struct {
 
 typedef kh_str_starts_t* p_kh_str_starts_t;
 
-p_kh_str_starts_t __inline__ kh_init_str_starts(void) {
+p_kh_str_starts_t static __inline__ kh_init_str_starts(void) {
 	kh_str_starts_t *result = (kh_str_starts_t*)KHASH_CALLOC(1, sizeof(kh_str_starts_t));
 	result->table = kh_init_str();
 	return result;
 }
 
-khuint_t __inline__ kh_put_str_starts_item(kh_str_starts_t* table, char* key, int* ret) {
+khuint_t static __inline__ kh_put_str_starts_item(kh_str_starts_t* table, char* key, int* ret) {
     khuint_t result = kh_put_str(table->table, key, ret);
 	if (*ret != 0) {
 		table->starts[(unsigned char)key[0]] = 1;
@@ -245,7 +246,7 @@ khuint_t __inline__ kh_put_str_starts_item(kh_str_starts_t* table, char* key, in
     return result;
 }
 
-khuint_t __inline__ kh_get_str_starts_item(const kh_str_starts_t* table, const char* key) {
+khuint_t static __inline__ kh_get_str_starts_item(const kh_str_starts_t* table, const char* key) {
     unsigned char ch = *key;
 	if (table->starts[ch]) {
 		if (ch == '\0' || kh_get_str(table->table, key) != table->table->n_buckets) return 1;
@@ -253,18 +254,19 @@ khuint_t __inline__ kh_get_str_starts_item(const kh_str_starts_t* table, const c
     return 0;
 }
 
-void __inline__ kh_destroy_str_starts(kh_str_starts_t* table) {
+void static __inline__ kh_destroy_str_starts(kh_str_starts_t* table) {
 	kh_destroy_str(table->table);
 	KHASH_FREE(table);
 }
 
-void __inline__ kh_resize_str_starts(kh_str_starts_t* table, khuint_t val) {
+void static __inline__ kh_resize_str_starts(kh_str_starts_t* table, khuint_t val) {
 	kh_resize_str(table->table, val);
 }
+#endif
 
 // utility function: given the number of elements
 // returns number of necessary buckets
-khuint_t __inline__ kh_needed_n_buckets(khuint_t n_elements){
+khuint_t static __inline__ kh_needed_n_buckets(khuint_t n_elements){
     khuint_t candidate = n_elements;
     kroundup32(candidate);
     khuint_t upper_bound = (khuint_t)(candidate * __ac_HASH_UPPER + 0.5);

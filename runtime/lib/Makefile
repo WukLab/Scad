@@ -21,7 +21,7 @@ LIBS     := -lnanomsg -lcurl -lpthread
 CFLAGS   := -fPIC -O2 -g -std=c11 -Wall $(INCLUDES) -DDEBUG
 LDFLAGS  := $(LDFLAGS) $(LIBS)
 
-.PNONY: all install clean ext_python
+.PNONY: all install clean ext_python ext_npjoin ext_npjoin_install
 
 install: libd.so
 	cp libd.so /usr/lib
@@ -35,6 +35,11 @@ libd.so: $(OBJECTS)
 # Python interface module using cython
 ext_python: libd.so
 	python ext/python/setup.py build_ext -i
+
+ext_npjoin:
+	python ext/np_join/setup.py build_ext -i
+ext_npjoin_install: ext_npjoin
+	pip install ext/np_join
 
 memory_server: ext/host/memory_server.o $(OBJECTS)
 	$(LD) -o $@ $^ $(LDFLAGS)
