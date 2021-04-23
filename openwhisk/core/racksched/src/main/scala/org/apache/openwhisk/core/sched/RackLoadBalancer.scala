@@ -153,7 +153,7 @@ class RackSimpleBalancer(config: WhiskConfig,
   // once int0 == int1, then the key should be removed from the map.
   // in the case of an error, the scheduling message will be removed after ~5 minutes if the number of expected scheduled
   // messages does not come through.
-  // the key of the map is (app activation ID, function activation ID, scheduled function name)
+  // the key of the map is (app activation ID, function activation ID, scheduled function name, parallelismIdx)
   val preScheduled: mutable.Map[(ActivationId, ActivationId, FullyQualifiedEntityName), (InvokerInstanceId, Int, Int)] = mutable.Map.empty
 
   /** Build a cluster of all loadbalancers */
@@ -308,7 +308,10 @@ class RackSimpleBalancer(config: WhiskConfig,
                     // and set a timer to remove it
                     defaultSchedule() match {
                       case Some((value: InvokerInstanceId, check)) =>
-                        preScheduled.put(key, (value, 1, content))
+                        // waitForContent includes all previous nodes, but this activation msg is a parallelism copy,
+                        // then one of the nodes from "waitForContent" is parallelized, so substract 1, and add the
+                        // number of parallel copies
+                        preScheduled.put(key, (value, 1, content + msg.parallelismIdx.max - 1))
                         actorSystem.getScheduler.scheduleOnce(FiniteDuration(5, MINUTES))(() => preScheduled.remove(key))
                         Some((value, check))
                       case _ => None
@@ -604,6 +607,10 @@ class RackSimpleBalancer(config: WhiskConfig,
                                         invoker: InvokerInstanceId): Future[RecordMetadata] = {
     implicit val transid: TransactionId = msg.transid
 
+    if (msg.parallelismIdx.index != 0) {
+      return Future.successful(null)
+    }
+
     val sentMsg = msg.copy(rootControllerIndex = rackschedInstance)
     val topic = invoker.getMainTopic
 
@@ -616,7 +623,7 @@ class RackSimpleBalancer(config: WhiskConfig,
     sentMsg.sendResultToInvoker.foreach(args => {
       val originatingInvoker = args._1
       val originalActivationId = args._2
-      producer.send(originatingInvoker.getSchedResultTopic, SchedulingDecision(originalActivationId, sentMsg.activationId, invoker, transid))
+      producer.send(originatingInvoker.getSchedResultTopic, SchedulingDecision(originalActivationId, sentMsg.activationId, invoker, transid, sentMsg.parallelismIdx))
         .failed.foreach(exception => {
             logging.warn(this, s"Failed to send message to topic: ${originatingInvoker.getSchedResultTopic}: ${exception}")
         })

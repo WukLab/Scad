@@ -928,7 +928,9 @@ class ContainerProxy(factory: (TransactionId,
                 runInterval.duration >= actionTimeout,
                 response)
               resultWaiter.foreach(waiter => {
-                waiter ! activation
+                if (!activation.name.asString.contains("invokerHealthTestAction")) {
+                  waiter ! activation
+                }
               })
             activation
           }

@@ -74,7 +74,7 @@ run_test:
 setup:
 	./run_ansible.sh setup.yml
 
-start_all: teardown couchdb wipe openwhisk apigw
+start_all: build teardown couchdb wipe openwhisk apigw
 
 start_couchdb: setup
 	./run_ansible.sh couchdb.yml

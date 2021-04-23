@@ -1,7 +1,7 @@
 package org.apache.openwhisk.core.scheduler
 
 import org.apache.openwhisk.common.{Logging, TransactionId}
-import org.apache.openwhisk.core.connector.{Message, RunningActivation}
+import org.apache.openwhisk.core.connector.{Message, ParallelismInfo, RunningActivation}
 import org.apache.openwhisk.core.entity.{ActivationId, ActivationLogs, ActivationResponse, EntityName, EntityPath, ExecutableWhiskActionMetaData, Identity, Parameters, SemVer, WhiskActionMetaData, WhiskEntityReference, WhiskFunction}
 import org.apache.openwhisk.core.entity.types.EntityStore
 import spray.json.{DefaultJsonProtocol, RootJsonFormat}
@@ -45,7 +45,7 @@ object DagExecutor {
       // this one should be immutable, and we will make a copy for each new object we plan to schedule with that
       // particular object's activation id removed from the copied set.
       val objSeq = startingObjs.toSeq
-      val activations: Seq[RunningActivation] = objSeq.map(o => RunningActivation(o.toFQEN().toString, ActivationId.generate()))
+      val activations: Seq[RunningActivation] = objSeq.map(o => RunningActivation(o.toFQEN().toString, ActivationId.generate(), ParallelismInfo(0, 1)))
       val siblingSet: Set[RunningActivation] = activations.toSet
       val x = objSeq zip activations map { obj =>
         (objMap(obj._1).toExecutableWhiskAction, obj._2)
