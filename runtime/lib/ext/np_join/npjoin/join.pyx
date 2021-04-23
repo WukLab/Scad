@@ -34,11 +34,11 @@ def structured_array_merge(
 
     # get new dtype
     left_dtypes = [(name, t) for name, t
-                             in left.dtype.fields.items()
-                             if name in left_fields]
+                    in left.dtype.descr
+                    if name in left_fields]
     right_dtypes = [(name, t) for name, t
-                             in right.dtype.fields.items()
-                             if name in right_fields]
+                    in right.dtype.descr
+                    if name in right_fields]
     merged_dtypes = np.dtype(left_dtypes + right_dtypes)
 
     size = len(left_indexer) * merged_dtypes.itemsize
