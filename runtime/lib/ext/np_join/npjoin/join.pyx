@@ -24,7 +24,7 @@ from npjoin.hashtable cimport Float32HashTable
 
 # simply merge two array, do not repack.
 def structured_array_merge(
-    char [:] buf,
+    uint8_t [::1] buf,
     ndarray left, ndarray right,
     intp_t [::1] left_indexer, intp_t [::1] right_indexer,
     list left_fields, list right_fields):
@@ -44,12 +44,14 @@ def structured_array_merge(
     size = len(left_indexer) * merged_dtypes.itemsize
     # allocate new array on buffer
     # TODO: buf size, check padding
-    joined = np.asarray(buf[:size], dtype = merged_dtypes)
+    joined = np.asarray(buf[:size]).view(dtype = merged_dtypes)
 
     # assign col by col, using numpy
     # TODO: better copy algorithm
-    joined[left_fields] = left[left_fields][left_indexer]
-    joined[right_fields] = right[left_fields][right_indexer]
+    for f in left_fields:
+        joined[f] = left[f][left_indexer]
+    for f in right_fields:
+        joined[f] = right[f][right_indexer]
 
     # copy from arries
     return joined
