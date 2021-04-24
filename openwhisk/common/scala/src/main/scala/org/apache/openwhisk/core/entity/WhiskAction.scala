@@ -43,6 +43,12 @@ object SeqJsonWriter {
   }
 }
 
+//object OptionIntWriter {
+//  implicit def optionIntWriter[T :JsonWriter] = new JsonWriter[Option[Integer]] {
+//    def write(int: Option[Integer]) = JsNumber(int.getOrElse(1))
+//  }
+//}
+
 case class WhiskApplication(namespace: EntityPath,
                             override val name: EntityName,
                             functions: List[WhiskEntityReference],
@@ -249,10 +255,11 @@ case class WhiskActionPut(exec: Option[Exec] = None,
                           runtimeType: Option[String] = None,
                           delAnnotations: Option[Array[String]] = None,
                           relationships: Option[WhiskActionRelationshipPut] = None,
+                          parallelism: Option[Int] = None,
                           name: Option[String] = Some("default")) {
 
   protected[core] def replace(exec: Exec) = {
-    WhiskActionPut(Some(exec), parameters, limits, version, publish, annotations, relationships = relationships, runtimeType = runtimeType)
+    WhiskActionPut(Some(exec), parameters, limits, version, publish, annotations, relationships = relationships, runtimeType = runtimeType, parallelism = parallelism)
   }
 
   /**
@@ -264,7 +271,7 @@ case class WhiskActionPut(exec: Option[Exec] = None,
         val newExec = SequenceExec(components map { c =>
           FullyQualifiedEntityName(c.path.resolveNamespace(userNamespace), c.name)
         })
-        WhiskActionPut(Some(newExec), parameters, limits, version, publish, annotations, relationships = relationships, runtimeType = runtimeType)
+        WhiskActionPut(Some(newExec), parameters, limits, version, publish, annotations, relationships = relationships, runtimeType = runtimeType, parallelism = parallelism)
       case _ => this
     } getOrElse this
   }
@@ -272,6 +279,7 @@ case class WhiskActionPut(exec: Option[Exec] = None,
   protected[core] def withRelationshipsPut(relations: WhiskActionRelationshipPut): WhiskActionPut = {
     WhiskActionPut(exec, parameters, limits, version, publish, annotations, runtimeType, delAnnotations,
       relationships = Some(relations),
+      parallelism = parallelism,
       name = name)
   }
 }
@@ -282,6 +290,7 @@ abstract class WhiskActionLike(override val name: EntityName) extends WhiskEntit
   def limits: ActionLimits
   def runtimeType: Option[String] = None
   def relationships: Option[WhiskActionRelationship] = None
+  def parallelism: Option[Int] = None
   def parentFunc: Option[WhiskEntityReference] = None
 
   /** @return true iff action has appropriate annotation. */
@@ -307,7 +316,8 @@ abstract class WhiskActionLike(override val name: EntityName) extends WhiskEntit
       "annotations" -> annotations.toJson,
       "runtimeType" -> runtimeType.toJson,
       "relationships" -> relationships.toJson,
-      "parentFunc" -> parentFunc.toJson
+      "parallelism" -> parallelism.toJson,
+      "parentFunc" -> parentFunc.toJson,
     )
 
   def getReference(): WhiskEntityReference = {
@@ -399,10 +409,12 @@ case class WhiskAction(namespace: EntityPath, //name
                        version: SemVer = SemVer(),
                        publish: Boolean = false,
                        annotations: Parameters = Parameters(),
+                       override val parallelism: Option[Int] = None,
                        override val updated: Instant = WhiskEntity.currentMillis(),
                        override val runtimeType: Option[String] = None,
                        override val relationships: Option[WhiskActionRelationship] = None,
-                       override val parentFunc: Option[WhiskEntityReference] = None)
+                       override val parentFunc: Option[WhiskEntityReference] = None,
+                      )
     extends WhiskActionLike(name) {
 
   
@@ -439,7 +451,9 @@ case class WhiskAction(namespace: EntityPath, //name
   def toExecutableWhiskAction: Option[ExecutableWhiskAction] = exec match {
     case codeExec: CodeExec[_] =>
       Some(
-        ExecutableWhiskAction(namespace, name, codeExec, parameters, limits, version, publish, annotations, runtimeType = runtimeType, relationships = relationships, parentFunc = parentFunc)
+        ExecutableWhiskAction(namespace, name, codeExec, parameters, limits, version, publish, annotations,
+          parallelism = parallelism,
+          runtimeType = runtimeType, relationships = relationships, parentFunc = parentFunc)
           .revision[ExecutableWhiskAction](rev))
     case _ => None
   }
@@ -470,6 +484,7 @@ case class WhiskActionMetaData(namespace: EntityPath,
                                version: SemVer = SemVer(),
                                publish: Boolean = false,
                                annotations: Parameters = Parameters(),
+                               override val parallelism: Option[Int] = None,
                                override val updated: Instant = WhiskEntity.currentMillis(),
                                binding: Option[EntityPath] = None,
                                override val runtimeType: Option[String] = None,
@@ -514,6 +529,7 @@ case class WhiskActionMetaData(namespace: EntityPath,
           publish,
           annotations,
           binding,
+          parallelism,
           runtimeType = runtimeType,
           relationships = relationships,
           parentFunc = parentFunc)
@@ -555,6 +571,7 @@ case class ExecutableWhiskAction(namespace: EntityPath,
                                  publish: Boolean = false,
                                  annotations: Parameters = Parameters(),
                                  binding: Option[EntityPath] = None,
+                                 override val parallelism: Option[Int] = None,
                                  override val runtimeType: Option[String] = None,
                                  override val relationships: Option[WhiskActionRelationship] = Some(WhiskActionRelationship.empty),
                                  override val parentFunc: Option[WhiskEntityReference] = None
@@ -591,7 +608,9 @@ case class ExecutableWhiskAction(namespace: EntityPath,
   }
 
   def toWhiskAction =
-    WhiskAction(namespace, name, exec, parameters, limits, version, publish, annotations, runtimeType = runtimeType, relationships = relationships, parentFunc = parentFunc)
+    WhiskAction(namespace, name, exec, parameters, limits, version, publish, annotations,
+      parallelism = parallelism,
+      runtimeType = runtimeType, relationships = relationships, parentFunc = parentFunc)
       .revision[WhiskAction](rev)
 }
 
@@ -605,6 +624,7 @@ case class ExecutableWhiskActionMetaData(namespace: EntityPath,
                                          publish: Boolean = false,
                                          annotations: Parameters = Parameters(),
                                          binding: Option[EntityPath] = None,
+                                         override val parallelism: Option[Int] = None,
                                          override val runtimeType: Option[String] = None,
                                          override val relationships: Option[WhiskActionRelationship] = None,
                                          override val parentFunc: Option[WhiskEntityReference] = None,
@@ -615,8 +635,8 @@ case class ExecutableWhiskActionMetaData(namespace: EntityPath,
   require(limits != null, "limits undefined in ExecutableWhiskActionMetaData")
 
   def toWhiskAction =
-    WhiskActionMetaData(namespace, name, exec, parameters, limits, version, publish, annotations, updated,
-      runtimeType = runtimeType, relationships = relationships, parentFunc = parentFunc)
+    WhiskActionMetaData(namespace, name, exec, parameters, limits, version, publish, annotations, parallelism = parallelism,
+      updated, runtimeType = runtimeType, relationships = relationships, parentFunc = parentFunc)
       .revision[WhiskActionMetaData](rev)
 
   /**
@@ -646,7 +666,8 @@ object WhiskAction extends DocumentFactory[WhiskAction] with WhiskEntityQueries[
         "version",
         "publish",
         "annotations",
-        "updated",
+      "parallelism",
+      "updated",
       "runtimeType",
        "relationships",
        "parentFunc").write(obj)
@@ -661,6 +682,7 @@ object WhiskAction extends DocumentFactory[WhiskAction] with WhiskEntityQueries[
         fromField[SemVer](json, "version"),
         fromField[Boolean](json, "publish"),
         fromField[Parameters](json, "annotations"),
+        fromField[Option[Int]](json, "parallelism"),
         fromField[Instant](json, "updated"),
         fromField[Option[String]](json, "runtimeType"),
         fromField[Option[WhiskActionRelationship]](json, "relationships"),
@@ -886,6 +908,7 @@ object WhiskActionMetaData
       "version",
       "publish",
       "annotations",
+      "parallelism",
       "updated",
       "binding",
       "runtimeType",
@@ -902,6 +925,7 @@ object WhiskActionMetaData
         fromField[SemVer](json, "version"),
         fromField[Boolean](json, "publish"),
         fromField[Parameters](json, "annotations"),
+        fromField[Option[Int]](json, "parallelism"),
         fromField[Instant](json, "updated"),
         fromField[Option[EntityPath]](json, "binding"),
         fromField[Option[String]](json, "runtimeType"),
@@ -980,10 +1004,11 @@ object ActionLimitsOption extends DefaultJsonProtocol {
 }
 
 object WhiskActionPut extends DefaultJsonProtocol {
-  implicit val serdes: RootJsonFormat[WhiskActionPut] = jsonFormat10(WhiskActionPut.apply)
+  implicit val serdes: RootJsonFormat[WhiskActionPut] = jsonFormat11(WhiskActionPut.apply)
 
   def fromWhiskAction(obj: WhiskAction): WhiskActionPut = {
     WhiskActionPut(Some(obj.exec), Some(obj.parameters), Some(ActionLimitsOption.fromActionLimit(obj.limits)),
-      Some(obj.version), Some(obj.publish), Some(obj.annotations), obj.runtimeType, None, obj.relationships.map(_.toRelationshipPut()), name = Some(obj.name.toString()))
+      Some(obj.version), Some(obj.publish), Some(obj.annotations), obj.runtimeType, None, obj.relationships.map(_.toRelationshipPut()), name = Some(obj.name.toString()),
+      parallelism = obj.parallelism)
   }
 }

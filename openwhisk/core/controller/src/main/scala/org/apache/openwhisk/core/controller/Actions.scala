@@ -574,6 +574,7 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
       WhiskActionsApi.amendAnnotations(content.annotations getOrElse Parameters(), exec),
       relationships = relationships,
       runtimeType = content.runtimeType,
+      parallelism = content.parallelism,
       parentFunc = parentFunc)
   }
 

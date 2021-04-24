@@ -75,10 +75,10 @@ class DefaultTopBalancer(config: WhiskConfig,
   // map which based on a tuple-key stores the previously-scheduled location and two other values (id, int0, int1) where
   // int0 represents the total scheduled messages based on this value
   // int1 represent the max number of messages scheduled using this map
-  // once int0 == int1, then the key should be removed from the map.
+  // once int0 == int1, then the key should be removed from the map
   // in the case of an error, the scheduling message will be removed after ~5 minutes if the number of expected scheduled
   // messages does not come through.
-  // the key of the map is (app activation ID, function activation ID, scheduled function name)
+  // the key of the map is (app activation ID, function activation ID, scheduled function name, parallelismIdx)
   val preScheduled: mutable.Map[(ActivationId, ActivationId, FullyQualifiedEntityName), (RackSchedInstanceId, Int, Int)] = mutable.Map.empty
 
   protected val messageProducer: MessageProducer =
@@ -216,7 +216,10 @@ class DefaultTopBalancer(config: WhiskConfig,
                     // and set a timer to remove it
                     defaultSchedule() match {
                       case Some(value) =>
-                        preScheduled.put(key, (value, 1, content))
+                        // waitForContent includes all previous nodes, but this activation msg is a parallelism copy,
+                        // then one of the nodes from "waitForContent" is parallelized, so substract 1, and add the
+                        // number of parallel copies
+                        preScheduled.put(key, (value, 1, content + msg.parallelismIdx.max - 1))
                         actorSystem.getScheduler.scheduleOnce(FiniteDuration(5, MINUTES))(() => preScheduled.remove(key))
                         Some(value)
                       case _ => None
@@ -290,7 +293,6 @@ class DefaultTopBalancer(config: WhiskConfig,
                                      msg: ActivationMessage,
                                      racksched: RackSchedInstanceId): Future[RecordMetadata] = {
     implicit val transid: TransactionId = msg.transid
-
     val topic = racksched.toString
 
     MetricEmitter.emitCounterMetric(LoggingMarkers.LOADBALANCER_ACTIVATION_START)

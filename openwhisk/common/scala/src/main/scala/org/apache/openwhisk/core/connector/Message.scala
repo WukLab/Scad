@@ -32,6 +32,7 @@ import java.util.concurrent.TimeUnit
 import org.apache.openwhisk.core.entity.ActivationResponse.{ERROR_FIELD, statusForCode}
 import org.apache.openwhisk.core.entity.types.EntityStore
 import org.apache.openwhisk.utils.JsHelpers
+import spray.json.DefaultJsonProtocol.{IntJsonFormat, jsonFormat}
 
 import scala.concurrent.Future
 
@@ -96,6 +97,7 @@ case class ActivationMessage(override val transid: TransactionId,
                              prewarmOnly: Option[PartialPrewarmConfig] = None,
                              sendResultToInvoker: Option[(InvokerInstanceId, ActivationId)] = None,
                              waitForContent: Option[Int] = None,
+                             parallelismIdx: ParallelismInfo = ParallelismInfo(0, 1),
                             )
     extends Message {
 
@@ -107,6 +109,11 @@ case class ActivationMessage(override val transid: TransactionId,
   }
 
   def causedBySequence: Boolean = cause.isDefined
+}
+
+case class ParallelismInfo(index: Int, max: Int) extends DefaultJsonProtocol
+object ParallelismInfo {
+  implicit val serdes: RootJsonFormat[ParallelismInfo] = jsonFormat(ParallelismInfo.apply, "index", "max")
 }
 
 /**
@@ -209,7 +216,7 @@ object ActivationMessage extends DefaultJsonProtocol {
   def parse(msg: String) = Try(serdes.read(msg.parseJson))
 
   private implicit val fqnSerdes = FullyQualifiedEntityName.serdes
-  implicit val serdes: RootJsonFormat[ActivationMessage] = jsonFormat18(ActivationMessage.apply)
+  implicit val serdes: RootJsonFormat[ActivationMessage] = jsonFormat19(ActivationMessage.apply)
 }
 
 object CombinedCompletionAndResultMessage extends DefaultJsonProtocol {
@@ -531,6 +538,7 @@ case class _RunningActivation(activationId: ActivationId,
 
 case class RunningActivation(objName: String,
                              objActivation: ActivationId,
+                             parallelismInfo: ParallelismInfo,
 //                             transportName: String, // Name of the transport, should be same on both side // removed temporarily
 //                             transportType: String, // type of transport, // derived from object at invoker side
                              transportImpl: String, // Implementation of transport
@@ -554,16 +562,17 @@ case class RunningActivation(objName: String,
 
 object RunningActivation extends DefaultJsonProtocol with DocumentFactory[RunningActivation] {
 
-  def apply(objName: String, objActivation: ActivationId): RunningActivation = {
-    RunningActivation(objName, objActivation, "tcp", needWait = true, needSignal = true)
+  def apply(objName: String, objActivation: ActivationId, parallelismInfo: ParallelismInfo): RunningActivation = {
+    RunningActivation(objName, objActivation, parallelismInfo, "tcp", needWait = true, needSignal = true)
   }
 
   implicit val serdes: RootJsonFormat[RunningActivation] = jsonFormat(RunningActivation.apply,
     "objName",
-  "objActivation",
-  "transportImpl",
+    "objActivation",
+    "parallelismInfo",
+    "transportImpl",
     "needWait",
-  "needSignal")
+    "needSignal")
 }
 
 case class PartialPrewarmConfig(ttlMs: Long, resources: RuntimeResources)
