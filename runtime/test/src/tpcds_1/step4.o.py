@@ -32,13 +32,14 @@ def main(params, action):
     print(f"[tpcds] {tag_print}: start reading remote array")
     # for now, we create two different buffer pool; may change latter
     # load fron step3
-    trans_s3 = action.get_transport('3_out_mem', 'rdma')
+    trans_s3_name = '3_out_mem'
+    trans_s3 = action.get_transport(trans_s3_name, 'rdma')
     trans_s3.reg(buffer_pool_lib.buffer_size)
 
     context_dict = pickle.loads(base64.b64decode(params['step3']['meta']))
     print(f"[tpcds] {tag_print}: loading params from step3", context_dict)
 
-    bp_s3 = buffer_pool_lib.buffer_pool(trans_s3, context_dict["bp"])
+    bp_s3 = buffer_pool_lib.buffer_pool({trans_s3_name: trans_s3}, context_dict["bp"])
     df_s3_arr = remote_array(bp_s3, metadata=context_dict["df"])
     df3 = df_s3_arr.materialize()
 
@@ -50,13 +51,14 @@ def main(params, action):
     print(f'[tpcds] {tag_print} df: ', df.itemsize, df.shape, df.dtype)
     
     # build transport
+    trans_s4_name = '4_out_mem'
     print(f"[tpcds] {tag_print}: starting writing back")
-    trans_s4 = action.get_transport('4_out_mem', 'rdma')
+    trans_s4 = action.get_transport(trans_s4_name, 'rdma')
     trans_s4.reg(buffer_pool_lib.buffer_size)
 
     # write back
-    bp_s4 = buffer_pool_lib.buffer_pool(trans_s4)
-    rdma_array = remote_array(bp_s4, input_ndarray=df)
+    bp_s4 = buffer_pool_lib.buffer_pool({trans_s4_name: trans_s4})
+    rdma_array = remote_array(bp_s4, input_ndarray=df, transport_name=trans_s4_name)
 
     # transfer the metedata
     context_dict = {}

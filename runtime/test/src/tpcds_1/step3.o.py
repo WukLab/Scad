@@ -37,24 +37,26 @@ def main(params, action):
     print(f"[tpcds] {tag_print}: start reading remote array")
     # for now, we create two different buffer pool; may change latter
     # load fron step1
-    trans_s1 = action.get_transport('1_out_mem', 'rdma')
+    trans_s1_name = '1_out_mem'
+    trans_s1 = action.get_transport(trans_s1_name, 'rdma')
     trans_s1.reg(buffer_pool_lib.buffer_size)
 
     context_dict = pickle.loads(base64.b64decode(params['step1']['meta']))
     print(f"[tpcds] {tag_print}: loading params from step1", context_dict)
 
-    bp_s1 = buffer_pool_lib.buffer_pool(trans_s1, context_dict["bp"])
+    bp_s1 = buffer_pool_lib.buffer_pool({trans_s1_name: trans_s1}, context_dict["bp"])
     df_s1_arr = remote_array(bp_s1, metadata=context_dict["df"])
     df1 = df_s1_arr.materialize()
 
     # load fron step2
-    trans_s2 = action.get_transport('2_out_mem', 'rdma')
+    trans_s2_name = '2_out_mem'
+    trans_s2 = action.get_transport(trans_s2_name, 'rdma')
     trans_s2.reg(buffer_pool_lib.buffer_size)
 
     context_dict = pickle.loads(base64.b64decode(params['step2']['meta']))
     print(f"[tpcds] {tag_print}: loading params from step2", context_dict)
 
-    bp_s2 = buffer_pool_lib.buffer_pool(trans_s2, context_dict["bp"])
+    bp_s2 = buffer_pool_lib.buffer_pool({trans_s2_name: trans_s2}, context_dict["bp"])
     df_s2_arr = remote_array(bp_s2, metadata=context_dict["df"])
     df2 = df_s2_arr.materialize()
     print(f"[tpcds] {tag_print}: finish reading rdma")
@@ -70,15 +72,14 @@ def main(params, action):
     print(f'[tpcds] {tag_print} df: ', df.itemsize, df.shape, df.dtype)
  
     # build transport
+    trans_s3_name = '3_out_mem'
     print(f"[tpcds] {tag_print}: starting writing back")
-    trans_s3 = action.get_transport('3_out_mem', 'rdma')
+    trans_s3 = action.get_transport(trans_s3_name, 'rdma')
     trans_s3.reg(buffer_pool_lib.buffer_size)
 
-
-
     # write back
-    bp_s3 = buffer_pool_lib.buffer_pool(trans_s3)
-    rdma_array = remote_array(bp_s3, input_ndarray=df)
+    bp_s3 = buffer_pool_lib.buffer_pool({trans_s3_name:trans_s3})
+    rdma_array = remote_array(bp_s3, input_ndarray=df, transport_name=trans_s3_name)
 
     # transfer the metedata
     context_dict = {}

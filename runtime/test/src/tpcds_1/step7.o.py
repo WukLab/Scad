@@ -73,13 +73,14 @@ def main(_, action):
     df = rfn.repack_fields(df, align=True)
 
     # build transport
+    trans_name = '7_out_mem'
     print(f"[tpcds] {tag_print}: starting writing back")
-    trans = action.get_transport('7_out_mem', 'rdma')
+    trans = action.get_transport(trans_name, 'rdma')
     trans.reg(buffer_pool_lib.buffer_size)
 
     # write back
-    buffer_pool = buffer_pool_lib.buffer_pool(trans)
-    rdma_array = remote_array(buffer_pool, input_ndarray=df)
+    buffer_pool = buffer_pool_lib.buffer_pool({trans_name: trans})
+    rdma_array = remote_array(buffer_pool, input_ndarray=df, transport_name=trans_name)
 
     # transfer the metedata
     context_dict = {}

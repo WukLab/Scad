@@ -61,46 +61,21 @@ def main(_, action):
     df = genfromtxt(csv, delimiter='|', dtype=build_dtype(scheme_in))
     print(f"[tpcds] {tag_print}: finish reading csv")
 
-    # manual filter
-#    df = df[[
-#        "sr_returned_date_sk",
-#        "sr_return_time_sk",
-#        "sr_item_sk",
-#        "sr_customer_sk",
-#        # "sr_cdemo_sk",
-#        # "sr_hdemo_sk",
-#        "sr_addr_sk",
-#        "sr_store_sk",
-#        # "sr_reason_sk",
-#        "sr_ticket_number",
-#        "sr_return_quantity",
-#        # "sr_return_amt",
-#        "sr_return_tax",
-#        "sr_return_amt_inc_tax",
-#        "sr_fee",
-#        "sr_return_ship_cost",
-#        "sr_refunded_cash",
-#        "sr_reversed_charge",
-#        "sr_store_credit",
-#        "sr_net_loss"
-#        ]]
-#    df = rfn.repack_fields(df)
-    print('df: ', df.dtype, df.itemsize, df.shape)
-
     # Why use this variable here?
-    wanted_columns = ['sr_customer_sk',
-        'sr_store_sk',
-        'sr_return_amt',
-        'sr_returned_date_sk']
+    #wanted_columns = ['sr_customer_sk',
+    #    'sr_store_sk',
+    #    'sr_return_amt',
+    #    'sr_returned_date_sk']
 
     # build transport
+    trans_name = '2_out_mem'
     print(f"[tpcds] {tag_print}: starting writing back")
-    trans = action.get_transport('2_out_mem', 'rdma')
+    trans = action.get_transport(trans_name, 'rdma')
     trans.reg(buffer_pool_lib.buffer_size)
 
     # write back
-    buffer_pool = buffer_pool_lib.buffer_pool({'2_out_mem':trans})
-    rdma_array = remote_array(buffer_pool, input_ndarray=df)
+    buffer_pool = buffer_pool_lib.buffer_pool({trans_name:trans})
+    rdma_array = remote_array(buffer_pool, input_ndarray=df, transport_name=trans_name)
 
     # transfer the metedata
     context_dict = {}

@@ -34,24 +34,26 @@ def main(params, action):
     print(f"[tpcds] {tag_print}: start reading remote array")
     # for now, we create two different buffer pool; may change latter
     # load fron step6
-    trans_s6 = action.get_transport('6_out_mem', 'rdma')
+    trans_s6_name = '6_out_mem'
+    trans_s6 = action.get_transport(trans_s6_name, 'rdma')
     trans_s6.reg(buffer_pool_lib.buffer_size)
 
     context_dict = pickle.loads(base64.b64decode(params['step6']['meta']))
     print(f"[tpcds] {tag_print}: loading params from step6", context_dict)
 
-    bp_s6 = buffer_pool_lib.buffer_pool(trans_s6, context_dict["bp"])
+    bp_s6 = buffer_pool_lib.buffer_pool({trans_s6_name: trans_s6}, context_dict["bp"])
     df_s6_arr = remote_array(bp_s6, metadata=context_dict["df"])
     df6 = df_s6_arr.materialize()
 
     # load fron step7
-    trans_s7 = action.get_transport('7_out_mem', 'rdma')
+    trans_s7_name = '7_out_mem'
+    trans_s7 = action.get_transport(trans_s7_name, 'rdma')
     trans_s7.reg(buffer_pool_lib.buffer_size)
 
     context_dict = pickle.loads(base64.b64decode(params['step7']['meta']))
     print(f"[tpcds] {tag_print}: loading params from step7", context_dict)
 
-    bp_s7 = buffer_pool_lib.buffer_pool(trans_s7, context_dict["bp"])
+    bp_s7 = buffer_pool_lib.buffer_pool({trans_s7_name: trans_s7}, context_dict["bp"])
     df_s7_arr = remote_array(bp_s7, metadata=context_dict["df"])
     df7 = df_s7_arr.materialize()
     print(f"[tpcds] {tag_print}: finish reading rdma")
@@ -94,13 +96,28 @@ def main(params, action):
     df = final
 
     # build transport
+    trans_s8_name = '8_out_mem'
     print(f"[tpcds] {tag_print}: starting writing back")
-    trans_s8 = action.get_transport('8_out_mem', 'rdma')
+    trans_s8 = action.get_transport(trans_s8_name, 'rdma')
     trans_s8.reg(buffer_pool_lib.buffer_size)
 
     # write back
-    bp_s8 = buffer_pool_lib.buffer_pool(trans_s8)
-    rdma_array = remote_array(bp_s8, input_ndarray=df)
+    bp_s8 = buffer_pool_lib.buffer_pool({trans_s8_name: trans_s8})
+    rdma_array = remote_array(bp_s8, input_ndarray=df, transport_name=trans_s8_name)
+
+    '''
+    # check with reference csv
+    real_final = pd.DataFrame(np.ma.getdata(final), columns=['c_customer_id'])
+    # real_df3.to_csv('./tmp/df3.csv')
+    correct_final = pd.read_csv('/home/jil/serverless/Disagg-Serverless/runtime/test/src/tpcds_1/ref_output_final.csv', encoding='utf8', dtype={'c_customer_id':'S16'})
+    correct_final = correct_final.select_dtypes(include=object).astype(np.dtype('S16'))
+    print('Checking final...')
+    print('real', real_final.dtypes, real_final.shape)
+    print(real_final)
+    print('correct', correct_final.dtypes, correct_final.shape)
+    print(correct_final)
+    print("[DEBUG] equals?", real_final.equals(correct_final))
+    '''
 
     # transfer the metedata
     context_dict = {}
