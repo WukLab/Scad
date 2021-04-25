@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from datetime import datetime
 import json
 from optparse import OptionParser
@@ -7,9 +9,7 @@ import sqlite3
 import sys
 import time
 
-CONTAINER_INFO_FETCH_PERIOD = 0.5   # in seconds
-CONTAINER_SAMPLING_PERIOD = 0.1     # in seconds
-TIMESTAMP_DECIMAL_PRECISION = 6     # 1 us
+from config import *
 
 def GetContainers(latest_known_cont_id=None):
     ## this call is expensive, n=1 => ~45ms, each additional container reported takes ~1ms
@@ -150,7 +150,7 @@ def main(argv):
         print("Error: You should provide measurement duration!")
         return False
 
-    conn = sqlite3.connect('profiling.db')
+    conn = sqlite3.connect(PERF_DB_FILENAME)
     conn.execute('''CREATE TABLE PERFPROF
          (NAME INT TEXT KEY     NOT NULL,
          ID           TEXT    NOT NULL,
@@ -163,12 +163,11 @@ def main(argv):
     ## Actual Profiling
     profiling_data = RunProfilingLoop(main_start_time=main_start_time, 
                                       monitoring_duration=options.duration,
-                                      db_file='profiling.db')
+                                      db_file=PERF_DB_FILENAME)
     # print( json.dumps(profiling_data, indent=4) )
 
     ## Testing
     # MeasureProfilingOverhead(GetContainers, measurement_count=25)
-
 
 if __name__ == "__main__":
     main(sys.argv)
