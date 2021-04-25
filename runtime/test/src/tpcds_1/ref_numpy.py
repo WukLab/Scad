@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import base64
 import urllib.request
+import time
 
 from numpy import genfromtxt
 from numpy.lib import recfunctions as rfn
@@ -127,11 +128,11 @@ def build_dtype(schema):
         'formats' : list(schema.values()),
         })
 
-def rename(sarray, find, rep):
-    sarray.dtype.names = tuple([rep if n == find else n for n in sarray.dtype.names])
+# def rename(sarray, find, rep):
+    # sarray.dtype.names = tuple([rep if n == find else n for n in sarray.dtype.names])
 
 def main():
-    tag_print = "step1"
+    time_table = {}
     print("[tpcds] step1: begin")
 
     print("[tpcds] step1: start reading csv")
@@ -143,11 +144,12 @@ def main():
 
     print(df.dtype, df.itemsize, df.shape)
 
+    t0 = time.time()
     df1 = df[df['d_year']==2000][['d_date_sk']]
     df1 = rfn.repack_fields(df1)
 
-    # TODO: ITEM SIZE here
     print(df1.dtype, df1.itemsize, df1.shape)
+    time_table['step1'] = time.time()-t0
 
     print("[tpcds] step 2: begin")
 
@@ -158,9 +160,12 @@ def main():
     df2 = genfromtxt(csv, delimiter='|', dtype=build_dtype(schemas['step2']))
     print(df2.dtype, df2.itemsize, df2.shape)
     print(f"[tpcds] step 2: finish reading csv")
+    t0 = time.time()
+    time_table['step2'] = time.time()-t0
 
     print(f"[tpcds] step 3: begin")
 
+    t0 = time.time()
     # new join implementation
     # first, we need to select a table to load into memory (usually, the smaller one)
     join_meta = join.prepare_join_float32(df1['d_date_sk'])
@@ -178,26 +183,11 @@ def main():
             [n for n in df2.dtype.names if n != 'sr_returned_date_sk'])
     print('df3 meta', df3.itemsize, df3.shape, df3.dtype)
     # print('df3', df3)
-
-
-
-
-
-    '''
-    cols = ['sr_return_time_sk', 'sr_item_sk', 'sr_customer_sk', 'sr_cdemo_sk', 'sr_hdemo_sk', 'sr_addr_sk', 'sr_store_sk', 'sr_reason_sk', 'sr_ticket_number', 'sr_return_quantity', 'sr_return_amt', 'sr_return_tax', 'sr_return_amt_inc_tax', 'sr_fee', 'sr_return_ship_cost', 'sr_refunded_cash', 'sr_reversed_charge', 'sr_store_credit', 'sr_net_loss']
-    real_df3 = pd.DataFrame(np.ma.getdata(df3), columns=cols)
-    # real_df3.to_csv('./tmp/df3.csv')
-    correct_df3 = pd.read_csv('./steps/ref_output_3.csv', dtype=schemas['step1'])
-    correct_df3 = correct_df3.select_dtypes(include=float).astype("float32")
-    correct_df3 = correct_df3.drop(columns='sr_returned_date_sk')
-    # print('real_df3', real_df3.dtypes)
-    # print('correct_df3', correct_df3.dtypes)
-    print("[DEBUG] df3.equals?", real_df3.equals(correct_df3))
-    '''
-
+    time_table['step3'] = time.time()-t0
 
     print(f"[tpcds] step 4: begin")
 
+    t0 = time.time()
     df3 = df3[~np.isnan(df3['sr_customer_sk'])&~np.isnan(df3['sr_store_sk'])]
     uniques, reverses = np.unique(df3[['sr_customer_sk', 'sr_store_sk']], return_inverse=True)
     print(uniques.shape, uniques, reverses)
@@ -205,6 +195,7 @@ def main():
     df4 = rfn.merge_arrays([uniques, groups], flatten = True, usemask = False)
     df4.dtype.names = ('ctr_customer_sk', 'ctr_store_sk', 'ctr_total_return')
     print('df4', df4.dtype, df4.itemsize, df4.shape)
+    time_table['step4'] = time.time()-t0
 
     print(f"[tpcds] step 5: begin")
 
@@ -213,12 +204,13 @@ def main():
     csv = urllib.request.urlopen(tableurl)
 
     df5 = genfromtxt(csv, delimiter='|', dtype=build_dtype(schemas['step5']))
+    t0 = time.time()
     df5 = df5[['c_customer_sk', 'c_customer_id']]
     print('df5', df5.dtype, df5.itemsize, df5.shape)
+    time_table['step5'] = time.time()-t0
 
     print(f"[tpcds] step 6: begin")
-    # JOIN
-    # rename(df5, 'c_customer_sk', 'ctr_customer_sk')
+    t0 = time.time()
     # df6 = rfn.join_by('ctr_customer_sk', df4, df5)
     join_meta = join.prepare_join_float32(df5['c_customer_sk'])
     df5_idx, df4_idx = join.join_on_table_float32(*join_meta, df4['ctr_customer_sk'])
@@ -230,7 +222,7 @@ def main():
 
     # df6 = df6[['c_customer_id','ctr_store_sk','ctr_customer_sk','ctr_total_return']]
     print('df6', df6.dtype, df6.itemsize, df6.shape)
-    print('df6', df6)
+    time_table['step6'] = time.time()-t0
 
     print(f"[tpcds] step 7: begin")
 
@@ -240,28 +232,27 @@ def main():
 
     df7 = genfromtxt(csv, delimiter='|', dtype=build_dtype(schemas['step7']))
     print('df7_raw', df7.dtype, df7.itemsize, df7.shape)
+    t0 = time.time()
     df7 = df7[['s_state', 's_store_sk']][df7['s_state'] == 'TN'.encode()]
     print('df7_before_repack', df7.dtype, df7.itemsize, df7.shape)
     df7 = rfn.repack_fields(df7, align=True)
     print('df7', df7.dtype, df7.itemsize, df7.shape)
     print(f"[tpcds] step 7: finish reading csv")
+    time_table['step7'] = time.time()-t0
     # TODO: type is strange!
-
-    print(f"[tpcds] step 8: begin")
 
     ######################
     # STEP 8
     ######################
 
+    print(f"[tpcds] step 8: begin")
+    t0 = time.time()
+
     # JOIN
     # rename(df7, 's_store_sk', 'ctr_store_sk')
     # df8 = rfn.join_by('ctr_store_sk', df6, df7)
-    print('df6', df6.dtype, df6.itemsize, df6.shape)
-    print('df7', df7.dtype, df7.itemsize, df7.shape)
     join_meta = join.prepare_join_float32(df6['ctr_store_sk'])
     df6_idx, df7_idx = join.join_on_table_float32(*join_meta, df7['s_store_sk'])
-    print('df6_idx', df6_idx.shape)
-    print('df7_idx', df7_idx.shape)
     df8buf = np.empty(len(df6_idx) * (df6.itemsize + df7.itemsize), dtype=np.uint8)
     df8 = join.structured_array_merge(df8buf, df6, df7, df6_idx, df7_idx,
             ['ctr_store_sk', 'c_customer_id', 'ctr_total_return', 'ctr_customer_sk'],
@@ -272,7 +263,7 @@ def main():
 
     # groupby
     uniques, reverses = np.unique(df8['ctr_store_sk'], axis=0, return_inverse=True)
-    print('uniques:', uniques.shape, uniques, reverses)
+    # print('uniques:', uniques.shape, uniques, reverses)
     groups = npg.aggregate(reverses, df8['ctr_total_return'], func='mean')
     avg = rfn.merge_arrays([uniques, groups], flatten = True, usemask = False)
     avg.dtype.names = ('ctr_store_sk', 'ctr_avg')
@@ -295,31 +286,10 @@ def main():
     final = np.unique(u2['c_customer_id'])
     final = np.sort(final)
     print('final', final.dtype, final.itemsize, final.shape)
+    time_table['step8'] = time.time()-t0
+    print('time: ')
+    print(time_table)
     print('tpcds job finish')
-
-    # merged_u.to_csv('./ref_output_merged_u.csv')
-    # pd.DataFrame(final).to_csv('./ref_output_final.csv')
-
-    # dfs = [df1, df2, df3, df4, df5, df6, df7]
-
-    # i = 1
-    # for d in dfs:
-    #   np.ma.getdata(d).tofile('./steps/ref_output_' + str(i) + '.csv', "\n")
-    #   i += 1
-
-    '''
-    real_final = pd.DataFrame(np.ma.getdata(final), columns=['c_customer_id'])
-    # real_df3.to_csv('./tmp/df3.csv')
-    correct_final = pd.read_csv('./ref_output_final.csv', encoding='utf8', dtype={'c_customer_id':'S16'})
-    correct_final = correct_final.select_dtypes(include=object).astype(np.dtype('S16'))
-    print('Checking final...')
-    print('real', real_final.dtypes, real_final.shape)
-    print(real_final)
-    print('correct', correct_final.dtypes, correct_final.shape)
-    print(correct_final)
-    print("[DEBUG] equals?", real_final.equals(correct_final))
-    '''
- 
 
 if __name__ == "__main__":
   main()

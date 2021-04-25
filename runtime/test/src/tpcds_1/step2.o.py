@@ -16,6 +16,11 @@ import urllib.request
 import disaggrt.buffer_pool_lib as buffer_pool_lib
 from disaggrt.rdma_array import remote_array
 
+from numpy import genfromtxt
+from numpy.lib import recfunctions as rfn
+import numpy_groupies as npg
+from npjoin import join
+
 scheme_in = {
         "sr_returned_date_sk":np.dtype(np.float32),
         "sr_return_time_sk":np.dtype(np.float32),
@@ -39,6 +44,12 @@ scheme_in = {
         "sr_net_loss":np.dtype(np.float32)
     }
 
+def build_dtype(schema):
+    return np.dtype({
+        'names'   : list(schema.keys()),
+        'formats' : list(schema.values()),
+        })
+
 def main(_, action):
     tag_print = "step2"
     print(f"[tpcds] {tag_print}: begin")
@@ -47,15 +58,34 @@ def main(_, action):
     tableurl = "http://localhost:8123/store_returns.csv"
     csv = urllib.request.urlopen(tableurl)
 
-    names = list(scheme_in.keys()) + ['']
-    df = pd.read_table(csv, 
-            delimiter="|", 
-            header=None, 
-            names=names,
-            usecols=range(len(names)-1), 
-            dtype=scheme_in,
-            na_values = "-")
+    df = genfromtxt(csv, delimiter='|', dtype=build_dtype(scheme_in))
     print(f"[tpcds] {tag_print}: finish reading csv")
+
+    # manual filter
+#    df = df[[
+#        "sr_returned_date_sk",
+#        "sr_return_time_sk",
+#        "sr_item_sk",
+#        "sr_customer_sk",
+#        # "sr_cdemo_sk",
+#        # "sr_hdemo_sk",
+#        "sr_addr_sk",
+#        "sr_store_sk",
+#        # "sr_reason_sk",
+#        "sr_ticket_number",
+#        "sr_return_quantity",
+#        # "sr_return_amt",
+#        "sr_return_tax",
+#        "sr_return_amt_inc_tax",
+#        "sr_fee",
+#        "sr_return_ship_cost",
+#        "sr_refunded_cash",
+#        "sr_reversed_charge",
+#        "sr_store_credit",
+#        "sr_net_loss"
+#        ]]
+#    df = rfn.repack_fields(df)
+    print('df: ', df.dtype, df.itemsize, df.shape)
 
     # Why use this variable here?
     wanted_columns = ['sr_customer_sk',
@@ -69,10 +99,8 @@ def main(_, action):
     trans.reg(buffer_pool_lib.buffer_size)
 
     # write back
-    to_write = df.to_numpy()
-
-    buffer_pool = buffer_pool_lib.buffer_pool(trans)
-    rdma_array = remote_array(buffer_pool, input_ndarray=to_write)
+    buffer_pool = buffer_pool_lib.buffer_pool({'2_out_mem':trans})
+    rdma_array = remote_array(buffer_pool, input_ndarray=df)
 
     # transfer the metedata
     context_dict = {}
@@ -81,7 +109,6 @@ def main(_, action):
 
     context_dict_in_byte = pickle.dumps(context_dict)
     return {
-        'columns': list(df.columns),
         'meta': base64.b64encode(context_dict_in_byte).decode('ascii')
     }
 

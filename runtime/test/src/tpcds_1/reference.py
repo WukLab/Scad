@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import base64
 import urllib.request
+import time
 
 schemas = {"step1": {
     "d_date_sk":            np.dtype(np.float32),
@@ -109,10 +110,10 @@ schemas = {"step1": {
 }
 
 def main():
+    time_table = {}
     tag_print = "step1"
     print(f"[tpcds] {tag_print}: begin")
 
-    print(f"[tpcds] {tag_print}: start reading csv")
     tableurl = "http://localhost:8123/date_dim.csv"
     csv = urllib.request.urlopen(tableurl)
 
@@ -126,12 +127,13 @@ def main():
             dtype=scheme_in,
             na_values = "-")
 
+    t0 = time.time()
     df_step1 = df[df['d_year']==2000][['d_date_sk']]
+    time_table[tag_print] = time.time()-t0
 
     tag_print = "step2"
     print(f"[tpcds] {tag_print}: begin")
 
-    print(f"[tpcds] {tag_print}: start reading csv")
     tableurl = "http://localhost:8123/store_returns.csv"
     csv = urllib.request.urlopen(tableurl)
 
@@ -144,29 +146,33 @@ def main():
             usecols=range(len(names)-1), 
             dtype=scheme_in,
             na_values = "-")
-    print(f"[tpcds] {tag_print}: finish reading csv")
+    t0 = time.time()
+    time_table[tag_print] = time.time()-t0
 
     tag_print = "step3"
     print(f"[tpcds] {tag_print}: begin")
 
+    t0 = time.time()
     df_step3 = df_step1.merge(df_step2, left_on='d_date_sk', right_on='sr_returned_date_sk')
     df_step3.drop('d_date_sk', axis=1, inplace=True)
+    time_table[tag_print] = time.time()-t0
 
     tag_print = "step4"
 
     print(f"[tpcds] {tag_print}: start reading remote array")
 
+    t0 = time.time()
     df_step4 = df_step3.groupby(['sr_customer_sk', 'sr_store_sk']).agg(
         {'sr_return_amt': 'sum'}).reset_index()
     df_step4.rename(columns={'sr_store_sk': 'ctr_store_sk',
                        'sr_customer_sk': 'ctr_customer_sk',
                        'sr_return_amt': 'ctr_total_return'
                        }, inplace=True)
+    time_table[tag_print] = time.time()-t0
 
     tag_print = "step5"
     print(f"[tpcds] {tag_print}: begin")
 
-    print(f"[tpcds] {tag_print}: start reading csv")
     tableurl = "http://localhost:8123/customer.csv"
     csv = urllib.request.urlopen(tableurl)
 
@@ -179,35 +185,22 @@ def main():
             usecols=range(len(names)-1), 
             dtype=scheme_in,
             na_values = "-")
-    print(f"[tpcds] {tag_print}: finish reading csv")
 
+    t0 = time.time()
     df_step5 = df[['c_customer_sk', 'c_customer_id']]
-
-    """
-    ## special testing
-    ## end of sepcial testing
-
-    ## Special Testing
-    # df_step5['c_customer_id'] = df_step5.pop('c_customer_id').astype('|S16')
-    # df_step5['c_customer_id'] = df_step5.pop('c_customer_id').astype('|S16')
-    df_step5['c_customer_id'] = df_step5['c_customer_id'].astype('|S16')
-    # s = df.dtypes
-    # df_step5_arr = np.array([tuple(x) for x in df.values], dtype=list(zip(s.index, s)))
-    # df_step5 = np.frombuffer(df_step5_arr, dtype=df_step5_arr.dtype)
-    df_step5_arr = df_step5.to_records(index=False)
-    df_step5 = pd.DataFrame.from_records(df_step5_arr)
-    ## end of special testing
-    """
+    time_table[tag_print] = time.time()-t0
 
     tag_print = "step6"
+    print(f"[tpcds] {tag_print}: begin")
 
+    t0 = time.time()
     df = df_step4.merge(df_step5, left_on='ctr_customer_sk', right_on='c_customer_sk')
     df_step6 = df[['c_customer_id','ctr_store_sk','ctr_customer_sk','ctr_total_return']]
+    time_table[tag_print] = time.time()-t0
 
     tag_print = "step7"
     print(f"[tpcds] {tag_print}: begin")
 
-    print(f"[tpcds] {tag_print}: start reading csv")
     tableurl = "http://localhost:8123/store.csv"
     csv = urllib.request.urlopen(tableurl)
 
@@ -220,16 +213,19 @@ def main():
             usecols=range(len(names)-1), 
             dtype=scheme_in,
             na_values = "-")
-    print(f"[tpcds] {tag_print}: finish reading csv")
 
+    t0 = time.time()
     df = df[['s_state', 's_store_sk']]
     df_step7 = df[df['s_state'] == 'TN'.encode()]
+    time_table[tag_print] = time.time()-t0
 
     tag_print = "step8"
+    print(f"[tpcds] {tag_print}: begin")
 
     d = df_step6
     sr = df_step7
 
+    t0 = time.time()
     merged = d.merge(sr, left_on='ctr_store_sk', right_on='s_store_sk')
     merged_u = merged[['ctr_store_sk', 'c_customer_id',
                        'ctr_total_return', 'ctr_customer_sk']]
@@ -250,7 +246,11 @@ def main():
         'c_customer_id'])
     #print(final)
     #print(cc['cc_country'])
+    time_table[tag_print] = time.time()-t0
+    print('time: ')
+    print(time_table)
 
+    '''
     merged_u.to_csv('./ref_output_merged_u.csv')
     final.to_csv('./ref_output_final.csv')
 
@@ -260,6 +260,7 @@ def main():
     for d in dfs:
       d.to_csv('./steps/ref_output_' + str(i) + '.csv')
       i += 1
+    '''
 
 if __name__ == "__main__":
   main()

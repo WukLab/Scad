@@ -143,7 +143,7 @@ if __name__ == '__main__':
     transports = parse_memory_transports(args.memory)
     action_args = {
         'post_url': 'http://localhost:2400/',
-        'plugins': 'monitor'
+#        'plugins': 'monitor'
     }
     print('building action with transports', transports, action_args)
     action = build_action(ACTIVATION_ID, transports, **action_args)

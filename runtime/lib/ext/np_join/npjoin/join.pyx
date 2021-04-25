@@ -26,7 +26,7 @@ from npjoin.hashtable cimport Float32HashTable
 def structured_array_merge(
     uint8_t [::1] buf,
     ndarray left, ndarray right,
-    intp_t [::1] left_indexer, intp_t [::1] right_indexer,
+    ndarray[intp_t] left_indexer, ndarray[intp_t] right_indexer,
     list left_fields, list right_fields):
 
     cdef:
@@ -34,20 +34,21 @@ def structured_array_merge(
 
     # get new dtype
     left_dtypes = [(name, t) for name, t
-                    in left.dtype.descr
-                    if name in left_fields]
+                             in left.dtype.descr
+                             if name in left_fields]
     right_dtypes = [(name, t) for name, t
-                    in right.dtype.descr
-                    if name in right_fields]
+                             in right.dtype.descr
+                             if name in right_fields]
     merged_dtypes = np.dtype(left_dtypes + right_dtypes)
 
     size = len(left_indexer) * merged_dtypes.itemsize
     # allocate new array on buffer
-    # TODO: buf size, check padding
     joined = np.asarray(buf[:size]).view(dtype = merged_dtypes)
+    # print('merged dtype', merged_dtypes, 'item', merged_dtypes.itemsize, 'array', joined.shape)
 
     # assign col by col, using numpy
     # TODO: better copy algorithm
+    # see https://stackoverflow.com/questions/5355744/numpy-joining-structured-arrays
     for f in left_fields:
         joined[f] = left[f][left_indexer]
     for f in right_fields:

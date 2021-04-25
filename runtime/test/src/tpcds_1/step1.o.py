@@ -16,6 +16,11 @@ import urllib.request
 import disaggrt.buffer_pool_lib as buffer_pool_lib
 from disaggrt.rdma_array import remote_array
 
+from numpy import genfromtxt
+from numpy.lib import recfunctions as rfn
+import numpy_groupies as npg
+from npjoin import join
+
 scheme_in = {
         "d_date_sk":            np.dtype(np.float32),
         "d_date_id":            np.dtype('S16'),
@@ -47,6 +52,12 @@ scheme_in = {
         "d_current_year":       np.dtype('S1'),
         }
 
+def build_dtype(schema):
+    return np.dtype({
+        'names'   : list(schema.keys()),
+        'formats' : list(schema.values()),
+        })
+
 def main(_, action):
     tag_print = "step1"
     print(f"[tpcds] {tag_print}: begin")
@@ -55,17 +66,12 @@ def main(_, action):
     tableurl = "http://localhost:8123/date_dim.csv"
     csv = urllib.request.urlopen(tableurl)
 
-    names = list(scheme_in.keys()) + ['']
-    df = pd.read_table(csv, 
-            delimiter="|", 
-            header=None, 
-            names=names,
-            usecols=range(len(names)-1), 
-            dtype=scheme_in,
-            na_values = "-")
+    df = genfromtxt(csv, delimiter='|', dtype=build_dtype(scheme_in))
     print(f"[tpcds] {tag_print}: finish reading csv")
+    print('df: ', df.dtype, df.itemsize, df.shape)
 
     df = df[df['d_year']==2000][['d_date_sk']]
+    df = rfn.repack_fields(df)
 
     # build transport
     print(f"[tpcds] {tag_print}: starting writing back")
@@ -73,10 +79,9 @@ def main(_, action):
     trans.reg(buffer_pool_lib.buffer_size)
 
     # write back
-    to_write = df.to_numpy()
-
-    buffer_pool = buffer_pool_lib.buffer_pool(trans)
-    rdma_array = remote_array(buffer_pool, input_ndarray=to_write)
+    buffer_pool = buffer_pool_lib.buffer_pool({'1_out_mem':trans})
+    print(f"[tpcds] {tag_print}: starting rdma")
+    rdma_array = remote_array(buffer_pool, input_ndarray=df)
 
     # transfer the metedata
     context_dict = {}
@@ -85,7 +90,6 @@ def main(_, action):
 
     context_dict_in_byte = pickle.dumps(context_dict)
     return {
-        'columns': list(df.columns),
         'meta': base64.b64encode(context_dict_in_byte).decode('ascii')
     }
 

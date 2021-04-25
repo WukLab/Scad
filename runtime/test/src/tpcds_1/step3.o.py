@@ -25,6 +25,11 @@ import urllib.request
 import disaggrt.buffer_pool_lib as buffer_pool_lib
 from disaggrt.rdma_array import remote_array
 
+from numpy import genfromtxt
+from numpy.lib import recfunctions as rfn
+import numpy_groupies as npg
+from npjoin import join
+
 def main(params, action):
     tag_print = "step3"
     print(f"[tpcds] {tag_print}: begin")
@@ -36,39 +41,44 @@ def main(params, action):
     trans_s1.reg(buffer_pool_lib.buffer_size)
 
     context_dict = pickle.loads(base64.b64decode(params['step1']['meta']))
-    print(f"[tpcds] {tag_print}: loading params from step1", context_dict, params['step1']['columns'])
+    print(f"[tpcds] {tag_print}: loading params from step1", context_dict)
 
     bp_s1 = buffer_pool_lib.buffer_pool(trans_s1, context_dict["bp"])
     df_s1_arr = remote_array(bp_s1, metadata=context_dict["df"])
-    df_s1_np = df_s1_arr.materialize()
-    d = pd.DataFrame(data=df_s1_np, columns=params['step1']['columns'])
+    df1 = df_s1_arr.materialize()
 
     # load fron step2
     trans_s2 = action.get_transport('2_out_mem', 'rdma')
     trans_s2.reg(buffer_pool_lib.buffer_size)
 
     context_dict = pickle.loads(base64.b64decode(params['step2']['meta']))
-    print(f"[tpcds] {tag_print}: loading params from step2", context_dict, params['step2']['columns'])
+    print(f"[tpcds] {tag_print}: loading params from step2", context_dict)
 
     bp_s2 = buffer_pool_lib.buffer_pool(trans_s2, context_dict["bp"])
     df_s2_arr = remote_array(bp_s2, metadata=context_dict["df"])
-    df_s2_np = df_s2_arr.materialize()
-    sr = pd.DataFrame(data=df_s2_np, columns=params['step2']['columns'])
-    print(f"[tpcds] {tag_print}: finish reading csv")
+    df2 = df_s2_arr.materialize()
+    print(f"[tpcds] {tag_print}: finish reading rdma")
 
-    df = d.merge(sr, left_on='d_date_sk', right_on='sr_returned_date_sk')
-    df.drop('d_date_sk', axis=1, inplace=True)
-
+    join_meta = join.prepare_join_float32(df1['d_date_sk'])
+    df1_idx, df2_idx = join.join_on_table_float32(*join_meta, df2['sr_returned_date_sk'])
+    print('indexes', len(df1_idx), len(df2_idx), df1_idx, df2_idx)
+    df3buf = np.empty(len(df1_idx) * (df1.itemsize + df2.itemsize), dtype=np.uint8)
+    print('df3buf', df3buf.shape, 'itemsize', df1.itemsize + df2.itemsize)
+    df = join.structured_array_merge(df3buf, df1, df2, df1_idx, df2_idx,
+            [n for n in df1.dtype.names if n != 'd_date_sk'],
+            [n for n in df2.dtype.names if n != 'sr_returned_date_sk'])
+    print(f'[tpcds] {tag_print} df: ', df.itemsize, df.shape, df.dtype)
+ 
     # build transport
     print(f"[tpcds] {tag_print}: starting writing back")
     trans_s3 = action.get_transport('3_out_mem', 'rdma')
     trans_s3.reg(buffer_pool_lib.buffer_size)
 
-    # write back
-    to_write = df.to_numpy()
 
+
+    # write back
     bp_s3 = buffer_pool_lib.buffer_pool(trans_s3)
-    rdma_array = remote_array(bp_s3, input_ndarray=to_write)
+    rdma_array = remote_array(bp_s3, input_ndarray=df)
 
     # transfer the metedata
     context_dict = {}
@@ -77,7 +87,6 @@ def main(params, action):
 
     context_dict_in_byte = pickle.dumps(context_dict)
     return {
-        'columns': list(df.columns),
         'meta': base64.b64encode(context_dict_in_byte).decode('ascii')
     }
 

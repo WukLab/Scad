@@ -21,6 +21,11 @@ import urllib.request
 import disaggrt.buffer_pool_lib as buffer_pool_lib
 from disaggrt.rdma_array import remote_array
 
+from numpy import genfromtxt
+from numpy.lib import recfunctions as rfn
+import numpy_groupies as npg
+from npjoin import join
+
 def main(params, action):
     tag_print = "step4"
 
@@ -31,30 +36,27 @@ def main(params, action):
     trans_s3.reg(buffer_pool_lib.buffer_size)
 
     context_dict = pickle.loads(base64.b64decode(params['step3']['meta']))
-    print(f"[tpcds] {tag_print}: loading params from step3", context_dict, params['step3']['columns'])
+    print(f"[tpcds] {tag_print}: loading params from step3", context_dict)
 
     bp_s3 = buffer_pool_lib.buffer_pool(trans_s3, context_dict["bp"])
     df_s3_arr = remote_array(bp_s3, metadata=context_dict["df"])
-    df_s3_np = df_s3_arr.materialize()
-    d = pd.DataFrame(data=df_s3_np, columns=params['step3']['columns'])
+    df3 = df_s3_arr.materialize()
 
-    df = d.groupby(['sr_customer_sk', 'sr_store_sk']).agg(
-        {'sr_return_amt': 'sum'}).reset_index()
-    df.rename(columns={'sr_store_sk': 'ctr_store_sk',
-                       'sr_customer_sk': 'ctr_customer_sk',
-                       'sr_return_amt': 'ctr_total_return'
-                       }, inplace=True)
-
+    df3 = df3[~np.isnan(df3['sr_customer_sk'])&~np.isnan(df3['sr_store_sk'])]
+    uniques, reverses = np.unique(df3[['sr_customer_sk', 'sr_store_sk']], return_inverse=True)
+    groups = npg.aggregate(reverses, df3['sr_return_amt'], func='sum')
+    df = rfn.merge_arrays([uniques, groups], flatten = True, usemask = False)
+    df.dtype.names = ('ctr_customer_sk', 'ctr_store_sk', 'ctr_total_return')
+    print(f'[tpcds] {tag_print} df: ', df.itemsize, df.shape, df.dtype)
+    
     # build transport
     print(f"[tpcds] {tag_print}: starting writing back")
     trans_s4 = action.get_transport('4_out_mem', 'rdma')
     trans_s4.reg(buffer_pool_lib.buffer_size)
 
     # write back
-    to_write = df.to_numpy()
-
     bp_s4 = buffer_pool_lib.buffer_pool(trans_s4)
-    rdma_array = remote_array(bp_s4, input_ndarray=to_write)
+    rdma_array = remote_array(bp_s4, input_ndarray=df)
 
     # transfer the metedata
     context_dict = {}
@@ -63,7 +65,6 @@ def main(params, action):
 
     context_dict_in_byte = pickle.dumps(context_dict)
     return {
-        'columns': list(df.columns),
         'meta': base64.b64encode(context_dict_in_byte).decode('ascii')
     }
 
