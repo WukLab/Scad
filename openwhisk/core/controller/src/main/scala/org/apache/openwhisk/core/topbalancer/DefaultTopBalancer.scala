@@ -1,12 +1,8 @@
 package org.apache.openwhisk.core.topbalancer
-import akka.actor.Actor
-import akka.actor.ActorRef
-import akka.actor.ActorRefFactory
+import akka.actor.{Actor, ActorRef, ActorRefFactory, ActorSystem, Props}
 
 import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.atomic.LongAdder
-import akka.actor.ActorSystem
-import akka.actor.Props
 import akka.cluster.Cluster
 import akka.cluster.ClusterEvent.ClusterDomainEvent
 import akka.cluster.ClusterEvent.CurrentClusterState
@@ -30,28 +26,30 @@ import org.apache.openwhisk.common.TransactionId
 import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.WhiskConfig
 import org.apache.openwhisk.core.WhiskConfig.kafkaHosts
-import org.apache.openwhisk.core.connector.ActivationMessage
-import org.apache.openwhisk.core.connector.MessageProducer
-import org.apache.openwhisk.core.connector.MessagingProvider
+import org.apache.openwhisk.core.connector.{ActivationMessage, MessageConsumer, MessageFeed, MessageProducer, MessagingProvider}
 import org.apache.openwhisk.core.containerpool.RuntimeResources
-import org.apache.openwhisk.core.entity.{ActivationEntityLimit, ActivationId, ExecutableWhiskActionMetaData, FullyQualifiedEntityName, RackSchedInstanceId, ResourceLimit, TimeLimit, TopSchedInstanceId, UUID, WhiskActivation, WhiskAuthStore, WhiskEntityStore}
+import org.apache.openwhisk.core.entity.{ActivationEntityLimit, ActivationId, ExecutableWhiskActionMetaData, FullyQualifiedEntityName, RackSchedInstanceId, ResourceLimit, TimeLimit, TopSchedInstanceId, UUID, WhiskActionMetaData, WhiskActivation, WhiskAuthStore, WhiskEntityStore}
 import org.apache.openwhisk.core.entity.types.{AuthStore, EntityStore}
 import org.apache.openwhisk.core.loadBalancer.ClusterConfig
 import org.apache.openwhisk.core.loadBalancer.FeedFactory
 import org.apache.openwhisk.core.loadBalancer.LoadBalancerException
 import org.apache.openwhisk.core.loadBalancer.ShardingContainerPoolBalancer
+import org.apache.openwhisk.core.scheduler.FinishActivation
 import org.apache.openwhisk.spi.SpiLoader
 import pureconfig.loadConfigOrThrow
 import pureconfig._
 import pureconfig.generic.auto._
+import spray.json._
 
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicReference
 import scala.annotation.tailrec
 import scala.collection.concurrent.TrieMap
+import scala.collection.mutable
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
-import scala.util.Failure
-import scala.util.Success
+import scala.concurrent.duration.{DurationInt, FiniteDuration, MINUTES}
+import scala.util.{Failure, Success, Try}
 
 class DefaultTopBalancer(config: WhiskConfig,
                          feedFactory: FeedFactory,
@@ -74,8 +72,21 @@ class DefaultTopBalancer(config: WhiskConfig,
     None
   }
 
+  // map which based on a tuple-key stores the previously-scheduled location and two other values (id, int0, int1) where
+  // int0 represents the total scheduled messages based on this value
+  // int1 represent the max number of messages scheduled using this map
+  // once int0 == int1, then the key should be removed from the map
+  // in the case of an error, the scheduling message will be removed after ~5 minutes if the number of expected scheduled
+  // messages does not come through.
+  // the key of the map is (app activation ID, function activation ID, scheduled function name, parallelismIdx)
+  val preScheduled: mutable.Map[(ActivationId, ActivationId, FullyQualifiedEntityName), (RackSchedInstanceId, Int, Int)] = mutable.Map.empty
+
   protected val messageProducer: MessageProducer =
     messagingProvider.getProducer(config, Some(ActivationEntityLimit.MAX_ACTIVATION_LIMIT))
+  private val activationConsumer: MessageConsumer = messagingProvider.getConsumer(config, "topsched", "topsched", 128)
+  private val activationFeed = actorSystem.actorOf(Props {
+    new MessageFeed("topsched", logging, activationConsumer, 4096, 1.second, processSchedulingMessage)
+  })
 
   val state = TopBalancerState()
   protected val activationsPerNamespace = TrieMap[UUID, LongAdder]()
@@ -126,12 +137,34 @@ class DefaultTopBalancer(config: WhiskConfig,
 
   implicit val entityStore: EntityStore = WhiskEntityStore.datastore()
   implicit val authStore: AuthStore = WhiskAuthStore.datastore()
-  val dependencyScheduler: ActorRef = actorSystem.actorOf(Props(new DependencyForwarding(config, this)))
 
-  /** Subscribes to ack messages from the invokers (result / completion) and registers a handler for these messages. */
-//  private val activationFeed: ActorRef =
-//    feedFactory.createFeed(actorSystem, messagingProvider, processAcknowledgement)
+  protected[DefaultTopBalancer] def processSchedulingMessage(bytes: Array[Byte]): Future[Unit] = Future {
+    val raw = new String(bytes, StandardCharsets.UTF_8)
+    Try(raw.parseJson) map { value =>
+      Future.fromTry(Try(ActivationMessage.serdes.read(value)))
+        .andThen {
+          case _ => activationFeed ! MessageFeed.Processed
+        }.map { activation =>
+        implicit val transid: TransactionId = activation.transid
+        WhiskActionMetaData.resolveActionAndMergeParameters(entityStore, activation.action, activation.appActivationId) onComplete {
+          case Success(metadata) =>
+            publish(metadata.toExecutableWhiskAction.get, activation)
+          case Failure(exception) =>
+            logging.error(this, s"Failed to publish rack activation: $exception")
+        }
+      } recover {
+        case t =>
+          Try(FinishActivation.serdes.read(value)).map(activation => {
+            appActivator ! activation
+          })
+      } recover {
+        case t => logging.error(this, s"failed after parsing json of topsched msg: ${t} - $raw")
 
+      }
+    } recover {
+    case t => logging.error(this, s"failed processing top level scheduler message: ${t} - $raw")
+    }
+}
 
   /**
    * Publishes activation message on internal bus for an invoker to pick up.
@@ -146,18 +179,60 @@ class DefaultTopBalancer(config: WhiskConfig,
    *         plus a grace period (see activeAckTimeoutGrace).
    */
   override def publish(action: ExecutableWhiskActionMetaData, msg: ActivationMessage)(implicit transid: TransactionId): Future[Future[Either[ActivationId, WhiskActivation]]] = {
+    transid.mark(this, LoggingMarkers.TOPSCHED_SCHED_BEGIN)
     val (racksToUse, stepSizes) = (state.racks, state.stepSizes)
     val hash = ShardingContainerPoolBalancer.generateHash(msg.user.namespace.name, action.fullyQualifiedName(false))
 
-    if (!racksToUse.isEmpty) {
+
+    if (racksToUse.nonEmpty) {
       val homeInvoker = hash % racksToUse.size
       val stepSize = stepSizes(hash % stepSizes.size)
-      val rack = DefaultTopBalancer.schedule(action.limits.concurrency.maxConcurrent,
+      val defaultSchedule = () =>
+        DefaultTopBalancer.schedule(action.limits.concurrency.maxConcurrent,
         action.fullyQualifiedName(true),
         racksToUse,
         homeInvoker,
         stepSize)
 
+      val rack: Option[RackSchedInstanceId] = msg.waitForContent match {
+        case Some(content) =>
+          if (content > 1) {
+            msg.appActivationId flatMap { appId =>
+              msg.functionActivationId flatMap { funcId =>
+                val key = (appId, funcId, msg.action)
+                preScheduled.get(key) match {
+                  case Some(value) =>
+                    // this message came through the scheduler before..return the same result
+                    if (value._2 + 1 >= value._3) {
+                      // we've reached the max number of messages to schedule..let's get rid of it
+                      preScheduled.remove(key)
+                      Some(value._1)
+                    } else {
+                      preScheduled.put(key, (value._1, value._2 + 1, value._3))
+                      Some(value._1)
+                    }
+                  case None =>
+                    // we have not seen the message yet..schedule the result, then store the scheduling message
+                    // and set a timer to remove it
+                    defaultSchedule() match {
+                      case Some(value) =>
+                        // waitForContent includes all previous nodes, but this activation msg is a parallelism copy,
+                        // then one of the nodes from "waitForContent" is parallelized, so substract 1, and add the
+                        // number of parallel copies
+                        preScheduled.put(key, (value, 1, content + msg.parallelismIdx.max - 1))
+                        actorSystem.getScheduler.scheduleOnce(FiniteDuration(5, MINUTES))(() => preScheduled.remove(key))
+                        Some(value)
+                      case _ => None
+                    }
+                }
+              }
+            }
+          } else {
+            defaultSchedule()
+          }
+        case None => defaultSchedule()
+
+      }
       rack.map { rack =>
         val resourceLimit = action.limits.resources
         val resourceLimitInfo = if (resourceLimit == ResourceLimit()) { "std" } else { "non-std" }
@@ -171,14 +246,14 @@ class DefaultTopBalancer(config: WhiskConfig,
       }
       .getOrElse {
         // report the state of all invokers
-        val invokerStates = racksToUse.foldLeft(Map.empty[RackState, Int]) { (agg, curr) =>
+        val rackStates = racksToUse.foldLeft(Map.empty[RackState, Int]) { (agg, curr) =>
           val count = agg.getOrElse(curr.status, 0) + 1
           agg + (curr.status -> count)
         }
 
         logging.error(
           this,
-          s"failed to schedule activation ${msg.activationId}, action '${msg.action.asString}', ns '${msg.user.namespace.name.asString}' - invokers to use: $invokerStates")
+          s"failed to schedule activation ${msg.activationId}, action '${msg.action.asString}', ns '${msg.user.namespace.name.asString}' - invokers to use: $rackStates")
         Future.failed(LoadBalancerException("No invokers available"))
       }
     } else {
@@ -218,7 +293,6 @@ class DefaultTopBalancer(config: WhiskConfig,
                                      msg: ActivationMessage,
                                      racksched: RackSchedInstanceId): Future[RecordMetadata] = {
     implicit val transid: TransactionId = msg.transid
-
     val topic = racksched.toString
 
     MetricEmitter.emitCounterMetric(LoggingMarkers.LOADBALANCER_ACTIVATION_START)
@@ -227,6 +301,8 @@ class DefaultTopBalancer(config: WhiskConfig,
       LoggingMarkers.CONTROLLER_KAFKA,
       s"posting topic '$topic' with activation id '${msg.activationId}'",
       logLevel = InfoLevel)
+    transid.mark(this, LoggingMarkers.TOPSCHED_SCHED_END)
+//    logging.debug(this, s"posting to racksched: ${msg.activationId}: ||latency: ${Interval.currentLatency()}")
 
     producer.send(topic, msg).andThen {
       case Success(status) =>
@@ -317,7 +393,6 @@ object DefaultTopBalancer extends TopBalancerProvider {
     if (numRacks > 0) {
       val rack = racks(index)
       if (rack.status.isUsable) {
-//        if (rack.status.isUsable && dispatched(rack.id.toInt).tryAcquireConcurrent(fqn, maxConcurrent, slots)) {
         Some(rack.id)
       } else {
         // If we've gone through all invokers
@@ -326,7 +401,6 @@ object DefaultTopBalancer extends TopBalancerProvider {
           if (healthyRacks.nonEmpty) {
             // Choose a healthy rack randomly
             val random = healthyRacks(ThreadLocalRandom.current().nextInt(healthyRacks.size)).id
-//            dispatched(random.toInt).forceAcquireConcurrent(fqn, maxConcurrent, slots)
             logging.warn(this, s"system is overloaded. Chose rack${random.toInt} by random assignment.")
             Some(random)
           } else {
@@ -353,7 +427,6 @@ object DefaultTopBalancer extends TopBalancerProvider {
                                       monitor: Option[ActorRef]): ActorRef = {
 
         RackPool.prepare(instance, WhiskEntityStore.datastore())
-
         actorRefFactory.actorOf(
           RackPool.props(
             (f, i) => f.actorOf(RackActor.props(i, instance)),

@@ -18,6 +18,7 @@
 package org.apache.openwhisk.core.entity
 
 import org.apache.openwhisk.core.containerpool.RuntimeResources
+import org.apache.openwhisk.core.entity.RackSchedInstanceId.rackSchedHealthTopic
 import spray.json.{DefaultJsonProtocol, JsNumber, JsObject, JsString, JsValue, RootJsonFormat, deserializationError}
 import spray.json._
 
@@ -37,6 +38,9 @@ case class InvokerInstanceId(val instance: Int,
                              val resources: RuntimeResources)
     extends InstanceId {
   def toInt: Int = instance
+  def getMainTopic: String = s"invoker${toInt}"
+  def getDepInputTopic: String = s"invoker${toInt}-depInput"
+  def getSchedResultTopic: String = s"invoker${toInt}-schedResult"
 
   override val instanceType = "invoker"
 
@@ -45,6 +49,7 @@ case class InvokerInstanceId(val instance: Int,
   override val toString: String = (Seq("invoker" + instance) ++ uniqueName ++ displayedName).mkString("/")
 
   override val toJson: JsValue = InvokerInstanceId.serdes.write(this)
+
 }
 
 class ControllerInstanceId(val asString: String) extends InstanceId {
@@ -61,6 +66,8 @@ class ControllerInstanceId(val asString: String) extends InstanceId {
 class TopSchedInstanceId(override val asString: String) extends ControllerInstanceId(asString) {
   validate(asString)
   override val instanceType = "topsched"
+
+  def topic: String = s"topsched"
 }
 
 object InvokerInstanceId extends DefaultJsonProtocol {
@@ -93,10 +100,10 @@ object InvokerInstanceId extends DefaultJsonProtocol {
   }
 }
 
-case class RackSchedInstanceId(val instance: Int,
-                               val resources: RuntimeResources,
-                               val uniqueName: Option[String] = None,
-                               val displayName: Option[String] = None) extends InstanceId {
+case class RackSchedInstanceId(instance: Int,
+                               resources: RuntimeResources,
+                               uniqueName: Option[String] = None,
+                               displayName: Option[String] = None) extends ControllerInstanceId(instance.toString) {
   override val instanceType = "racksched"
 
   def toInt: Int = instance
@@ -106,15 +113,22 @@ case class RackSchedInstanceId(val instance: Int,
   override val toString: String = (Seq("racksched" + instance) ++ uniqueName ++ displayName).mkString("/")
 
   override val toJson: JsValue = RackSchedInstanceId.serdes.write(this)
+
+  def healthTopic: String = rackSchedHealthTopic(instance)
 }
 
 object RackSchedInstanceId extends DefaultJsonProtocol {
+
+  def rackSchedHealthTopic(id: Int): String = {
+    "health" + id
+  }
+
   def parse(c: String): Try[RackSchedInstanceId] = Try(serdes.read(c.parseJson))
 
-  implicit val serdes = new RootJsonFormat[RackSchedInstanceId] {
+  implicit val serdes: RootJsonFormat[RackSchedInstanceId] = new RootJsonFormat[RackSchedInstanceId] {
     override def write(i: RackSchedInstanceId): JsValue = {
       val fields = new ListBuffer[(String, JsValue)]
-      fields ++= List("instance" -> JsNumber(i.toInt))
+      fields ++= List("asString" -> JsString(i.instance.toString))
       fields ++= List("resources" -> i.resources.toJson)
       fields ++= List("instanceType" -> JsString(i.instanceType))
       i.uniqueName.foreach(uniqueName => fields ++= List("uniqueName" -> JsString(uniqueName)))
@@ -123,10 +137,13 @@ object RackSchedInstanceId extends DefaultJsonProtocol {
     }
 
     override def read(json: JsValue): RackSchedInstanceId = {
-      val instance = fromField[Int](json, "instance")
+      val instance = Integer.parseInt(fromField[String](json, "asString"))
       val uniqueName = fromField[Option[String]](json, "uniqueName")
       val displayName = fromField[Option[String]](json, "displayName")
-      val resources = RuntimeResources.serdes.read(json.asJsObject.fields("resources"))
+      val resources = json.asJsObject.fields.get("resources") match {
+        case Some(value) => RuntimeResources.serdes.read(value)
+        case None => RuntimeResources.none()
+      }
       val instanceType = fromField[String](json, "instanceType")
 
       if (instanceType == "racksched") {
@@ -154,6 +171,9 @@ object ControllerInstanceId extends DefaultJsonProtocol {
             }
             case "topsched" => {
               new TopSchedInstanceId(asString)
+            }
+            case "racksched" => {
+              RackSchedInstanceId.serdes.read(json)
             }
             case _ => deserializationError("could not read ControllerInstanceId")
           }

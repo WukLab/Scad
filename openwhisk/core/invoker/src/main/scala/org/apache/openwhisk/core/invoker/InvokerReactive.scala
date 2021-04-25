@@ -19,9 +19,8 @@ package org.apache.openwhisk.core.invoker
 
 import java.nio.charset.StandardCharsets
 import java.time.Instant
-
 import akka.Done
-import akka.actor.{ActorRefFactory, ActorSystem, CoordinatedShutdown, Props}
+import akka.actor.{Actor, ActorRef, ActorRefFactory, ActorSystem, CoordinatedShutdown, Props}
 import akka.event.Logging.InfoLevel
 import akka.stream.ActorMaterializer
 import org.apache.openwhisk.common._
@@ -70,6 +69,9 @@ class InvokerReactive(
   implicit val ec: ExecutionContext = actorSystem.dispatcher
   implicit val cfg: WhiskConfig = config
 
+  private val rackId = loadConfigOrThrow[Int](ConfigKeys.invokerRack)
+  private val rackHealthTopic = RackSchedInstanceId.rackSchedHealthTopic(rackId)
+
   private val logsProvider = SpiLoader.get[LogStoreProvider].instance(actorSystem)
   logging.info(this, s"LogStoreProvider: ${logsProvider.getClass}")
 
@@ -101,11 +103,11 @@ class InvokerReactive(
     }
 
   /** Initialize needed databases */
-  private val entityStore = WhiskEntityStore.datastore()
+  private implicit val entityStore = WhiskEntityStore.datastore()
   private val activationStore =
     SpiLoader.get[ActivationStoreProvider].instance(actorSystem, materializer, logging)
 
-  private val authStore = WhiskAuthStore.datastore()
+  private implicit val authStore = WhiskAuthStore.datastore()
 
   private val namespaceBlacklist = new NamespaceBlacklist(authStore)
 
@@ -117,8 +119,13 @@ class InvokerReactive(
     }
   }
 
+  private val msgProvider = SpiLoader.get[MessagingProvider]
+
   /** Initialize message consumers */
-  private val topic = s"invoker${instance.toInt}"
+  private val topic = instance.getMainTopic
+  private val depInputTopic = instance.getDepInputTopic
+  private val schedResultTopic = instance.getSchedResultTopic
+
   // The maximum number of containers is limited by the memory or storage
   private val maximumContainers: Int = {
     val configured = poolConfig.resources
@@ -128,7 +135,33 @@ class InvokerReactive(
     val minMem = configured.mem.toBytes / Math.max(1, min.mem.toBytes)
     Math.min(minMem, minStorage).toInt
   }
-  private val msgProvider = SpiLoader.get[MessagingProvider]
+
+  // This waiter holds onto results until a scheduling decision arrives with the topic to send the result to
+  private val resultWaiter: ActorRef = actorSystem.actorOf(Props {
+    new ResultWaiter(msgProvider.getProducer(config))
+  })
+
+  // This actor processes new activation messages from the scheduler or from the activationWaiter
+  private val activationProcessor = actorSystem.actorOf(Props {
+    new Actor {
+      override def receive: Receive = {
+        case msg: ActivationMessage => processActivationMessage(msg)
+      }
+    }
+  })
+
+  private val msgProducer: MessageProducer = msgProvider.getProducer(config)
+
+  // This waiter holds onto new activation messages which don't contain all of the necessary content (parameters/arguments)
+  // until those empty argument arrive.
+  // empty arguments arrive from the depInputConsumer
+  private val activationWaiter: ActorRef = actorSystem.actorOf(Props {
+    new ActivationWaiter(activationProcessor, msgProducer)
+  })
+  private val dependencyScheduler: ActorRef = actorSystem.actorOf(Props {
+    // instance ID doesn't matter as current impl only supports one topscheduler. The topic is always the same.
+    new DepInvoker(instance, new TopSchedInstanceId("0"), msgProducer)
+  })
 
   //number of peeked messages - increasing the concurrentPeekFactor improves concurrent usage, but adds risk for message loss in case of crash
   private val maxPeek =
@@ -137,8 +170,22 @@ class InvokerReactive(
   private val consumer =
     msgProvider.getConsumer(config, topic, topic, maxPeek, maxPollInterval = TimeLimit.MAX_DURATION + 1.minute)
 
+  private val depInputConsumer =
+    msgProvider.getConsumer(config, depInputTopic, depInputTopic, maxPeek, maxPollInterval = TimeLimit.MAX_DURATION + 1.minute)
+
+  private val schedResultConsumer =
+    msgProvider.getConsumer(config, schedResultTopic, schedResultTopic, maxPeek, maxPollInterval = TimeLimit.MAX_DURATION + 1.minute)
+
   private val activationFeed = actorSystem.actorOf(Props {
-    new MessageFeed("activation", logging, consumer, maxPeek, 1.second, processActivationMessage)
+    new MessageFeed("activation", logging, consumer, maxPeek, 1.second, parseActivationMessage)
+  })
+
+  private val depInputFeed = actorSystem.actorOf(Props {
+    new MessageFeed("dependencyInputs", logging, depInputConsumer, maxPeek, 1.second, parseDependencyInputMessage)
+  })
+
+  private val schedResultFeed = actorSystem.actorOf(Props {
+    new MessageFeed("schedulingResults", logging, schedResultConsumer, maxPeek, 1.second, parseSchedResult)
   })
 
   private val ack = {
@@ -158,7 +205,7 @@ class InvokerReactive(
   private val childFactory = (f: ActorRefFactory) =>
     f.actorOf(
       ContainerProxy
-        .props(containerFactory.createContainer, ack, store, collectLogs, instance, poolConfig))
+        .props(containerFactory.createContainer, ack, store, collectLogs, instance, poolConfig, msgProducer = msgProducer, resultWaiter = Some(resultWaiter)))
 
   val prewarmingConfigs: List[PrewarmingConfig] = {
     ExecManifest.runtimesManifest.stemcells.flatMap {
@@ -202,19 +249,22 @@ class InvokerReactive(
     val name = msg.action.name
     val actionid = FullyQualifiedEntityName(namespace, name).toDocId.asDocInfo(msg.revision)
     val subject = msg.user.subject
-    logging.debug(this, s"${actionid.id} $subject ${msg.activationId}")
+    msg.transid.mark(this, LoggingMarkers.INVOKER_ACTIVATION_HANDLE)
+
+    // send message to dependency invoker to invoke next-in-line dependencies
+    dependencyScheduler ! msg
 
     // caching is enabled since actions have revision id and an updated
     // action will not hit in the cache due to change in the revision id;
     // if the doc revision is missing, then bypass cache
     if (actionid.rev == DocRevision.empty) logging.warn(this, s"revision was not provided for ${actionid.id}")
-
     WhiskAction
       .get(entityStore, actionid.id, actionid.rev, fromCache = actionid.rev != DocRevision.empty)
       .flatMap(action => {
         action.toExecutableWhiskAction match {
           case Some(executable) =>
             pool ! Run(executable, msg)
+
             Future.successful(())
           case None =>
             logging.error(this, s"non-executable action reached the invoker ${action.fullyQualifiedName(false)}")
@@ -251,55 +301,62 @@ class InvokerReactive(
       }
   }
 
-  /** Is called when an ActivationMessage is read from Kafka */
-  def processActivationMessage(bytes: Array[Byte]): Future[Unit] = {
+  def parseActivationMessage(bytes: Array[Byte]): Future[Unit] = {
     Future(ActivationMessage.parse(new String(bytes, StandardCharsets.UTF_8)))
       .flatMap(Future.fromTry)
       .flatMap { msg =>
-        // The message has been parsed correctly, thus the following code needs to *always* produce at least an
-        // active-ack.
+        activationProcessor ! msg
+        activationFeed ! MessageFeed.Processed
+        Future.successful(())
+      }.recoverWith {
+      case t =>
+        // Iff everything above failed, we have a terminal error at hand. Either the message failed
+        // to deserialize, or something threw an error where it is not expected to throw.
+        activationFeed ! MessageFeed.Processed
+        logging.error(this, s"terminal failure while processing message: $t")
+        Future.successful(())
+    }
+  }
 
-        implicit val transid: TransactionId = msg.transid
-
-        //set trace context to continue tracing
-        WhiskTracerProvider.tracer.setTraceContext(transid, msg.traceContext)
-
-        if (!namespaceBlacklist.isBlacklisted(msg.user)) {
-          val start = transid.started(this, LoggingMarkers.INVOKER_ACTIVATION, logLevel = InfoLevel)
-          val future = if (msg.prewarmOnly.isDefined) {
-            handlePrewarmMessage(msg, msg.prewarmOnly.get)
-          } else {
-            handleActivationMessage(msg)
-          }
-          future.onComplete(f => activationFeed ! MessageFeed)
-          future
-        } else {
-          // Iff the current namespace is blacklisted, an active-ack is only produced to keep the loadbalancer protocol
-          // Due to the protective nature of the blacklist, a database entry is not written.
-          activationFeed ! MessageFeed.Processed
-
-          val activation =
-            generateFallbackActivation(msg, ActivationResponse.applicationError(Messages.namespacesBlacklisted))
-          ack(
-            msg.transid,
-            activation,
-            false,
-            msg.rootControllerIndex,
-            msg.user.namespace.uuid,
-            CombinedCompletionAndResultMessage(transid, activation, instance))
-
-          logging.warn(this, s"namespace ${msg.user.namespace.name} was blocked in invoker.")
-          Future.successful(())
-        }
+  /** Is called when an ActivationMessage is read from Kafka */
+  def processActivationMessage(msg: ActivationMessage): Future[Unit] = {
+    // The message has been parsed correctly, thus the following code needs to *always* produce at least an
+    // active-ack.
+    implicit val transid: TransactionId = msg.transid
+    if (msg.waitForContent.isDefined) {
+      if (msg.content.isDefined) {
+        logging.warn(this, s"content for activation ${msg.activationId} is defined, but waitForContent is ${msg.waitForContent.get}")
       }
-      .recoverWith {
-        case t =>
-          // Iff everything above failed, we have a terminal error at hand. Either the message failed
-          // to deserialize, or something threw an error where it is not expected to throw.
-          activationFeed ! MessageFeed.Processed
-          logging.error(this, s"terminal failure while processing message: $t")
-          Future.successful(())
+      // no content provided during scheduling, need to send to the waiting map until its content arrives
+      activationWaiter ! msg
+      return Future.successful(())
+    }
+    //set trace context to continue tracing
+    WhiskTracerProvider.tracer.setTraceContext(transid, msg.traceContext)
+
+    if (!namespaceBlacklist.isBlacklisted(msg.user)) {
+      transid.started(this, LoggingMarkers.INVOKER_ACTIVATION, logLevel = InfoLevel)
+      val future = if (msg.prewarmOnly.isDefined) {
+        handlePrewarmMessage(msg, msg.prewarmOnly.get)
+      } else {
+        handleActivationMessage(msg)
       }
+      future
+    } else {
+      // Iff the current namespace is blacklisted, an active-ack is only produced to keep the loadbalancer protocol
+      // Due to the protective nature of the blacklist, a database entry is not written.
+      val activation =
+        generateFallbackActivation(msg, ActivationResponse.applicationError(Messages.namespacesBlacklisted))
+      ack(
+        msg.transid,
+        activation,
+        blockingInvoke = false,
+        msg.rootControllerIndex,
+        msg.user.namespace.uuid,
+        CombinedCompletionAndResultMessage(transid, activation, instance))
+      logging.warn(this, s"namespace ${msg.user.namespace.name} was blocked in invoker.")
+      Future.successful(())
+    }
   }
 
   /**
@@ -332,9 +389,42 @@ class InvokerReactive(
 
   private val healthProducer = msgProvider.getProducer(config)
   Scheduler.scheduleWaitAtMost(1.seconds)(() => {
-    healthProducer.send("health", PingMessage(instance)).andThen {
+    healthProducer.send(rackHealthTopic, PingMessage(instance)).andThen {
       case Failure(t) => logging.error(this, s"failed to ping the controller: $t")
     }
   })
 
+  def parseDependencyInputMessage(bytes: Array[Byte]): Future[Unit] = {
+    Future(DepResultMessage.parse(new String(bytes, StandardCharsets.UTF_8)))
+      .flatMap(Future.fromTry)
+      .flatMap { msg =>
+        activationWaiter ! msg
+        depInputFeed ! MessageFeed.Processed
+        Future.successful(())
+      }.recoverWith {
+      case t =>
+        // Iff everything above failed, we have a terminal error at hand. Either the message failed
+        // to deserialize, or something threw an error where it is not expected to throw.
+        depInputFeed ! MessageFeed.Processed
+        logging.error(this, s"terminal failure while processing message: $t")
+        Future.successful(())
+    }
+  }
+
+  def parseSchedResult(bytes: Array[Byte]): Future[Unit] = {
+    Future(SchedulingDecision.parse(new String(bytes, StandardCharsets.UTF_8)))
+      .flatMap(Future.fromTry)
+      .flatMap { msg =>
+        resultWaiter ! msg
+        schedResultFeed ! MessageFeed.Processed
+        Future.successful(())
+      }.recoverWith {
+      case t =>
+        // Iff everything above failed, we have a terminal error at hand. Either the message failed
+        // to deserialize, or something threw an error where it is not expected to throw.
+        schedResultFeed ! MessageFeed.Processed
+        logging.error(this, s"terminal failure while processing message: $t")
+        Future.successful(())
+    }
+  }
 }

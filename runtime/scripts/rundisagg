@@ -1,0 +1,134 @@
+#!/usr/bin/python
+
+import threading
+import importlib.util
+import requests
+import argparse
+import json
+import subprocess
+import random
+import os
+import yaml
+
+from disagg import LibdAction
+
+from glob import glob
+
+dir_path = os.path.dirname(os.path.realpath(__file__))
+lib_path = os.path.join(dir_path, '../lib')
+
+# Function for extracting the meta info
+def metaline(line, filetype):
+    if filetype == '.py':
+        if line.startswith('#@ '):
+            return True, line[3:]
+    elif filetype == '.yaml':
+        return True, line
+    return False, None
+
+def filemeta(f):
+    name = os.path.basename(f).split('.')[0]
+    filetype = os.path.splitext(f)[1]
+
+    metaphase = True
+    metalist = [
+        "name: {}\n".format(name),
+        "filetype: {}\n".format(filetype)
+    ]
+    sourcelist = []
+
+    print("processing object file", f, "type", filetype)
+    with open(f) as source:
+        for line in source.readlines():
+            is_meta, meta = metaline(line, filetype)
+            if metaphase and is_meta:
+                metalist.append(meta)
+            else:
+                is_meta = False
+                sourcelist.append(line)
+    return metaphase, yaml.load(''.join(metalist), Loader = yaml.Loader), ''.join(sourcelist)
+        
+class ParamLoader:
+    pass
+
+class FileParamLoader(ParamLoader):
+    def __init__(self, infiles = {}, outfile = None):
+        print('build with infiles', infiles, 'outfiles', outfile)
+        self.infiles = infiles
+        self.outfile = outfile
+        self.rv = None
+
+    def get(self):
+        params = {} 
+        for obj in self.infiles:
+            with open(self.infiles[obj]) as f:  
+                params[obj] = json.load(f)
+        return params
+
+    def put(self, rv):
+        self.rv = rv
+        if self.outfile is not None:
+            with open(self.outfile, 'w') as f:  
+                json.dump(rv, f)
+
+class MetaFileParamLoader(FileParamLoader):
+    def __init__(self, meta, path="/tmp"):
+        self.path = path
+        infiles = { o:self.iofile(o) for o in meta.get('parents', []) }
+        outfile = self.iofile(meta['name'])
+        super().__init__(infiles, outfile)
+
+    def iofile(self, obj):
+        filename =  "rundisagg.{}.json".format(obj)
+        return os.path.join(self.path, filename)
+
+def execute(filename, action, loader):
+    spec = importlib.util.spec_from_file_location("module.name", filename)
+    __func = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(__func)
+
+    params = loader.get()
+    rv = __func.main(params, action)
+    loader.put(rv)
+
+def build_action(activation_id, server_url, transports):
+    cv = threading.Condition()
+    action = LibdAction(cv, activation_id, server_url)
+    for transport in transports:
+        action.add_transport(transport)
+    return action
+
+def parse_memory_transports(mems):
+    mems = mems or []
+    def parse(mem):
+        args = mem.split(':') 
+        return "{};rdma_tcp;url,tcp://localhost:{};".format(*args)
+    return [parse(m) for m in mems]
+
+if __name__ == '__main__':
+    SERVER_URL = "localhost:2333"
+    ACTIVATION_ID = "thisisactivationid"
+
+    parser = argparse.ArgumentParser(description='Generate disaggregated json from folder')
+    parser.add_argument('-d', '--output_dir', type=str, default='/tmp',
+                        help='output directory')
+    parser.add_argument('-m', '--memory', type=str, nargs='+',
+                        help='corunning memory objects, in format <name>:port')
+    parser.add_argument('-p', '--print_output', action='store_true',
+                        help='print output')
+    parser.add_argument('objectfile', type=str,
+                        help='object file')
+    args = parser.parse_args()
+
+    _, meta, _ = filemeta(args.objectfile)
+    params = MetaFileParamLoader(meta)
+
+    transports = parse_memory_transports(args.memory)
+    print('building action with transports', transports)
+    action = build_action(ACTIVATION_ID, SERVER_URL, transports)
+    print('executing object {}:{}'.format(args.objectfile, meta['name']))
+    execute(args.objectfile, action, params)
+
+    if (args.print_output):
+        print('[result]', json.dumps(params.rv))
+

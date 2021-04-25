@@ -198,39 +198,16 @@ trait Container extends LibdAPIs[Container] {
                maxConcurrent: Int = 1,
   )(implicit transid: TransactionId): Future[Option[ContainerResponse]] = {
 
-    val start =
-      transid.started(
-        this,
-        LoggingMarkers.INVOKER_CONTAINER_CALL,
-        s"sending arguments to $resourcePath at $id $addr",
-        logLevel = InfoLevel)
+    logging.warn(this, s"LIBD call $method:$resourcePath => $body")
 
     val http = httpConnection.getOrElse {
       val conn = openConnections(timeout, maxConcurrent)
       httpConnection = Some(conn)
       conn
     }
-
-    val started = Instant.now()
     http
-      .call(method, resourcePath, body)
-      .map { response =>
-        val finished = Instant.now()
-        RunResult(Interval(started, finished), response)
-      }
-      .andThen { // never fails
-        case Success(r: RunResult) =>
-          transid.finished(
-            this,
-            start.copy(start = r.interval.start),
-            s"container call returns result: ${r.toBriefString}",
-            endTime = r.interval.end,
-            logLevel = InfoLevel)
-        case Failure(t) =>
-          transid.failed(this, start, s"call failed with $t")
-      }
-      .map (_.response.toOption)
-
+      .call(method.value, resourcePath, body)
+      .map(_.toOption)
   }
 
 
@@ -264,6 +241,7 @@ trait Container extends LibdAPIs[Container] {
         RunResult(Interval(started, finished), response)
       }
   }
+
   private def openConnections(timeout: FiniteDuration, maxConcurrent: Int) = {
     if (Container.config.akkaClient) {
       new AkkaContainerClient(
@@ -319,6 +297,10 @@ case class RunResult(interval: Interval, response: Either[ContainerConnectionErr
 }
 
 object Interval {
+
+  def currentLatency()(implicit transid: TransactionId): Long = {
+    Interval(transid.meta.start, Instant.now()).duration.toMillis
+  }
 
   /** An interval starting now with zero duration. */
   def zero = {

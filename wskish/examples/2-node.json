@@ -8,16 +8,16 @@
         }],
         "exec": {
           "kind": "nodejs:14",
-          "code": "function main(params,action) { action.request.dependency(); }",
-          "binary": true,
+          "code": "function main(params,action) { }",
+          "binary": false,
           "main": "main"
         },
         "limits": {
           "concurrency": 1,
           "logs": 10,
           "resources": {
-            "cpu": 4.0,
-            "mem": "256 MB",
+            "cpu": 1.0,
+            "mem": "128 MB",
             "storage": "512 MB"
           },
           "timeout": 60000
@@ -39,15 +39,15 @@
         }],
         "exec": {
           "kind": "nodejs:14",
-          "code": "function main(params,action) { action.request.dependency() }",
-          "binary": true,
+          "code": "function main(params,action) { }",
+          "binary": false,
           "main": "main"
         },
         "limits": {
           "concurrency": 1,
           "logs": 10,
           "resources": {
-            "cpu": 4.0,
+            "cpu": 1.0,
             "mem": "256 MB",
             "storage": "512 MB"
           },
@@ -68,4 +68,3 @@
     }],
     "publish": true
   }
-  

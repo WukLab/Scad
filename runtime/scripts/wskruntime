@@ -10,14 +10,16 @@ import random
 
 def build_init(name, code, main, binary = False):
     return { 'value': locals() }
+def build_config(name, durl):
+    return locals()
 
 def build_run(activation_id, namespace = 'default', value = {}, transports = []):
     return locals()
 
-def call_host(host, path, body):
+def call_host(host, path, body, method='POST'):
     url = requests.compat.urljoin(host, path)
     print('calling host {} with {}'.format(url, json.dumps(body)))
-    requests.post(url, data = json.dumps(body))
+    requests.request(method, url, data = json.dumps(body))
     print('success')
 
 def get_container_address(name):
@@ -33,6 +35,8 @@ def reset_container(name):
     def _execute(command):
         try:
             subprocess.run(command).check_returncode()
+        except:
+            pass
         finally:
             pass
     _execute(['docker', 'stop', name])
@@ -44,10 +48,19 @@ def gen_activationid(length):
     hexdigits = "0123456789abcdef"
     return ''.join([random.choice(hexdigits) for _ in range(length)])
 
+def get_name(args):
+    name = args.name
+    if name is None:
+        if args.file is None:
+            parser.error("require --file to be used with init")
+        name = 'action_' + '_'.join(re.split('/|\.', args.file))
+    name = name[:64] # get short name 
+    return name
+
 if __name__ == '__main__':
 
     # Helper functions
-    actions = ['init', 'run', 'reset']
+    actions = ['init', 'run', 'reset', 'config']
     CONFIG_FILE = '/tmp/wskruntime_config'
     def load_config(args):
         config = configparser.ConfigParser()
@@ -66,7 +79,7 @@ if __name__ == '__main__':
                         help='name of the action')
     parser.add_argument('-n', '--name', type=str,
                         help='name of the action')
-    parser.add_argument('-a', '--activationid', type=str,
+    parser.add_argument('-a', '--aid', type=str,
                         help='activation id')
     parser.add_argument('-t', '--transport', nargs='+',
                         help='transports to be added to the run command')
@@ -76,15 +89,12 @@ if __name__ == '__main__':
                         help='actions to be ')
     args = parser.parse_args()
 
-    host = get_container_address(args.container)
     for action in args.action:
         if action == 'init':
             if args.file is None:
                 parser.error("require --file to be used with init")
-            name = args.name
-            if name == None:
-                name = 'action_' + '_'.join(re.split('/|\.', args.file))
-            name = name[:64] # get short name 
+            name = get_name(args)
+            host = get_container_address(args.container)
 
             with open(args.file) as f:
                 code = f.read()
@@ -93,10 +103,28 @@ if __name__ == '__main__':
                 call_host(host, '/init', body)
 
         elif action == 'run':
+            host = get_container_address(args.container)
             aid = gen_activationid(32)
-            body = build_run(aid)
+            body = build_run(aid, transports = args.transport)
+            if args.transport is None:
+                del body['transports']
             call_host(host, '/run', body)
 
         elif action == 'reset':
             reset_container(args.container)
+
+        elif action == 'config':
+            host = get_container_address(args.container)
+            if args.aid is None:
+                parser.error("requrie aid to be attached")
+            if args.transport is None or len(args.transport) != 1:
+                parser.error("require --transport to be used with single config")
+            trans, _, *config = args.transport[0].split(';')
+            config = ';'.join(config)
+
+            body = build_config(trans, config)
+            call_host(host,
+                      '/action/{}/transport/{}'.format(args.aid, trans),
+                      body, method = 'PUT')
+
     

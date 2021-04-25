@@ -26,38 +26,62 @@ import sys, os, json, traceback, warnings
 ####################
 
 from disagg import LibdAction
-import threading
-import struct
-import os
+import threading, struct, os
+
+def debug(*args):
+    print(*args, file=stderr)
+    stderr.flush()
+# class LibdRequest:
+#     def __init__(self, aid, serverUrl):
+#         self.aid = aid
+#         self.surl = serverUrl
+#     def __ep(self, api, data):
+#         url = "{}/activation/{}/{}".format(self.surl, self.aid, api)
+#         return requests.post(api, json.dumps(data))
+#     def dependency(target = null, value = null, parallelism = null, dependency = null, functionActivationId = null, appActivationId = null):
+#         data = {}
 
 class LibdRuntime:
     def __init__(self):
         self.actions = {}
-        self.server_url = os.getenv('__OW_INVOKER_API_URL')
-
+        self.stash_msgs = {}
+        self.server_url = os.getenv('__OW_INVOKER_API_URL', 'localhost')
+        self.cv = threading.Condition()
+    def stash(self,aid,func,*args):
+        print("stash request", aid, func, args, file=stderr)
+        stderr.flush()
+        self.stash_msgs.setdefault(aid, []).append((func, args))
+    def unstash(self, aid):
+        print("unstash request", aid, file=stderr)
+        stderr.flush()
+        if aid in self.stash_msgs:
+            for func,args in self.stash_msgs[aid]:
+                func(self, *args)
+            del self.stash_msgs[aid]
     def create_action(self, aid):
-        action = LibdAction(aid, self.server_url)
-        # TODO: inject APIs into this object
-        action.request = None
+        action = LibdAction(self.cv, aid, self.server_url)
         self.actions[aid] = action
         return action
-
-    # This may throw exception
     def get_action(self, aid):
-        return self.actions.get(aid, self.create_action(aid))
-
+        return self.actions[aid]
     def terminate_action(self, name):
         # TODO: call of dealloc is not garenteed, use ternimate?
         del self.actions[name]
 
-
 # Params: a list of strings. Body: the body of http request
 def _act_add        (runtime, params, body):
-    runtime.create_action(body['activation_id'])
+    runtime.create_action(params['activation_id'])
 def _trans_add      (runtime, params, body):
-    runtime.get_action(name).add_transport(*params)
+    runtime.get_action(params[0]).add_transport(**body)
 def _trans_config   (runtime, params, body):
-    runtime.get_action(name).config_transport(*params)
+    debug('try to config', params, body)
+    if params[0] in runtime.actions:
+        debug('call config', params, body)
+        action = runtime.get_action(params[0])
+        action.config_transport(params[1], body['durl'])
+        debug('finish config', params, body)
+    else:
+        runtime.stash(params[0], _trans_config, params, body)
 
 cmd_funcs = {
     # create action
@@ -70,17 +94,19 @@ def handle_message(fifoName, runtime):
     try:
         fifo = os.open(fifoName, os.O_RDONLY)
         while True:
+            stderr.write('Listen on fifo file ' + fifoName + '\n')
+            stderr.flush()
             # parse message from FIFO
             size = struct.unpack("<I", os.read(fifo, 4))[0]
             content = os.read(fifo, size).decode('ascii')
             msg = json.loads(content)
-            print(msg)
-
-            # forward message to json
-            body = json.dumps(msg.body)
-            cmd_funcs[msg.cmd](runtime, msg.params, body)
+            body = json.loads(msg.get('body', "{}"))
+            params = msg.get('params', [])
+            debug('get cmd', params, body)
+            cmd_funcs[msg['cmd']](runtime, params, body)
     finally:
-        print('cannot open file fifo', file=stderr)
+        print('Error happens in FIFO thread', file=stderr)
+        stderr.flush()
 
 # start libd monitor thread, this will keep up for one initd function
 FIFO_FILE = os.path.join(
@@ -88,7 +114,6 @@ FIFO_FILE = os.path.join(
     "../fifo")
 _runtime = LibdRuntime()
 threading.Thread(target=handle_message, args=(FIFO_FILE, _runtime)).start()
-
 ####################
 # END   libd runtime
 ####################
@@ -124,30 +149,38 @@ while True:
   line = stdin.readline()
   if not line: break
   args = json.loads(line)
+  # TODO: log error at this phase
   payload = {}
   action = None
+  aid = None
   transports = []
   for key in args:
+    print("on key", key, args[key], file=stderr)
+    stderr.flush()
     if key == "value":
       payload = args["value"]
     elif key == 'activation_id':
-      action = _runtime.get_action(args['activation_id'])
+      aid = args['activation_id']
+      action = _runtime.create_action(args['activation_id'])
     elif key == 'transports':
       transports = args['transports']
     else:
       env["__OW_%s" % key.upper()]= args[key]
-  if action != None:
+  if action != None and transports != None:
     for trans in transports:
       action.add_transport(trans)
+    _runtime.unstash(aid)
 
   res = {}
   # Here the funciton is in the same thread
   try:
-    res = main(payload)
+    res = main(payload, action)
   except Exception as ex:
     print(traceback.format_exc(), file=stderr)
     res = {"error": str(ex)}
-  out.write(json.dumps(res, ensure_ascii=False).encode('utf-8'))
+  # TODO: terminate actions after finish?
+  resjson = json.dumps(res, ensure_ascii=False).encode('utf-8')
+  out.write(resjson)
   out.write(b'\n')
   stdout.flush()
   stderr.flush()

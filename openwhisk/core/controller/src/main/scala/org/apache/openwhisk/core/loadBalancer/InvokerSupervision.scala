@@ -18,7 +18,6 @@
 package org.apache.openwhisk.core.loadBalancer
 
 import java.nio.charset.StandardCharsets
-
 import scala.collection.immutable
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration._
@@ -31,6 +30,7 @@ import akka.actor.FSM.SubscribeTransitionCallBack
 import akka.actor.FSM.Transition
 import akka.pattern.pipe
 import akka.util.Timeout
+import org.apache.openwhisk.common.TransactionId.childOf
 import org.apache.openwhisk.common._
 import org.apache.openwhisk.core.connector._
 import org.apache.openwhisk.core.database.NoDocumentException
@@ -409,7 +409,7 @@ class InvokerActor(invokerInstance: InvokerInstanceId, controllerInstance: Contr
     InvokerPool.healthAction(controllerInstance).map { action =>
       val activationMessage = ActivationMessage(
         // Use the sid of the InvokerSupervisor as tid
-        transid = transid,
+        transid = childOf(transid),
         action = action.fullyQualifiedName(true),
         // Use empty DocRevision to force the invoker to pull the action from db all the time
         revision = DocRevision.empty,

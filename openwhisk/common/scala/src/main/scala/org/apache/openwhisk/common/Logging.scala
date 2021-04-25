@@ -143,9 +143,9 @@ class PrintStreamLogging(outputStream: PrintStream = Console.out) extends Loggin
  * @param deltaToTransactionStart the time difference between now and the start of the Transaction
  * @param deltaToMarkerStart if this is an end marker, this is the time difference to the start marker
  */
-case class LogMarker(token: LogMarkerToken, deltaToTransactionStart: Long, deltaToMarkerStart: Option[Long] = None) {
+case class LogMarker(token: LogMarkerToken, deltaToTransactionStart: Long, tidStart: Option[Long] = None, deltaToMarkerStart: Option[Long] = None) {
   override def toString() = {
-    val parts = Seq(LogMarker.keyword, token.toStringWithSubAction, deltaToTransactionStart) ++ deltaToMarkerStart
+    val parts = Seq(LogMarker.keyword, token.toStringWithSubAction, deltaToTransactionStart, tidStart.getOrElse("")) ++ tidStart ++ deltaToMarkerStart
     "[" + parts.mkString(":") + "]"
   }
 }
@@ -336,6 +336,7 @@ object LoggingMarkers {
   val error = "error"
   val counter = "counter"
   val timeout = "timeout"
+  val mark = "mark"
 
   private val controller = "controller"
   private val invoker = "invoker"
@@ -345,6 +346,7 @@ object LoggingMarkers {
   private val loadbalancer = "loadbalancer"
   private val containerClient = "containerClient"
   private val containerPool = "containerPool"
+  private val topsched = "topsched"
   private val racksched = "racksched"
 
   /*
@@ -653,4 +655,20 @@ object LoggingMarkers {
 
   // Time that is needed to produce message in kafka
   val RACKSCHED_KAFKA = LogMarkerToken(controller, kafka, start)(MeasurementUnit.time.milliseconds)
+
+  // Scheduler latency measurements
+
+  val TOPSCHED_SCHED_BEGIN: LogMarkerToken = LogMarkerToken(topsched, "scheduler", "begin")(MeasurementUnit.time.microseconds);
+  val TOPSCHED_SCHED_END: LogMarkerToken = LogMarkerToken(topsched, "scheduler", "end")(MeasurementUnit.time.microseconds);
+
+  val RACKSCHED_SCHED_BEGIN: LogMarkerToken = LogMarkerToken(racksched, "scheduler", "begin")(MeasurementUnit.time.microseconds)
+  val RACKSCHED_SCHED_END: LogMarkerToken = LogMarkerToken(racksched, "scheduler", "end")(MeasurementUnit.time.microseconds)
+
+  val INVOKER_DEP_SCHED: LogMarkerToken = LogMarkerToken(invoker, "depinvoker", "sched")(MeasurementUnit.time.milliseconds);
+  val INVOKER_DEP_FUNC_POST: LogMarkerToken = LogMarkerToken(invoker, "depinvoker", "func")(MeasurementUnit.time.milliseconds);
+  val INVOKER_ACTIVATION_LEAVE_ACTIVATION_WAITER: LogMarkerToken = LogMarkerToken(invoker, "activationwaiter", "leave")(MeasurementUnit.time.microseconds)
+  val INVOKER_ACTIVATION_LEAVE_RESULT_WAITER: LogMarkerToken = LogMarkerToken(invoker, "resultwaiter", "leave")(MeasurementUnit.time.microseconds)
+  val INVOKER_ACTIVATION_HANDLE: LogMarkerToken = LogMarkerToken(invoker, activation, "handle")(MeasurementUnit.time.microseconds)
+  val INVOKER_ACTIVATION_STORING: LogMarkerToken = LogMarkerToken(invoker, activation, "storing")(MeasurementUnit.time.microseconds)
+
 }

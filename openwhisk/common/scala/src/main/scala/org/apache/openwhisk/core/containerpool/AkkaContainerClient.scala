@@ -84,12 +84,20 @@ protected class AkkaContainerClient(
    * @return
    */
 
-  override def call(method : HttpMethod, endpoint: String, body: JsValue, retry: Boolean = false)(
+  override def call(method : String, endpoint: String, body: JsValue, retry: Boolean = false)(
     implicit tid: TransactionId): Future[Either[ContainerHttpError, ContainerResponse]] = {
+
+    val akkaMethod = method match {
+      case "GET" => HttpMethods.GET
+      case "PUT" => HttpMethods.PUT
+      case "POST" => HttpMethods.POST
+      case "DELETE" => HttpMethods.DELETE
+      case _ => HttpMethod.custom(method)
+    }
 
     //create the request
     val req = Marshal(body).to[MessageEntity].map { b =>
-      HttpRequest(method, endpoint, entity = b)
+      HttpRequest(akkaMethod, '/' + endpoint, entity = b)
         .withHeaders(Accept(MediaTypes.`application/json`))
     }
 

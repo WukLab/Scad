@@ -1,0 +1,122 @@
+{
+    "functions": [
+      {
+        "name": "function0",
+        "objects": [
+          {
+            "annotations": [
+              {
+                "key": "exec",
+                "value": "javascript"
+              }
+            ],
+            "exec": {
+              "kind": "nodejs:14",
+              "code": "function main(params,action) { }",
+              "binary": false,
+              "main": "main"
+            },
+            "limits": {
+              "concurrency": 1,
+              "logs": 10,
+              "resources": {
+                "cpu": 1.0,
+                "mem": "128 MB",
+                "storage": "512 MB"
+              },
+              "timeout": 60000
+            },
+            "name": "object0",
+            "parameters": [],
+            "publish": false,
+            "relationships": {
+              "corunning": [],
+              "dependents": [
+                "object1"
+              ],
+              "parents": []
+            },
+            "runtimeType": "compute",
+            "version": "0.0.1"
+          },
+          {
+            "annotations": [
+              {
+                "key": "exec",
+                "value": "javascript"
+              }
+            ],
+            "exec": {
+              "kind": "nodejs:14",
+              "code": "function main(params,action) { }",
+              "binary": false,
+              "main": "main"
+            },
+            "limits": {
+              "concurrency": 1,
+              "logs": 10,
+              "resources": {
+                "cpu": 1.0,
+                "mem": "256 MB",
+                "storage": "512 MB"
+              },
+              "timeout": 60000
+            },
+            "name": "object1",
+            "parameters": [],
+            "publish": false,
+            "parallelism": 10,
+            "relationships": {
+              "corunning": [],
+              "dependents": [
+                  "object2"
+                ],
+              "parents": [
+                "object0"
+              ]
+            },
+            "runtimeType": "compute",
+            "version": "0.0.1"
+          },
+          {
+            "annotations": [
+              {
+                "key": "exec",
+                "value": "javascript"
+              }
+            ],
+            "exec": {
+              "kind": "nodejs:14",
+              "code": "function main(params,action) { }",
+              "binary": false,
+              "main": "main"
+            },
+            "limits": {
+              "concurrency": 1,
+              "logs": 10,
+              "resources": {
+                "cpu": 1.0,
+                "mem": "256 MB",
+                "storage": "512 MB"
+              },
+              "timeout": 60000
+            },
+            "name": "object2",
+            "parameters": [],
+            "publish": false,
+            "relationships": {
+              "corunning": [],
+              "dependents": [],
+              "parents": [
+                "object1"
+              ]
+            },
+            "runtimeType": "compute",
+            "version": "0.0.1"
+          }
+        ],
+        "publish": true
+      }
+    ],
+    "publish": true
+  }

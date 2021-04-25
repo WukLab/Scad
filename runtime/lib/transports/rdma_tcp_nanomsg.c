@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 #include <nanomsg/nn.h>
 #include <nanomsg/reqrep.h>
 
@@ -52,9 +53,12 @@ cleanup:
 static int _init(struct libd_transport *trans) {
     init_config_for(trans, struct tcp_rdma_state);
 
+    debug_map_print(trans->tstate->config);
+
     dprintf("start setup for %s", trans->tstate->name);
 
     init_config_require(url, id);
+    // init_config_require(size, config_to_ull);
     init_config_set(sock, 0);
     init_config_set(sock_initd, 0);
 
@@ -74,12 +78,17 @@ static int _connect(struct libd_transport *trans) {
     int rv;
     get_local_state(rstate,trans,struct tcp_rdma_state);
 
-    if ((rv = nn_connect (rstate->sock, rstate->url)) < 0) {
-        return rv;
+    int retry = 16;
+    for (int i = 0; i < retry; i++) {
+        if ((rv = nn_connect (rstate->sock, rstate->url)) >= 0) {
+            dprintf("Setup connection rv %d", rv);
+            return 0;
+        }
+        dprintf(" onnection rv %d, retry %d", rv, i);
+        sleep(1);
     }
-    dprintf("Setup connection rv %d", rv);
-        
-    return 0;
+    dprintf("Setup connection failed, rv %d", rv);
+    return rv;
 }
 
 static int _terminate(struct libd_transport * trans) {

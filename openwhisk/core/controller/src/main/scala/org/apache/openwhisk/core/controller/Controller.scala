@@ -266,10 +266,10 @@ object Controller {
 
     Seq(
       ("completed" + instance.asString, "completed", Some(ActivationEntityLimit.MAX_ACTIVATION_LIMIT)),
-//      ("health", "health", None),
       ("rackHealth", "rackHealth", None),
       ("cacheInvalidation", "cache-invalidation", None),
       (DependencyInvocationMessageContext.DEP_INVOCATION_TOPIC, "dependency-invocation", None),
+      ("topsched", "topsched", None),
       ("events", "events", None)).foreach {
       case (topic, topicConfigurationKey, maxMessageBytes) =>
         if (msgProvider.ensureTopic(config, topic, topicConfigurationKey, maxMessageBytes).isFailure) {

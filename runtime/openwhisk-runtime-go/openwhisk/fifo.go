@@ -11,9 +11,9 @@ import (
 
 // LibdMessage is message for communication with c backend
 type LibdMessage struct {
-	cmd    string
-	body   string
-	params []string
+	Cmd    string   `json:"cmd"`
+	Body   string   `json:"body"`
+	Params []string `json:"params"`
 }
 
 // write command into fifo
@@ -59,20 +59,26 @@ func (ap *ActionProxy) handleLibdRequest(w http.ResponseWriter, r *http.Request)
 
 			params := []string{serverURL}
 
-			ap.fifoWrite(LibdMessage{cmd: "ACTADD", params: params, body: bodyStr})
+			ap.fifoWrite(LibdMessage{Cmd: "ACTADD", Params: params, Body: bodyStr})
 
 			sendOK(w)
 			return
 		} else if len(fields) == 3 && fields[2] == "transport" && r.Method == "POST" {
 			// app.post('/action/:aid/transport', addTransport);
-			ap.fifoWrite(LibdMessage{cmd: "TRANSADD", body: bodyStr})
+			ap.fifoWrite(LibdMessage{Cmd: "TRANSADD", Body: bodyStr})
 
 			sendOK(w)
 			return
 		} else if len(fields) == 4 && fields[2] == "transport" {
 			if r.Method == "PUT" {
 				// app.put ('/action/:aid/transport/:tname', platformFactory.wrapEndpoint(service.configTransport));
-				ap.fifoWrite(LibdMessage{cmd: "TRANSCONF", body: bodyStr})
+				// body: {'durl': '...'}
+				Debug("Config transport %s:%s -> %s", fields[1], fields[3], bodyStr)
+				ap.fifoWrite(LibdMessage{
+					Cmd:    "TRANSCONF",
+					Body:   bodyStr,
+					Params: []string{fields[1], fields[3]},
+				})
 
 				sendOK(w)
 				return

@@ -286,7 +286,7 @@ object RackSched {
 
     Seq(
       ("completed" + instance.toString, "completed", Some(ActivationEntityLimit.MAX_ACTIVATION_LIMIT)),
-      ("health", "health", None),
+      (RackSchedInstanceId.rackSchedHealthTopic(instance.toInt), "health", None),
       ("rackHealth", "rackHealth", None),
       (instance.toString, instance.toString, None),
       ("cacheInvalidation", "cache-invalidation", None),

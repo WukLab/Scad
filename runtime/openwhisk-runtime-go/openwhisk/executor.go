@@ -84,12 +84,23 @@ func (proc *Executor) Interact(in []byte) ([]byte, error) {
 
 	chout := make(chan []byte)
 	go func() {
-		out, err := proc.output.ReadBytes('\n')
-		if err == nil {
-			chout <- out
-		} else {
-			chout <- []byte{}
+		// use a loop to generate new function
+		out := []byte{}
+		for {
+			outslice, err := proc.output.ReadBytes('\n')
+			if err == nil {
+				out = append(out, outslice...)
+				Debug("size of out %d", len(out))
+				if outslice[len(outslice)-1] == '\n' {
+					break
+				}
+			} else {
+				out = []byte{}
+				break
+			}
 		}
+
+		chout <- out
 	}()
 	var err error
 	var out []byte

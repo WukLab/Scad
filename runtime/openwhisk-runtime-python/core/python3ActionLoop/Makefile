@@ -19,12 +19,13 @@ GO_RUNTIME=openwhisk-runtime-go
 
 build:
 	cp -r ../../../$(GO_RUNTIME) .
-	cp -r ../../../lib ./libd
+	cp -p -r ../../../lib ./libd
+	cp -p -r ../../disaggrt ./disaggrt
 	docker build -t $(IMG) .
 
 clean:
 	rm -rf ./$(GO_RUNTIME)
-	rm -rf ./libd
+	rm -rf ./libd ./disaggrt
 	docker rmi -f $(IMG)
 
 debug: build

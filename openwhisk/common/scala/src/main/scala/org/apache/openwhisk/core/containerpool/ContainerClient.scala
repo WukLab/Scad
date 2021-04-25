@@ -17,21 +17,16 @@
 
 package org.apache.openwhisk.core.containerpool
 
-import akka.http.scaladsl.model.HttpMethod
-
 import scala.concurrent.Future
 import spray.json._
 import org.apache.openwhisk.common.TransactionId
 import org.apache.openwhisk.core.entity.ActivationResponse.ContainerHttpError
 import org.apache.openwhisk.core.entity.ActivationResponse._
-import sun.reflect.generics.reflectiveObjects.NotImplementedException
 
 trait ContainerClient {
   def post(endpoint: String, body: JsValue, retry: Boolean, reschedule: Boolean)(
     implicit tid: TransactionId): Future[Either[ContainerHttpError, ContainerResponse]]
-  def call(method : HttpMethod, endpoint: String, body: JsValue, retry: Boolean = false)(
-    implicit tid: TransactionId): Future[Either[ContainerHttpError, ContainerResponse]] = {
-    Future.failed(new NotImplementedException())
-  }
+  def call(method : String, endpoint: String, body: JsValue, retry: Boolean = false)(
+    implicit tid: TransactionId): Future[Either[ContainerHttpError, ContainerResponse]]
   def close(): Future[Unit]
 }

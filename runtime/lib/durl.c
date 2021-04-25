@@ -36,7 +36,6 @@ int parse_config(struct libd_tstate *state, char *cur) {
     if (*cur != '\0')
         return -EINVAL;
 
-
     return 0;
 }
 

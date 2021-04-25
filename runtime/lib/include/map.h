@@ -26,4 +26,11 @@ int _map_free(map *m);
 // TODO: map cleanup
 // map_cleanup(m,kd,vd) 
 
+#ifdef DEBUG
+#define debug_map_print(m) _debug_map_print(&(m))
+void _debug_map_print(map *m);
+#else
+#define debug_map_print(m)
+#endif
+
 #endif

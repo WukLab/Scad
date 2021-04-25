@@ -32,6 +32,7 @@ import java.util.concurrent.TimeUnit
 import org.apache.openwhisk.core.entity.ActivationResponse.{ERROR_FIELD, statusForCode}
 import org.apache.openwhisk.core.entity.types.EntityStore
 import org.apache.openwhisk.utils.JsHelpers
+import spray.json.DefaultJsonProtocol.{IntJsonFormat, jsonFormat}
 
 import scala.concurrent.Future
 
@@ -41,7 +42,7 @@ trait Message {
   /**
    * A transaction id to attach to the message.
    */
-  val transid = TransactionId.unknown
+  val transid: TransactionId = TransactionId.unknown
 
   /**
    * Serializes message to string. Must be idempotent.
@@ -54,6 +55,30 @@ trait Message {
   override def toString = serialize
 }
 
+/**
+ *
+ * @param transid
+ * @param action
+ * @param revision
+ * @param user
+ * @param activationId
+ * @param rootControllerIndex
+ * @param blocking
+ * @param content -- uses Option[Option[]]. The outer option denotes whether or not the inputs to this function are ready/provided.
+ *                In this case where the output Option type is empty, it indicates the invoker may not execute until the proper
+ *                proper content (inner option) is received. If the outer option is Some(_), then the invoker may continue execution.
+ * @param initArgs
+ * @param lockedArgs
+ * @param cause
+ * @param traceContext
+ * @param siblings
+ * @param appActivationId
+ * @param functionActivationId
+ * @param prewarmOnly
+ * @param sendResultToTopic if available, upon making the scheduling decision, send a notification to the original invoker's
+ *                          scheduling decision topic. item is a tuple of (invokerInstanceId, originalActivationID).
+ *                          use the original activation id in the scheduling result message.
+ */
 case class ActivationMessage(override val transid: TransactionId,
                              action: FullyQualifiedEntityName,
                              revision: DocRevision,
@@ -70,6 +95,9 @@ case class ActivationMessage(override val transid: TransactionId,
                              appActivationId: Option[ActivationId] = None,
                              functionActivationId: Option[ActivationId] = None,
                              prewarmOnly: Option[PartialPrewarmConfig] = None,
+                             sendResultToInvoker: Option[(InvokerInstanceId, ActivationId)] = None,
+                             waitForContent: Option[Int] = None,
+                             parallelismIdx: ParallelismInfo = ParallelismInfo(0, 1),
                             )
     extends Message {
 
@@ -81,6 +109,11 @@ case class ActivationMessage(override val transid: TransactionId,
   }
 
   def causedBySequence: Boolean = cause.isDefined
+}
+
+case class ParallelismInfo(index: Int, max: Int) extends DefaultJsonProtocol
+object ParallelismInfo {
+  implicit val serdes: RootJsonFormat[ParallelismInfo] = jsonFormat(ParallelismInfo.apply, "index", "max")
 }
 
 /**
@@ -183,7 +216,7 @@ object ActivationMessage extends DefaultJsonProtocol {
   def parse(msg: String) = Try(serdes.read(msg.parseJson))
 
   private implicit val fqnSerdes = FullyQualifiedEntityName.serdes
-  implicit val serdes = jsonFormat16(ActivationMessage.apply)
+  implicit val serdes: RootJsonFormat[ActivationMessage] = jsonFormat19(ActivationMessage.apply)
 }
 
 object CombinedCompletionAndResultMessage extends DefaultJsonProtocol {
@@ -467,6 +500,8 @@ case class DependencyInvocationMessage(action: String,
                                        dependency: Seq[DependencyReference],
                                        functionActivationId: ActivationId,
                                        appActivationId: ActivationId,
+                                       transactionId: TransactionId,
+                                       corunning: Option[Seq[RunningActivation]] = None,
                                        )
     extends Message {
 
@@ -487,7 +522,9 @@ object DependencyInvocationMessage extends DefaultJsonProtocol {
   "content",
   "dependency",
   "appActivationId",
-  "functionActivationId")
+  "functionActivationId",
+  "transid",
+  "corunning")
 }
 
 // An connection for an object
@@ -499,7 +536,9 @@ case class _RunningActivation(activationId: ActivationId,
                               needSignal: Boolean
                              )
 
-case class RunningActivation(objActivation: ActivationId,
+case class RunningActivation(objName: String,
+                             objActivation: ActivationId,
+                             parallelismInfo: ParallelismInfo,
 //                             transportName: String, // Name of the transport, should be same on both side // removed temporarily
 //                             transportType: String, // type of transport, // derived from object at invoker side
                              transportImpl: String, // Implementation of transport
@@ -523,15 +562,17 @@ case class RunningActivation(objActivation: ActivationId,
 
 object RunningActivation extends DefaultJsonProtocol with DocumentFactory[RunningActivation] {
 
-  def apply(objActivation: ActivationId): RunningActivation = {
-    RunningActivation(objActivation, "tcp", true, true)
+  def apply(objName: String, objActivation: ActivationId, parallelismInfo: ParallelismInfo): RunningActivation = {
+    RunningActivation(objName, objActivation, parallelismInfo, "tcp", needWait = true, needSignal = true)
   }
 
   implicit val serdes: RootJsonFormat[RunningActivation] = jsonFormat(RunningActivation.apply,
-  "objActivation",
-  "transportImpl",
+    "objName",
+    "objActivation",
+    "parallelismInfo",
+    "transportImpl",
     "needWait",
-  "needSignal")
+    "needSignal")
 }
 
 case class PartialPrewarmConfig(ttlMs: Long, resources: RuntimeResources)
