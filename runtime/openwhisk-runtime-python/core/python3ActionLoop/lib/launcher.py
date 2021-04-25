@@ -21,6 +21,78 @@ from sys import stderr
 from os import fdopen
 import sys, os, json, traceback, warnings
 
+####################
+# BEGIN libd runtime
+####################
+
+from disagg import LibdAction
+import threading
+import struct
+import os
+
+class LibdRuntime:
+    def __init__(self):
+        self.actions = {}
+        self.server_url = os.getenv('__OW_INVOKER_API_URL')
+
+    def create_action(self, aid):
+        action = LibdAction(aid, self.server_url)
+        # TODO: inject APIs into this object
+        action.request = None
+        self.actions[aid] = action
+        return action
+
+    # This may throw exception
+    def get_action(self, aid):
+        return self.actions.get(aid, self.create_action(aid))
+
+    def terminate_action(self, name):
+        # TODO: call of dealloc is not garenteed, use ternimate?
+        del self.actions[name]
+
+
+# Params: a list of strings. Body: the body of http request
+def _act_add        (runtime, params, body):
+    runtime.create_action(body['activation_id'])
+def _trans_add      (runtime, params, body):
+    runtime.get_action(name).add_transport(*params)
+def _trans_config   (runtime, params, body):
+    runtime.get_action(name).config_transport(*params)
+
+cmd_funcs = {
+    # create action
+    'ACTADD'    : _act_add,
+    'TRANSADD'  : _trans_add,
+    'TRANSCONF' : _trans_config
+}
+
+def handle_message(fifoName, runtime):
+    try:
+        fifo = os.open(fifoName, os.O_RDONLY)
+        while True:
+            # parse message from FIFO
+            size = struct.unpack("<I", os.read(fifo, 4))[0]
+            content = os.read(fifo, size).decode('ascii')
+            msg = json.loads(content)
+            print(msg)
+
+            # forward message to json
+            body = json.dumps(msg.body)
+            cmd_funcs[msg.cmd](runtime, msg.params, body)
+    finally:
+        print('cannot open file fifo', file=stderr)
+
+# start libd monitor thread, this will keep up for one initd function
+FIFO_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "../fifo")
+_runtime = LibdRuntime()
+threading.Thread(target=handle_message, args=(FIFO_FILE, _runtime)).start()
+
+####################
+# END   libd runtime
+####################
+
 try:
   # if the directory 'virtualenv' is extracted out of a zip file
   path_to_virtualenv = os.path.abspath('./virtualenv')
@@ -53,12 +125,23 @@ while True:
   if not line: break
   args = json.loads(line)
   payload = {}
+  action = None
+  transports = []
   for key in args:
     if key == "value":
       payload = args["value"]
+    elif key == 'activation_id':
+      action = _runtime.get_action(args['activation_id'])
+    elif key == 'transports':
+      transports = args['transports']
     else:
       env["__OW_%s" % key.upper()]= args[key]
+  if action != None:
+    for trans in transports:
+      action.add_transport(trans)
+
   res = {}
+  # Here the funciton is in the same thread
   try:
     res = main(payload)
   except Exception as ex:

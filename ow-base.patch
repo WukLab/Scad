@@ -1,0 +1,13 @@
+diff --git a/ansible/roles/controller/tasks/deploy.yml b/ansible/roles/controller/tasks/deploy.yml
+index 64724c41..1e8e3347 100644
+--- a/ansible/roles/controller/tasks/deploy.yml
++++ b/ansible/roles/controller/tasks/deploy.yml
+@@ -342,7 +342,7 @@
+     ports: "{{ ports_to_expose }}"
+     # userns_mode, pid_mode and privileged required when controller running in lean mode
+     userns_mode: "{{ userns_mode | default('') }}"
+-    pid_mode: "{{ pid_mode | default('') }}"
++    # pid_mode: "{{ pid_mode | default('') }}"
+     privileged: "{{ privileged | default('no') }}"
+     command:
+       /bin/sh -c

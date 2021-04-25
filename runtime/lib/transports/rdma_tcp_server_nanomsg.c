@@ -41,6 +41,7 @@ static int _connect(struct libd_transport *trans) {
     get_local_state(rstate,trans,struct tcp_rdma_state);
 
     if ((rv = nn_bind (rstate->sock, rstate->url)) < 0) {
+        dprintf("Server error at binding");
         return -rv;
     }
 

@@ -11,9 +11,8 @@ struct libd_trdma {
     int (*write)(struct libd_transport *, size_t, uint64_t, void *);
 };
 
-
 // transport APIs, user will call these transport APIs
-int libd_trdma_reg   (struct libd_transport * trans, size_t size, void * buf);
+void * libd_trdma_reg   (struct libd_transport * trans, size_t size, void * buf);
 int libd_trdma_read  (struct libd_transport * trans, size_t size, uint64_t addr, void * buf);
 int libd_trdma_write (struct libd_transport * trans, size_t size, uint64_t addr, void * buf);
 

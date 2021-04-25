@@ -65,6 +65,8 @@ func (ap *ActionProxy) runHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO: insert operations. Just insert in the body? or replace the body as a libd message
+
 	// remove newlines
 	body = bytes.Replace(body, []byte("\n"), []byte(""), -1)
 

@@ -19,7 +19,7 @@ package openwhisk
 import "log"
 
 // Debugging flag
-var Debugging = false
+var Debugging = true
 
 // Debug emits a debug message
 func Debug(format string, args ...interface{}) {
