@@ -76,6 +76,7 @@ class WhiskConfig(requiredProperties: Map[String, String],
   val edgeHostName = this(WhiskConfig.edgeHostName)
 
   val invokerHosts = this(WhiskConfig.invokerHostsList)
+  val invokerRack = this(WhiskConfig.invokerRack)
   val zookeeperHosts = this(WhiskConfig.zookeeperHostList)
 
   val dbPrefix = this(WhiskConfig.dbPrefix)
@@ -178,6 +179,7 @@ object WhiskConfig {
   val edgeHostApiPort = "edge.host.apiport"
 
   val invokerHostsList = "invoker.hosts"
+  val invokerRack = "invoker.rack"
   val dbHostsList = "db.hostsList"
 
   val edgeHost = Map(edgeHostName -> null, edgeHostApiPort -> null)
@@ -201,6 +203,7 @@ object ConfigKeys {
 
   val couchdb = "whisk.couchdb"
   val cosmosdb = "whisk.cosmosdb"
+  val invokerRack = "whisk.invoker.rack"
   val kafka = "whisk.kafka"
   val kafkaCommon = s"$kafka.common"
   val kafkaProducer = s"$kafka.producer"

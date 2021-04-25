@@ -69,6 +69,9 @@ class InvokerReactive(
   implicit val ec: ExecutionContext = actorSystem.dispatcher
   implicit val cfg: WhiskConfig = config
 
+  private val rackId = loadConfigOrThrow[Int](ConfigKeys.invokerRack)
+  private val rackHealthTopic = RackSchedInstanceId.rackSchedHealthTopic(rackId)
+
   private val logsProvider = SpiLoader.get[LogStoreProvider].instance(actorSystem)
   logging.info(this, s"LogStoreProvider: ${logsProvider.getClass}")
 
@@ -386,7 +389,7 @@ class InvokerReactive(
 
   private val healthProducer = msgProvider.getProducer(config)
   Scheduler.scheduleWaitAtMost(1.seconds)(() => {
-    healthProducer.send("health", PingMessage(instance)).andThen {
+    healthProducer.send(rackHealthTopic, PingMessage(instance)).andThen {
       case Failure(t) => logging.error(this, s"failed to ping the controller: $t")
     }
   })

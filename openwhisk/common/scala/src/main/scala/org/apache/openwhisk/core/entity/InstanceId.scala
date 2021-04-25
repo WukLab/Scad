@@ -18,6 +18,7 @@
 package org.apache.openwhisk.core.entity
 
 import org.apache.openwhisk.core.containerpool.RuntimeResources
+import org.apache.openwhisk.core.entity.RackSchedInstanceId.rackSchedHealthTopic
 import spray.json.{DefaultJsonProtocol, JsNumber, JsObject, JsString, JsValue, RootJsonFormat, deserializationError}
 import spray.json._
 
@@ -112,9 +113,16 @@ case class RackSchedInstanceId(instance: Int,
   override val toString: String = (Seq("racksched" + instance) ++ uniqueName ++ displayName).mkString("/")
 
   override val toJson: JsValue = RackSchedInstanceId.serdes.write(this)
+
+  def healthTopic: String = rackSchedHealthTopic(instance)
 }
 
 object RackSchedInstanceId extends DefaultJsonProtocol {
+
+  def rackSchedHealthTopic(id: Int): String = {
+    "health" + id
+  }
+
   def parse(c: String): Try[RackSchedInstanceId] = Try(serdes.read(c.parseJson))
 
   implicit val serdes: RootJsonFormat[RackSchedInstanceId] = new RootJsonFormat[RackSchedInstanceId] {

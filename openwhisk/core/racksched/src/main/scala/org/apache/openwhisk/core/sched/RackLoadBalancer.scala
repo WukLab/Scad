@@ -674,7 +674,7 @@ object RackLoadBalancer extends RackLoadBalancerProvider {
           InvokerPool.props(
             (f, i) => f.actorOf(InvokerActor.props(i, instance)),
             (m, i) => sendActivationToInvoker(messagingProducer, m, i),
-            messagingProvider.getConsumer(whiskConfig, s"health${instance.toString}", "health", maxPeek = 128),
+            messagingProvider.getConsumer(whiskConfig, instance.healthTopic, instance.healthTopic, maxPeek = 128),
             monitor))
       }
     }
