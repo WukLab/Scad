@@ -102,7 +102,10 @@ def parse_memory_transports(mems):
     mems = mems or []
     def parse(mem):
         args = mem.split(':') 
-        return "{};rdma_tcp;url,tcp://localhost:{};".format(*args)
+        # no implementation
+        if len(args) == 2:
+            args.append('tcp')
+        return "{0};rdma_{2};url,tcp://localhost:{1};".format(*args)
     return [parse(m) for m in mems]
 
 if __name__ == '__main__':

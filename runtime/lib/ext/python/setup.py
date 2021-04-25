@@ -11,7 +11,7 @@ setup(
     ext_modules = cythonize([Extension("disagg", [p("disagg.pyx")],
             include_dirs = [p('../../include')],
             library_dirs=[p('../..')],
-            libraries = ['d', 'nanomsg', 'curl'])],
+            libraries = ['d', 'nanomsg', 'curl', 'ibverbs'])],
         language_level=3)
     )
 

@@ -28,12 +28,12 @@ cdef extern from "libd.h":
 
 # Interfaces for different transport
 # RDMA Interface
-cdef extern from "libd_trdma.h":
+cdef extern from "interfaces/libd_trdma.h":
     void* libd_trdma_reg (libd_transport* trans, size_t size, void* buf);
     int libd_trdma_read  (libd_transport* trans, size_t size, stdint.uint64_t addr, void* buf);
     int libd_trdma_write (libd_transport* trans, size_t size, stdint.uint64_t addr, void* buf);
 
 # RDMA Server Interface
-cdef extern from "libd_trdma_server.h":
+cdef extern from "interfaces/libd_trdma_server.h":
     int libd_trdma_server_serve (libd_transport *trans);
 

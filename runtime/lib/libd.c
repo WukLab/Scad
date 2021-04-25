@@ -119,8 +119,6 @@ int libd_action_add_transport(struct libd_action * action, char * durl) {
 
     // 2. find implementation of the given type
     for (int i = 0; i < num_transports; i++) {
-        dprintf("name %s cur %s\n",
-            trans->tstate->impl, libd_transports_name[i]);
         if (strcmp(libd_transports_name[i], trans->tstate->impl) == 0) {
             trans->_impl = libd_transports[i];
         }

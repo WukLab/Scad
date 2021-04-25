@@ -2,7 +2,7 @@
 
 #include "libd.h"
 #include "libd_transport.h"
-#include "libd_trdma_server.h"
+#include "interfaces/libd_trdma_server.h"
 
 // interface functions
 int libd_trdma_server_serve (struct libd_transport *trans) {

@@ -17,7 +17,7 @@ TARGETS    := libd.so
 
 LD       := gcc
 INCLUDES := -I./include
-LIBS     := -lnanomsg -lcurl -lpthread
+LIBS     := -lnanomsg -lcurl -lpthread -libverbs
 CFLAGS   := -fPIC -O2 -g -std=c11 -Wall $(INCLUDES) -DDEBUG
 LDFLAGS  := $(LDFLAGS) $(LIBS)
 
