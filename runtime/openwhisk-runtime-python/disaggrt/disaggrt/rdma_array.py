@@ -15,10 +15,9 @@ def prod(it):
 
 
 class remote_array_metadata:
-    def __init__(self, remote_mem_metadata, cur_mem_size, dtype, element_byte, element_per_block, array_shape):
+    def __init__(self, remote_mem_metadata, cur_mem_size, dtype, element_byte, array_shape):
         self.dtype = dtype
         self.element_byte = element_byte
-        self.element_per_block = element_per_block 
         self.remote_mem_metadata = remote_mem_metadata
         self.shape = array_shape
         self.cur_mem_size = cur_mem_size
@@ -40,7 +39,6 @@ def merge_arrays_metadata(metadata_list):
     remote_mem_metadata = OrderedDict()
     cur_start_idx = 0
     element_byte = metadata_list[0].element_byte
-    element_per_block = metadata_list[0].element_per_block
     dtype = metadata_list[0].dtype
     merged_array_size = 0
     merged_array_shape = []
@@ -60,7 +58,7 @@ def merge_arrays_metadata(metadata_list):
             num_of_element = sub_mem_size_in_byte // element_byte
             remote_mem_metadata[cur_start_idx] = [sub_transport_name, sub_remote_addr, sub_mem_size_in_byte]
             cur_start_idx = cur_start_idx + num_of_element
-    return remote_array_metadata(remote_mem_metadata, merged_array_size, dtype, element_byte, element_per_block, tuple(merged_array_shape))
+    return remote_array_metadata(remote_mem_metadata, merged_array_size, dtype, element_byte, tuple(merged_array_shape))
 
 # @todo add asarray
 # remote mem metadata layout [transport_name, remote_addr, cur_mem_size]
@@ -77,19 +75,18 @@ class remote_array():
             cur_mem_size = len(input_ndarray)
             block_size = buffer_pool_lib.page_size
             element_byte = input_ndarray.itemsize
-            assert(block_size % element_byte == 0)
-            element_per_block = int(block_size / element_byte)
             input_array_in_byte = input_ndarray.tobytes()
             if transport_name == "":
                 print("fail to provide transport name; app stop")
                 exit(1)
             write_result_list = self.buffer_pool.write(transport_name, input_array_in_byte)
+            print(write_result_list)
             remote_mem_metadata = self.gen_metadata_from_write_result(write_result_list, element_byte)
             if len(remote_mem_metadata) == 0:
                 print("write data failure due to start address prblem")
                 exit(1)
             else:
-                self.metadata = remote_array_metadata(remote_mem_metadata, cur_mem_size, input_ndarray.dtype, element_byte, element_per_block, array_shape)
+                self.metadata = remote_array_metadata(remote_mem_metadata, cur_mem_size, input_ndarray.dtype, element_byte, array_shape)
         else:
             self.metadata = metadata
 
@@ -103,16 +100,6 @@ class remote_array():
     def get_array_from_buf(self, buf):
         return np.frombuffer(buf, dtype=self.metadata.dtype)
 
-    def get_page_id_from_idx(self, idx):
-        page_id_list = self.metadata.page_id_list
-        element_per_block = self.metadata.element_per_block
-        cur_begin_idx = self.metadata.begin_offset
-        idx = idx - (element_per_block - cur_begin_idx)
-        if idx < 0:
-            return page_id_list[0]
-        cur_block_idx = int(ceil((idx / element_per_block)))
-        return page_id_list[cur_block_idx]
-
     def get_array_metadata(self):
         return self.metadata
 
@@ -123,14 +110,16 @@ class remote_array():
         # per element in metadata list [transport name, remote addr, size_in_byte]
         for cur_start_idx, block_info in self.metadata.remote_mem_metadata.items():
             cur_trans_port_name, cur_remote_addr, cur_mem_size_in_byte = block_info
-            num_of_element_in_cur_block= cur_mem_size_in_byte / self.metadata.element_byte 
+            num_of_element_in_cur_block = cur_mem_size_in_byte // self.metadata.element_byte 
             cur_end_idx = cur_start_idx + num_of_element_in_cur_block
             # read the following block
-            if cur_end_idx < request_start_idx:
+            if cur_end_idx < request_start_idx or request_end_idx < cur_start_idx:
                 continue
             # reset remote addr if we do not read from start of current stat idx
             if request_start_idx > cur_start_idx:
                 cur_remote_addr = cur_remote_addr + (request_start_idx - cur_start_idx) * self.metadata.element_byte
+            if request_end_idx < cur_end_idx:
+                cur_end_idx = request_end_idx
             # update cur block start idx since we may need when calcualte how many mem to read
             cur_block_start_idx = max(request_start_idx, cur_start_idx)
             if request_end_idx < cur_end_idx:
@@ -145,17 +134,27 @@ class remote_array():
         return remote_metadata_list, res_mem_size_in_byte
  
     # follow numpy and python list semantic -> [) shallow copy; currently has offset problem
-    def get_slice(self, start_idx, end_idx):
-        pass
-        # element_per_block = self.metadata.element_per_block
-        # start_addr = self.get_remote_addr_from_idx(start_idx)
-        # end_addr = self.get_remote_addr_from_idx(end_idx)
-        # cur_metadata = self.metadata
-        # cur_shape = list(cur_metadata.shape)
-        # cur_shape[0] = end_idx - start_idx
-        # slice_mem_size = end_addr - start_addr
-        # slice_metadata = remote_array_metadata(start_addr, slice_mem_size, cur_metadata.dtype, cur_metadata.element_byte, cur_metadata.element_per_block,tuple(cur_shape))
-        # return remote_array(self.buffer_pool, metadata = slice_metadata)
+    def get_slice(self, slice_start_idx, slice_end_idx):
+        slice_mem_metadata = OrderedDict()
+        cur_mem_size = 0
+        for cur_start_idx, block_info in self.metadata.remote_mem_metadata.items():
+            cur_trans_port_name, cur_remote_addr, cur_mem_size_in_byte = block_info
+            num_of_element_in_cur_block = cur_mem_size_in_byte // self.metadata.element_byte 
+            cur_end_idx = cur_start_idx + num_of_element_in_cur_block
+            if cur_end_idx < slice_start_idx or slice_end_idx < cur_start_idx:
+                continue
+            if cur_start_idx < slice_start_idx:
+                cur_remote_addr = cur_remote_addr + (slice_start_idx - cur_start_idx) * self.metadata.element_byte
+            cal_end_idx = min(cur_end_idx, slice_end_idx)
+            cal_start_idx = max(cur_start_idx, slice_start_idx)
+            cur_slice_mem_size_in_byte = (cal_end_idx - cal_start_idx) * self.metadata.element_byte
+            cur_mem_size = cur_mem_size + cur_slice_mem_size_in_byte
+            cur_block_start_idx = max(slice_start_idx, cur_start_idx)
+            slice_mem_metadata[cur_block_start_idx] = [cur_trans_port_name, cur_remote_addr, cur_slice_mem_size_in_byte]
+        original_array_shape = list(self.metadata.shape)
+        original_array_shape[0] = slice_end_idx - slice_start_idx
+        cur_slice_metadata = remote_array_metadata(slice_mem_metadata, cur_mem_size, self.metadata.dtype, self.metadata.element_byte, tuple(original_array_shape))
+        return remote_array(self.buffer_pool, metadata = cur_slice_metadata)
 
     # load remote_array[start_idx:end_idx) to local buffer; read only
     # @todo support finer granularity of array; for now we pull the whole array to local

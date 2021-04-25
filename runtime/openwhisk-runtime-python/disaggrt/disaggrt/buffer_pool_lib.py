@@ -181,7 +181,7 @@ class buffer_pool:
                 self.trans_metadata[transport_name] = 0
             remote_addr = self.trans_metadata[transport_name]
             cur_buf_offset = self.get_buffer_offset(cur_mem_size)
-            cur_page_id = cur_buf_offset / page_size
+            cur_page_id = cur_buf_offset // page_size
             cur_metadata_list = [[transport_name, remote_addr, cur_mem_size]]
             self.write_to_buffer(transport_name, cur_buf_offset, data, cur_mem_size)
             self.buffer_pool_upate(cur_page_id, cur_metadata_list, dirty=True)
