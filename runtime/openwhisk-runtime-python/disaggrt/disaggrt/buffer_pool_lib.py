@@ -16,70 +16,101 @@ buffer_size = page_buffer_size
 
 class local_page_node:
 
-    def __init__(self, page_id, remote_addr, block_size = 0, dirty_bit = False):
+    def __init__(self, page_id, transport_name, remote_addr, block_size, dirty_bit = False):
         global page_size
         self.id = page_id
-        self.begin_offset = self.id * page_size
-        self.remote_addr = remote_addr
-        # @maybe different object are stored in the same page 
+        self.transport_map = dict()
+        # @todo finer granularity dirty bit
+        self.transport_map[transport_name] = [remote_addr, block_size, 0]
         self.block_size = block_size
-        self.free_offset = self.begin_offset + self.block_size + 1
         self.dirty_bit = dirty_bit
-
-    def write_to_remote_if_dirty(self, trans):
+        
+    def write_to_remote_if_dirty(self, trans_map):
+        global page_size
         if self.dirty_bit:
-            trans.write(self.block_size, self.remote_addr, self.begin_offset)
+            base_offset = self.id * page_size
+            for transport_name, trans_info in self.transport_map.items():
+                cur_remote_addr, cur_block_size, cur_offset = trans_info
+                trans_map[transport_name].write(cur_block_size, cur_remote_addr, cur_offset + base_offset)
+                print("Sending {0}byte data to {1} at offset {2}".format(cur_block_size, transport_name,  cur_offset + base_offset))
+
+    def add_transport_pair(self, transport_name, remote_addr, cur_block_size):
+        cur_trans_offset = self.block_size
+        self.block_size = self.block_size + cur_block_size
+        self.transport_map[transport_name] = [remote_addr, cur_block_size, cur_trans_offset]
 
     def get_free_space(self):
         return page_size - self.block_size
+
+    def get_block_size(self):
+        return self.block_size
     
     def set_block_size(self, cur_block_size):
         self.block_size = cur_block_size
 
-class buffer_metadata:
-    def __init__(self, page_seq, remote_addr):
-        self.page_seq = page_seq
-        self.remote_addr = remote_addr        
-    def __getstate__(self):
-        return self.__dict__.copy()
-    def __setstate__(self, dict):
-        self.__dict__ = dict
-
 class buffer_pool:
-    def __init__(self, trans, remote_addr = 0):
+    def __init__(self, trans_map, trans_metadata = {}):
         '''
         @todo currently, assume read write is sync
         assumptions 
         current workload -> overall memory needed by the working set are not extremely larger than t
         '''
-        self.trans = trans
+        self.trans_map = trans_map
         # page_id -> local page node 
+        self.base_trans_name = list(self.trans_map.keys())[0]
         self.page_table = dict()
+        # trans name -> last free remote_addr 
+        self.trans_metadata = trans_metadata
         # remote addr -> page_id
         self.remote_metadata_dict = OrderedDict()
         self.cur_free_page_idx = 0
-        self.remote_addr = int(remote_addr)
         assert(page_buffer_size % page_size == 0)
         self.buffer_page_num = int(page_buffer_size / page_size)
 
     def get_buffer_metadata(self):
         for page_id, page_node in self.page_table.items():
             if page_node.dirty_bit:
-                page_node.write_to_remote_if_dirty(self.trans)
-        return self.remote_addr
+                page_node.write_to_remote_if_dirty(self.trans_map)
+        return self.trans_metadata
     
-    def page_table_upate(self, mem_size, page_id_base, remote_addr, dirty=False):
+    def buffer_pool_upate(self, page_id_base, remote_metadata_list, dirty=False):
         global page_size
-        remote_addr_iter = remote_addr
-        for buf_iter in range(0, mem_size, page_size): 
-            cur_page_id = math.floor(buf_iter / page_size) + page_id_base
-            cur_page_block_size = min(page_size, mem_size - buf_iter)
-            self.page_table[cur_page_id] = local_page_node(cur_page_id, remote_addr_iter, block_size=cur_page_block_size, dirty_bit=dirty)
-            remote_addr_iter = remote_addr_iter + cur_page_block_size
-
+        buf_iter = 0
+        page_iter = -1
+        for remote_metadata_per_transport in remote_metadata_list:
+            cur_transport_name, cur_remote_addr, cur_mem_size_in_byte = remote_metadata_per_transport
+            remote_addr_iter = cur_remote_addr
+            cur_metadata_key = "{0}_{1}".format(cur_transport_name, cur_remote_addr)
+            mem_size_cnt = cur_mem_size_in_byte
+            # per transport we have a block; cross block check at start
+            if page_iter != -1:
+                prev_block_size = self.page_table[page_iter].get_block_size()
+                cur_free_space = page_size - prev_block_size
+                if cur_free_space > 0:
+                    cur_buf_offset = page_iter * page_size + prev_block_size
+                    mem_size_cnt -= cur_free_space
+                    self.page_table[page_iter].add_transport_pair(cur_transport_name, remote_addr_iter, min(cur_mem_size_in_byte, cur_free_space))
+                    remote_addr_iter = remote_addr_iter + min(cur_mem_size_in_byte, cur_free_space)
+                    if mem_size_cnt > 0:
+                        page_iter = page_iter + 1
+                else:
+                    page_iter = page_iter + 1
+                    cur_buf_offset = page_iter * page_size
+            else:
+                page_iter = page_id_base
+                cur_buf_offset = page_iter * page_size
+            self.remote_metadata_dict[cur_metadata_key] = [cur_mem_size_in_byte, cur_buf_offset]
+            while mem_size_cnt > 0:
+                cur_page_block_size = min(page_size, mem_size_cnt)
+                self.page_table[page_iter] = local_page_node(page_iter, cur_transport_name, remote_addr_iter, block_size=cur_page_block_size, dirty_bit=dirty)
+                remote_addr_iter = remote_addr_iter + cur_page_block_size
+                mem_size_cnt = mem_size_cnt - cur_page_block_size
+                if cur_page_block_size == page_size:
+                    page_iter = page_iter + 1
+        
     # update buffer to get request_page_num free space in local buffer
     # if we also want to fetch the data , we will also pull related page
-    def get_buffer_offset(self, mem_size, remote_addr=-1):
+    def get_buffer_offset(self, mem_size, remote_metadata_list = []):
         global page_size
         request_page_num = math.ceil(mem_size / page_size)
         cur_available_page_num = self.buffer_page_num - self.cur_free_page_idx
@@ -90,91 +121,104 @@ class buffer_pool:
             # evict page to remote memory
             for prev_page_id in range(request_page_num):
                 prev_local_node = self.page_table[prev_page_id]
-                prev_local_node.write_to_remote_if_dirty(self.trans)
-                if prev_local_node.remote_addr in self.remote_metadata_dict:
-                    self.remote_metadata_dict.pop(prev_local_node.remote_addr)
+                prev_local_node.write_to_remote_if_dirty(self.trans_map[prev_local_node.trans_port_name])
+                prev_metadata_key = "{0}_{1}".format(prev_local_node.trans_port_name, prev_local_node.remote_addr)
+                if prev_metadata_key in self.remote_metadata_dict:
+                    self.remote_metadata_dict.pop(prev_metadata_key)
             self.cur_free_page_idx = 0
 
         last_page_id = self.cur_free_page_idx + request_page_num - 1
         ret_buf_offset = self.cur_free_page_idx * page_size
-        if remote_addr != -1:
-            self.fetch_remote_to_buffer(ret_buf_offset, remote_addr, mem_size)
-            self.page_table_upate(mem_size, self.cur_free_page_idx, remote_addr)
-            # store the mem_size and the first page_id
-            self.remote_metadata_dict[remote_addr] = [mem_size, ret_buf_offset]
+        if len(remote_metadata_list) > 0:
+            self.fetch_remote_to_buffer(ret_buf_offset, remote_metadata_list, mem_size)
+            # update page table and remote metadata dict
+            self.buffer_pool_upate(self.cur_free_page_idx, remote_metadata_list)
 
         self.cur_free_page_idx = self.cur_free_page_idx + request_page_num
         return ret_buf_offset
+
+    def add_transport(self, trans_port_name, trans):
+        self.trans_map[trans_port_name] = trans
         
-    def get_buffer_slice(self, begin_offset, slice_size):
-        return self.trans.buf[begin_offset:begin_offset+slice_size]
+    def get_buffer_slice(self, trans_port_name, begin_offset, slice_size):
+        return self.trans_map[trans_port_name].buf[begin_offset:begin_offset+slice_size]
 
-    def find_object_in_mem(self, remote_addr, mem_size):
-        global page_size
+    def write_to_buffer(self, trans_port_name, buf_offset, data, mem_size):
+        self.trans_map[trans_port_name].buf[buf_offset:buf_offset + mem_size] = data
 
-    def write_to_buffer(self, buf_offset, data, mem_size):
-        self.trans.buf[buf_offset:buf_offset + mem_size] = data
-
-    def update_buffer_to_remote(self, buf_offset, remote_addr, mem_size):
+    def update_buffer_to_remote(self, buf_offset, trans_port_name, remote_addr, mem_size):
         stride_size = 1024
         for i in range(0, mem_size, stride_size):
             cur_write_size = min(stride_size, mem_size - i)
-            print("reading data from {0} with size {1}".format(remote_addr, cur_write_size))
-            self.trans.write(cur_write_size, remote_addr, buf_offset)
+            self.trans_map[trans_port_name].write(cur_write_size, remote_addr, buf_offset)
             remote_addr = remote_addr + cur_write_size
             buf_offset = buf_offset + cur_write_size
             
-    def fetch_remote_to_buffer(self, buf_offset, remote_addr, mem_size):
+    def fetch_remote_to_buffer(self, buf_offset, remote_metadata_list, mem_size):
         stride_size = 1024
-        for i in range(0, mem_size, stride_size):
-            cur_read_size = min(stride_size, mem_size - i)
-            print("reading data from {0} with size {1}".format(remote_addr, cur_read_size))
-            self.trans.read(cur_read_size, remote_addr, buf_offset)
-            remote_addr = remote_addr + cur_read_size
-            buf_offset = buf_offset + cur_read_size
+        for remote_metadata_per_transport in remote_metadata_list:
+            cur_trans_port_name, cur_remote_addr, cur_mem_size_in_byte = remote_metadata_per_transport
+            for i in range(0, cur_mem_size_in_byte, stride_size):
+                cur_read_size = min(stride_size, cur_mem_size_in_byte - i)
+                print("fetch from mem {0} at remote addr {1} with size {2}".format(cur_trans_port_name, cur_remote_addr, cur_read_size))
+                self.trans_map[cur_trans_port_name].read(cur_read_size, cur_remote_addr, buf_offset)
+                cur_remote_addr = cur_remote_addr + cur_read_size
+                buf_offset = buf_offset + cur_read_size
+    
+    def parse_metadata_key(self, cur_metadata_key):
+        cur_transport_name, cur_remote_addr = cur_metadata_key.split('_')
+        return cur_transport_name, int(cur_remote_addr)
 
     # @todo for now only consider write to new memory
-    def write(self, data, remote_addr = -1):
-        # @todo check whether there is enough memory left
+    def write(self, transport_name, data, remote_addr = -1):
+        # @todo check whether there is enough memory left shift to another possible remote mem if possible
         global page_size
+        # @todo currently assume write to single trans?
         cur_mem_size = len(data)
         # update local page table
         if remote_addr == -1:
-            remote_addr = self.remote_addr
+            if transport_name not in self.trans_metadata:
+                self.trans_metadata[transport_name] = 0
+            remote_addr = self.trans_metadata[transport_name]
             cur_buf_offset = self.get_buffer_offset(cur_mem_size)
-            cur_page_id = cur_buf_offset / page_size
-            self.remote_metadata_dict[remote_addr] = [cur_mem_size, cur_buf_offset]
-            self.write_to_buffer(cur_buf_offset, data, cur_mem_size)
-            self.page_table_upate(cur_mem_size, cur_page_id, remote_addr, dirty=True)
-            self.remote_addr = remote_addr + cur_mem_size
-            return remote_addr
+            cur_page_id = cur_buf_offset // page_size
+            cur_metadata_list = [[transport_name, remote_addr, cur_mem_size]]
+            self.write_to_buffer(transport_name, cur_buf_offset, data, cur_mem_size)
+            self.buffer_pool_upate(cur_page_id, cur_metadata_list, dirty=True)
+            self.trans_metadata[transport_name] = remote_addr + cur_mem_size
+            # consider alignment in cut
+            return [[transport_name, remote_addr, cur_mem_size]]
 
-    def find_offset_of_remote_addr(self, remote_addr, mem_size):
-        if remote_addr in self.remote_metadata_dict:
-            cur_object_mem_size, cur_object_begin_offset = self.remote_metadata_dict[remote_addr]
-            if mem_size <= cur_object_mem_size:
-                # get page_offset
-                return cur_object_begin_offset
-            else:
-                # requesting obejct larger than we currently stored 
+    def get_local_buf_offset(self, request_transport_name, request_remote_addr, request_mem_size):
+        for remote_metadata_key, remote_metadata_info in self.remote_metadata_dict.items():
+            cur_trans_name, cur_remote_addr = self.parse_metadata_key(remote_metadata_key)
+            cur_mem_size, cur_buf_offset = remote_metadata_info
+            if cur_trans_name == request_transport_name:
+                if (cur_remote_addr + cur_mem_size) <= (request_remote_addr + request_mem_size):
+                    return cur_buf_offset + (request_remote_addr - cur_remote_addr)
+        return -1
+
+    def find_remote_object_in_local(self, mem_size, remote_metadata_list):
+        prev_buf_offset = -1
+        res_buf_offset = -1
+        for remote_metadata_per_transport in remote_metadata_list:
+            cur_trans_port_name, cur_remote_addr, cur_mem_size_in_byte = remote_metadata_per_transport
+            local_buf_offset = self.get_local_buf_offset(cur_trans_port_name, cur_remote_addr, cur_mem_size_in_byte)
+            if local_buf_offset == -1:
                 return -1
-        address_keys = self.remote_metadata_dict.keys()
-        left_possible_index = bisect.bisect_left(address_keys, remote_addr)
-        if left_possible_index == 0:
-            return -1
-        possible_remote_addr = address_keys[left_possible_index-1]
-        possible_object_mem_size, possible_object_page_offset = self.remote_metadata_dict[possible_remote_addr]
-        if (remote_addr + mem_size) < (possible_remote_addr + possible_object_mem_size):
-            cur_object_begin_offset = possible_object_page_offset + (remote_addr - possible_remote_addr)
-            return cur_object_begin_offset
-        else:
-            return -1
+            if prev_buf_offset != local_buf_offset:
+                if prev_buf_offset != -1:
+                    return -1
+                else:
+                    res_buf_offset = local_buf_offset
+            prev_buf_offset = local_buf_offset + cur_mem_size_in_byte
+        return res_buf_offset
 
-    def read(self, remote_addr, mem_size):
+    def read(self, remote_metadata_list, mem_size):
         # check wether in the pool already
-        cur_begin_offset = self.find_offset_of_remote_addr(remote_addr, mem_size)
-        if cur_begin_offset != -1:
-            return True, self.get_buffer_slice(cur_begin_offset, mem_size)
-        # not in local, pull from remote
-        cur_begin_offset = self.get_buffer_offset(mem_size, remote_addr)
-        return True, self.get_buffer_slice(cur_begin_offset, mem_size)
+        cur_begin_offset = self.find_remote_object_in_local(mem_size, remote_metadata_list)
+        if cur_begin_offset == -1:
+             # not in local, pull from remote
+            cur_begin_offset = self.get_buffer_offset(mem_size, remote_metadata_list)
+        trans_port_name = remote_metadata_list[0][0]
+        return True, self.get_buffer_slice(trans_port_name, cur_begin_offset, mem_size)
