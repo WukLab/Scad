@@ -59,7 +59,8 @@ class LibdRuntime:
                 func(self, *args)
             del self.stash_msgs[aid]
     def create_action(self, aid):
-        action = LibdAction(self.cv, aid, self.server_url)
+        args = {"post_url":'http://172.17.0.1:2400'}
+        action = LibdAction(self.cv, aid, **args)
         self.actions[aid] = action
         return action
     def get_action(self, aid):
