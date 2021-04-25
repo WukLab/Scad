@@ -4,12 +4,14 @@
 #include <stdlib.h>
 
 #include "transports/rdma_uverbs.h"
+#include "libd.h"
 
-struct ibv_context *create_context(int num_devices, const char *device_name) {
+struct ibv_context *create_context(int _num_devices, const char *device_name) {
+    int num_devices;
     struct ibv_context * context = NULL;
 	struct ibv_device** device_list = ibv_get_device_list(&num_devices);
 	for (int i = 0; i < num_devices; i++){
-		// printf("device %i, %s | %s\n", i, ibv_get_device_name(device_list[i]), device_name);
+		dprintf("device %i, %s | %s\n", i, ibv_get_device_name(device_list[i]), device_name);
 		if (strcmp(device_name, ibv_get_device_name(device_list[i])) == 0) {
 			context = ibv_open_device(device_list[i]);
 			break;
@@ -36,7 +38,7 @@ int create_qp(struct rdma_conn *conn) {
 
     conn->qp = ibv_create_qp(conn->pd, &qp_init);
     if (conn->qp == NULL) {
-        printf("create qp fail\n");
+        dprintf("create qp fail\n");
         return -1;
     }
 }
@@ -47,20 +49,21 @@ int create_mr(struct rdma_conn *conn, size_t size, int access) {
     struct ibv_mr *mr;
 
     if (buffer == NULL) {
-        printf("malloc fail\n");
+        dprintf("malloc fail");
         return -1;
     }
 
+    dprintf("buffer malloced");
     mr = ibv_reg_mr(conn->pd, buffer, size, access);
     if (mr == NULL) {
-        printf("register MR fail\n");
+        dprintf("register MR fail");
         return -1;
     }
 
     conn->num_mr += 1;
     conn->mr = realloc(conn->mr, conn->num_mr * sizeof(struct ibv_mr));
     if (conn->mr == NULL) {
-        printf("realloc fail\n");
+        dprintf("realloc fail\n");
         return -1;
     }
 
@@ -83,7 +86,7 @@ int qp_stm_reset_to_init(struct rdma_conn *conn) {
     // TODO: match here with attrs
     ret = ibv_modify_qp(conn->qp, &qp_attr, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
     if (ret != 0) {
-        printf("init fail %d\n", ret);
+        dprintf("init fail %d\n", ret);
         return -1;
     }
     return 0;
@@ -120,7 +123,7 @@ int qp_stm_init_to_rtr(struct rdma_conn *conn) {
     ret = ibv_modify_qp(conn->qp, &qp_attr, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
 
     if (ret != 0) {
-        printf("rtr fail %d, roce %d\n", ret, conn->gid);
+        dprintf("rtr fail %d, roce %d\n", ret, conn->gid);
         return -1;
     }
 
@@ -142,7 +145,7 @@ int qp_stm_rtr_to_rts(struct rdma_conn *conn) {
 
     ret = ibv_modify_qp(conn->qp, &qp_attr, IBV_QP_STATE | IBV_QP_SQ_PSN | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_MAX_QP_RD_ATOMIC);
     if (ret != 0) {
-        printf("rts fail\n");
+        dprintf("rts fail\n");
         return -1;
     }
 

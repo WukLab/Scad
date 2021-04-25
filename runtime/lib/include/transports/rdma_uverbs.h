@@ -17,11 +17,11 @@ struct rdma_conn {
     int num_mr;
     struct ibv_mr* mr;
 
-    int port;
     struct conn_info* peerinfo;
 
     // info for ib/eth
     int gid;
+    int port;
 };
 
 struct conn_info {

@@ -66,6 +66,8 @@ static int _init(struct libd_transport *trans) {
 
     memset(&rstate->conn, 0, sizeof(struct rdma_conn));
     rstate->conn.gid = 0;
+    rstate->conn.port = 1;
+
     // init using the global context and PD
     if (_context == NULL)
         _context = create_context(rstate->num_devices, rstate->device_name);

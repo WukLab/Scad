@@ -43,15 +43,19 @@ static int client_exchange_info(struct rdma_conn *conn, const char * url) {
     if ((bytes = nn_send(sock, info, send_size, 0)) < 0) {
         fatal("nn_send");
     }
+    free(info);
+
     if ((bytes = nn_recv(sock, &peerinfo, NN_MSG, 0)) < 0) {
         fatal("nn_recv");
     }
 
-    conn->peerinfo = peerinfo;
+    conn->peerinfo = malloc(bytes);
+    memcpy(conn->peerinfo, peerinfo, bytes);
     dprintf("received mr, with bytes %d, num %d", bytes, conn->peerinfo->num_mr);
 
     // TODO: free msg
-    free(info);
+    nn_freemsg(peerinfo);
+
     return nn_shutdown(sock, 0);
 }
 
@@ -74,7 +78,7 @@ static inline int _request(struct rdma_conn * conn, size_t size, int opcode,
     wr.sg_list = &sge;
     wr.num_sge = 1;
 
-    wr.wr.rdma.remote_addr = remote_addr;
+    wr.wr.rdma.remote_addr = conn->peerinfo->mr[0].addr + remote_addr;
     wr.wr.rdma.rkey = conn->peerinfo->mr[0].rkey;
     wr.opcode = opcode;
 
@@ -94,32 +98,40 @@ static int _init(struct libd_transport *trans) {
     get_local_state(rstate,trans,struct uverbs_rdma_state);
     init_config_set(num_devices, 2);
     init_config_set(device_name, "mlx5_1");
-    init_config_set(cq_size, 32);
+    init_config_set(cq_size, 16);
 
     // init the RDMA connection
     memset(&rstate->conn, 0, sizeof(struct rdma_conn));
+    rstate->conn.gid = 0;
+    rstate->conn.port = 1;
 
     // init using the global context and PD
     if (_context == NULL)
         _context = create_context(rstate->num_devices, rstate->device_name);
     rstate->conn.context = _context;
+    if (rstate->conn.context == NULL) {
+        dprintf("create context fail");
+        return -1;
+    }
 
-    if (_pd == NULL)
-        _pd = ibv_alloc_pd(rstate->conn.context);
+    if (_pd == NULL){
+        _pd = ibv_alloc_pd(_context);
+        dprintf("allocate pd at %p", _pd);
+    }
     rstate->conn.pd = _pd;
-
     if (rstate->conn.pd == NULL) {
-        printf("create pd fail");
+        dprintf("create pd fail");
         return -1;
     }
 
     // Create QP
     init_config_require(url, id);
 
-    create_qp(&rstate->conn);
-
     rstate->conn.cq = ibv_create_cq(
         rstate->conn.context, rstate->cq_size, NULL, NULL, 0);
+
+    create_qp(&rstate->conn);
+    dprintf("Finish RDMA configuration..");
 
     return 0;
 }
@@ -147,7 +159,7 @@ static int _terminate(struct libd_transport * trans) {
 
     // clean up nanomsg
     if (rstate->conn.peerinfo != NULL)
-        nn_freemsg(rstate->conn.peerinfo);
+        free(rstate->conn.peerinfo);
     // clean up RDMA
     for (int i = 0; i < rstate->conn.num_mr; i++) {
         ibv_dereg_mr(rstate->conn.mr + i);

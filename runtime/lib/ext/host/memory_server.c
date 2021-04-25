@@ -31,7 +31,9 @@ int main(int argc, char *argv[]) {
 
     // Will block at this instruction!
     libd_trdma_server_serve(trans);
+    printf("Server setup\n");
 
+    for (;;);
     fprintf(stderr, "Reach end of main function, EXIT\n");
     return -1;
 }
