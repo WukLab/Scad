@@ -1,0 +1,1 @@
+curl -d "object=thisisactivationid&point_0=,0.009766,82742,mem1,0,0,mem2,0,0&point_1=,1.004213,746709,mem1,384,0,mem2,0,64&point_2=,0.000000,746709,mem1,384,64,mem2,128,64" localhost:8315
