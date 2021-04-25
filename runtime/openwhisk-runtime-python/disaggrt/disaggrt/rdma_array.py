@@ -13,6 +13,16 @@ def prod(it):
         p = p * e
     return p
 
+def init_empty_remote_array(buffer_pool, transport_name, dtype, array_shape):
+    cur_mem_metadata = OrderedDict()
+    num_of_element = prod(array_shape)
+    element_byte = dtype.itemsize
+    cur_array_size = num_of_element * element_byte
+    # buffer pool api: reserver cur_array_size on the remote server; return the start address
+    cur_remote_addr = buffer_pool.reserve_remote_mem(transport_name, cur_array_size)
+    cur_mem_metadata[0] = [transport_name, cur_remote_addr, cur_array_size]
+    cur_array_metadata = remote_array_metadata(cur_mem_metadata, cur_array_size, dtype, element_byte, array_shape)
+    return remote_array(buffer_pool, metadata=cur_array_metadata)
 
 class remote_array_metadata:
     def __init__(self, remote_mem_metadata, cur_mem_size, dtype, element_byte, array_shape):
@@ -69,6 +79,7 @@ class remote_array():
         self.buffer_pool = buffer_pool
         # indicating whether the array is materialized on local
         self.local_array = None
+        self.buf_offset_map = OrderedDict()
         if input_ndarray is not None:
             array_shape = input_ndarray.shape
             input_ndarray = input_ndarray.ravel()
@@ -80,7 +91,6 @@ class remote_array():
                 print("fail to provide transport name; app stop")
                 exit(1)
             write_result_list = self.buffer_pool.write(transport_name, input_array_in_byte)
-            print(write_result_list)
             remote_mem_metadata = self.gen_metadata_from_write_result(write_result_list, element_byte)
             if len(remote_mem_metadata) == 0:
                 print("write data failure due to start address prblem")
@@ -102,6 +112,38 @@ class remote_array():
 
     def get_array_metadata(self):
         return self.metadata
+
+    def flush_slice(self, request_start_idx, request_end_idx):
+        # @tdo assume user request once currently; user may request repeatedly and end in several piece on buffer
+        cur_transport_name, cur_remote_addr, remote_mem_size = self.metadata.remote_mem_metadata[0]
+        cur_remote_addr = cur_remote_addr + request_start_idx * self.metadata.element_byte
+        num_of_element = (request_end_idx - request_start_idx)
+        cur_mem_size = num_of_element * self.metadata.element_byte
+        if request_start_idx not in self.buf_offset_map:
+            print("!!!flush on wrong index!!!")
+            return
+        buf_offset, mem_size_on_buf = self.buf_offset_map[request_start_idx]
+        if mem_size_on_buf < cur_mem_size or remote_mem_size < cur_mem_size:
+            print("!!!flush larger array than buffer/remote holds!!!")
+            return           
+        self.buffer_pool.flush_to_remote(cur_transport_name, cur_remote_addr, buf_offset, cur_mem_size)
+
+    def request_mem_on_buffer_for_array(self, request_start_idx = 0, request_end_idx = -1):
+        transport_name, _, _ = self.metadata.remote_mem_metadata[0]
+        if request_end_idx == -1:
+            request_end_idx = prod(self.metadata.shape)
+        num_of_element = (request_end_idx - request_start_idx)
+        cur_mem_size = num_of_element * self.metadata.element_byte
+        trans_object, buf_offset = self.buffer_pool.request_mem_on_buffer_for_array(transport_name, cur_mem_size)
+        self.buf_offset_map[request_start_idx] = [buf_offset, cur_mem_size]
+        # print(type(trans_object.buf[buf_offset : buf_offset + cur_mem_size]))
+        return trans_object.buf[buf_offset:buf_offset + cur_mem_size], buf_offset
+
+    # def fresh_write_to_buffer(self, data, request_start_idx = 0, request_end_idx = -1):
+    #     if request_end_idx == -1:
+    #         request_end_idx = prod(self.metadata.shape)
+    #     remote_metadata_list, cur_mem_size = self.get_metadata_for_bp_from_idx(request_start_idx, request_end_idx)
+    #     cur_buf_offset = self.buffer_pool.get_buffer_offset(cur_mem_size, remote_metadata_list)
 
     # return the remote_metadata list sorted by idx [request_start_idx, request_end_idx)
     def get_metadata_for_bp_from_idx(self, request_start_idx, request_end_idx):
