@@ -3,10 +3,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "rdma.h"
+#include "transports/rdma_uverbs.h"
 
-int create_context(int num_devices, const char *device_name) {
-
+struct ibv_context *create_context(int num_devices, const char *device_name) {
+    struct ibv_context * context = NULL;
 	struct ibv_device** device_list = ibv_get_device_list(&num_devices);
 	for (int i = 0; i < num_devices; i++){
 		// printf("device %i, %s | %s\n", i, ibv_get_device_name(device_list[i]), device_name);
@@ -18,10 +18,6 @@ int create_context(int num_devices, const char *device_name) {
 
 	ibv_free_device_list(device_list);
 
-    if (context == NULL) {
-        printf("create context fail\n");
-        return -1;
-    }
 	return context;
 }
 

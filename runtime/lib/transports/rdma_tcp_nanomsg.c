@@ -8,7 +8,7 @@
 
 #include "libd.h"
 #include "libd_transport.h"
-#include "libd_trdma.h"
+#include "interfaces/libd_trdma.h"
 #include "transports/rdma_tcp.h"
 
 static int _request (int sock, uint64_t addr, uint64_t req_size, int op, void *data)

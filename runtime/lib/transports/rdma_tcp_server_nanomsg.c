@@ -7,7 +7,7 @@
 
 #include "libd.h"
 #include "libd_transport.h"
-#include "libd_trdma_server.h"
+#include "interfaces/libd_trdma_server.h"
 #include "transports/rdma_tcp.h"
 
 // interface implementations

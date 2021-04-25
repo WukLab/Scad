@@ -4,7 +4,6 @@
 #include "libd_trdma_server.h"
 
 #define ACTIVATION_ID ("00000000")
-#define SERVER_URL ("localhost:8081")
 
 #define SIZE (1024 * 1024 * 64)
 
@@ -14,6 +13,7 @@ int main(int argc, char *argv[]) {
     char * server_template = "server;rdma_tcp_server;url,tcp://*:%s;size,%d;";
     
     char server_config[1024];
+    // parse config
     if (argc == 2)
         sprintf(server_config, server_template, argv[1], SIZE);
     else 
