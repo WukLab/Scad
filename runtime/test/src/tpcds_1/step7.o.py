@@ -7,9 +7,6 @@
 #@     type: rdma
 
 import pickle
-import os
-import datetime
-import pandas as pd
 import numpy as np
 import base64
 import urllib.request
@@ -18,9 +15,6 @@ from disaggrt.rdma_array import remote_array
 
 from numpy import genfromtxt
 from numpy.lib import recfunctions as rfn
-import numpy_groupies as npg
-from npjoin import join
-
 
 scheme_in = {
     "s_store_sk": np.dtype(np.float32),
@@ -56,25 +50,26 @@ scheme_in = {
 
 def build_dtype(schema):
     return np.dtype({
-        'names'   : list(schema.keys()),
-        'formats' : list(schema.values()),
-        })
+        'names': list(schema.keys()),
+        'formats': list(schema.values()),
+    })
 
 def main(_, action):
     tag_print = "step7"
     print(f"[tpcds] {tag_print}: begin")
 
-    print(f"[tpcds] {tag_print}: start reading csv")
+    # print(f"[tpcds] {tag_print}: start reading csv")
     tableurl = "http://localhost:8123/store.csv"
     csv = urllib.request.urlopen(tableurl)
 
+    # data operation
     df = genfromtxt(csv, delimiter='|', dtype=build_dtype(scheme_in))
     df = df[['s_state', 's_store_sk']][df['s_state'] == 'TN'.encode()]
     df = rfn.repack_fields(df, align=True)
 
     # build transport
     trans_name = '7_out_mem'
-    print(f"[tpcds] {tag_print}: starting writing back")
+    # print(f"[tpcds] {tag_print}: starting writing back")
     trans = action.get_transport(trans_name, 'rdma')
     trans.reg(buffer_pool_lib.buffer_size)
 

@@ -7,9 +7,6 @@
 #@     type: rdma
 
 import pickle
-import os
-import datetime
-import pandas as pd
 import numpy as np
 import base64
 import urllib.request
@@ -17,9 +14,6 @@ import disaggrt.buffer_pool_lib as buffer_pool_lib
 from disaggrt.rdma_array import remote_array
 
 from numpy import genfromtxt
-from numpy.lib import recfunctions as rfn
-import numpy_groupies as npg
-from npjoin import join
 
 scheme_in = {
     "c_customer_sk": np.dtype(np.float32),
@@ -42,28 +36,30 @@ scheme_in = {
     "c_last_review_date": np.dtype('S10'),
 }
 
+
 def build_dtype(schema):
     return np.dtype({
-        'names'   : list(schema.keys()),
-        'formats' : list(schema.values()),
-        })
+        'names': list(schema.keys()),
+        'formats': list(schema.values()),
+    })
 
 def main(_, action):
     tag_print = "step5"
     print(f"[tpcds] {tag_print}: begin")
 
-    print(f"[tpcds] {tag_print}: start reading csv")
+    # print(f"[tpcds] {tag_print}: start reading csv")
     tableurl = "http://localhost:8123/customer.csv"
     csv = urllib.request.urlopen(tableurl)
 
     df = genfromtxt(csv, delimiter='|', dtype=build_dtype(scheme_in))
-    print(f"[tpcds] {tag_print}: finish reading csv")
+    # print(f"[tpcds] {tag_print}: finish reading csv")
 
+    # data operation
     df = df[['c_customer_sk', 'c_customer_id']]
 
     # build transport
     trans_name = '5_out_mem'
-    print(f"[tpcds] {tag_print}: starting writing back")
+    # print(f"[tpcds] {tag_print}: starting writing back")
     trans = action.get_transport(trans_name, 'rdma')
     trans.reg(buffer_pool_lib.buffer_size)
 

@@ -12,24 +12,20 @@
 #@     type: rdma
 
 import pickle
-import os
-import datetime
-import pandas as pd
 import numpy as np
 import base64
 import urllib.request
 import disaggrt.buffer_pool_lib as buffer_pool_lib
 from disaggrt.rdma_array import remote_array
 
-from numpy import genfromtxt
 from numpy.lib import recfunctions as rfn
 import numpy_groupies as npg
-from npjoin import join
 
 def main(params, action):
     tag_print = "step4"
+    print(f"[tpcds] {tag_print}: begin")
 
-    print(f"[tpcds] {tag_print}: start reading remote array")
+    # print(f"[tpcds] {tag_print}: start reading remote array")
     # for now, we create two different buffer pool; may change latter
     # load fron step3
     trans_s3_name = '3_out_mem'
@@ -37,22 +33,23 @@ def main(params, action):
     trans_s3.reg(buffer_pool_lib.buffer_size)
 
     context_dict = pickle.loads(base64.b64decode(params['step3']['meta']))
-    print(f"[tpcds] {tag_print}: loading params from step3", context_dict)
+    # print(f"[tpcds] {tag_print}: loading params from step3", context_dict)
 
     bp_s3 = buffer_pool_lib.buffer_pool({trans_s3_name: trans_s3}, context_dict["bp"])
     df_s3_arr = remote_array(bp_s3, metadata=context_dict["df"])
     df3 = df_s3_arr.materialize()
 
+    # data operation
     df3 = df3[~np.isnan(df3['sr_customer_sk'])&~np.isnan(df3['sr_store_sk'])]
     uniques, reverses = np.unique(df3[['sr_customer_sk', 'sr_store_sk']], return_inverse=True)
     groups = npg.aggregate(reverses, df3['sr_return_amt'], func='sum')
     df = rfn.merge_arrays([uniques, groups], flatten = True, usemask = False)
     df.dtype.names = ('ctr_customer_sk', 'ctr_store_sk', 'ctr_total_return')
-    print(f'[tpcds] {tag_print} df: ', df.itemsize, df.shape, df.dtype)
+    # print(f'[tpcds] {tag_print} df: ', df.itemsize, df.shape, df.dtype)
     
     # build transport
     trans_s4_name = '4_out_mem'
-    print(f"[tpcds] {tag_print}: starting writing back")
+    # print(f"[tpcds] {tag_print}: starting writing back")
     trans_s4 = action.get_transport(trans_s4_name, 'rdma')
     trans_s4.reg(buffer_pool_lib.buffer_size)
 

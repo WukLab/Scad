@@ -16,24 +16,18 @@
 #@     type: rdma
 
 import pickle
-import os
-import datetime
-import pandas as pd
 import numpy as np
 import base64
 import urllib.request
 import disaggrt.buffer_pool_lib as buffer_pool_lib
 from disaggrt.rdma_array import remote_array
 
-from numpy import genfromtxt
-from numpy.lib import recfunctions as rfn
-import numpy_groupies as npg
 from npjoin import join
 
 def main(params, action):
     tag_print = "step6"
 
-    print(f"[tpcds] {tag_print}: start reading remote array")
+    # print(f"[tpcds] {tag_print}: start reading remote array")
     # for now, we create two different buffer pool; may change latter
     # load fron step4
     trans_s4_name = '4_out_mem'
@@ -41,7 +35,7 @@ def main(params, action):
     trans_s4.reg(buffer_pool_lib.buffer_size)
 
     context_dict = pickle.loads(base64.b64decode(params['step4']['meta']))
-    print(f"[tpcds] {tag_print}: loading params from step4", context_dict)
+    # print(f"[tpcds] {tag_print}: loading params from step4", context_dict)
 
     bp_s4 = buffer_pool_lib.buffer_pool({trans_s4_name: trans_s4}, context_dict["bp"])
     df_s4_arr = remote_array(bp_s4, metadata=context_dict["df"])
@@ -53,25 +47,29 @@ def main(params, action):
     trans_s5.reg(buffer_pool_lib.buffer_size)
 
     context_dict = pickle.loads(base64.b64decode(params['step5']['meta']))
-    print(f"[tpcds] {tag_print}: loading params from step5", context_dict)
+    # print(f"[tpcds] {tag_print}: loading params from step5", context_dict)
 
     bp_s5 = buffer_pool_lib.buffer_pool({trans_s5_name: trans_s5}, context_dict["bp"])
     df_s5_arr = remote_array(bp_s5, metadata=context_dict["df"])
     df5 = df_s5_arr.materialize()
-    print(f"[tpcds] {tag_print}: finish reading rdma")
-
-    join_meta = join.prepare_join_float32(df5['c_customer_sk'])
-    df5_idx, df4_idx = join.join_on_table_float32(*join_meta, df4['ctr_customer_sk'])
-    df6buf = np.empty(len(df4_idx) * (df4.itemsize + df5.itemsize), dtype=np.uint8)
-    df = join.structured_array_merge(df6buf, df4, df5, df4_idx, df5_idx,
-            ['ctr_store_sk', 'ctr_customer_sk', 'ctr_total_return'],
-            ['c_customer_id'])
+    # print(f"[tpcds] {tag_print}: finish reading rdma")
 
     # build transport
     trans_s6_name = '6_out_mem'
-    print(f"[tpcds] {tag_print}: starting writing back")
+    # print(f"[tpcds] {tag_print}: starting writing back")
     trans_s6 = action.get_transport(trans_s6_name, 'rdma')
     trans_s6.reg(buffer_pool_lib.buffer_size)
+
+    # data operation
+    join_meta = join.prepare_join_float32(df5['c_customer_sk'])
+    df5_idx, df4_idx = join.join_on_table_float32(*join_meta, df4['ctr_customer_sk'])
+    # df6buf = np.empty(len(df4_idx) * (df4.itemsize + df5.itemsize), dtype=np.uint8)
+    # print('df6buf', df6buf.shape, 'itemsize', df4.itemsize + df5.itemsize)
+    # print('trans_s6.buf', trans_s6.buf.shape, 'itemsize', trans_s6.buf.itemsize)
+    # df = join.structured_array_merge(df6buf, df4, df5, df4_idx, df5_idx,
+    df = join.structured_array_merge(trans_s6.buf, df4, df5, df4_idx, df5_idx,
+            ['ctr_store_sk', 'ctr_customer_sk', 'ctr_total_return'],
+            ['c_customer_id'])
 
     # write back
     bp_s6 = buffer_pool_lib.buffer_pool({trans_s6_name: trans_s6})
