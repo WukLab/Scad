@@ -2,11 +2,16 @@
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from io import BytesIO
+import os
 import sqlite3
 
+from Commons import CreatePerfDB
 from config import *
 
 def ParseMessageBody(body):
+    if (not os.path.isfile(PERF_DB_FILENAME)):
+        # create a DB file if not available
+        CreatePerfDB(PERF_DB_FILENAME)
     conn = sqlite3.connect(PERF_DB_FILENAME)
 
     for field in body.split('&'):
