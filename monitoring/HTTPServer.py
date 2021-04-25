@@ -1,11 +1,13 @@
+#!/usr/bin/env python3
+
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from io import BytesIO
 import sqlite3
 
-db_file = 'profiling.db'
+from config import *
 
 def ParseMessageBody(body):
-    conn = sqlite3.connect(db_file)
+    conn = sqlite3.connect(PERF_DB_FILENAME)
 
     for field in body.split('&'):
         [k,v] = field.split('=')
