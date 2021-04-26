@@ -23,17 +23,21 @@ static void fatal(const char *func)
 }
 
 static int server_exchange_info(struct rdma_conn *conn, const char * url) {
-	int sock, rv;
+	static int sock, sock_initd = 0;
+    int rv;
     int send_size, bytes;
     void *info, *peerinfo = NULL;
 
-	if ((sock = nn_socket(AF_SP, NN_REP)) < 0) {
-		fatal("nn_socket");
-	}
+    if (!sock_initd) {
+        if ((sock = nn_socket(AF_SP, NN_REP)) < 0) {
+            fatal("nn_socket");
+        }
 
-	if ((rv = nn_bind(sock, url)) < 0) {
-		fatal("nn_bind");
-	}
+        if ((rv = nn_bind(sock, url)) < 0) {
+            fatal("nn_bind");
+        }
+        sock_initd = 1;
+    }
 
     if ((bytes = nn_recv(sock, &peerinfo, NN_MSG, 0)) < 0) {
         fatal("nn_recv");
@@ -49,8 +53,9 @@ static int server_exchange_info(struct rdma_conn *conn, const char * url) {
 
     // TODO: check this
     // nn_freemsg(buf);
+    // nn_shutdown(sock, 0);
 
-    return nn_shutdown(sock, 0);
+    return 0;
 }
 
 // interface implementations
@@ -63,6 +68,9 @@ static int _init(struct libd_transport *trans) {
     init_config_set(device_name, "mlx5_1");
     init_config_set(num_devices, 2);
     init_config_set(cq_size, 16);
+
+    rstate->num_conns = 0;
+    rstate->conns = NULL;
 
     memset(&rstate->conn, 0, sizeof(struct rdma_conn));
     rstate->conn.gid = 0;
@@ -80,10 +88,6 @@ static int _init(struct libd_transport *trans) {
     // String to size_t
     init_config_require(size, config_to_ull);
     init_config_require(url,  id);
-
-    // setup mr
-    rstate->conn.cq = ibv_create_cq(rstate->conn.context, rstate->cq_size, NULL, NULL, 0);
-    create_qp(&rstate->conn);
 
     // create MRs
     int access = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ;
@@ -111,17 +115,25 @@ static int _connect(struct libd_transport *trans) {
 static int _terminate(struct libd_transport * trans) {
     get_local_state(rstate,trans,struct uverbs_rdma_state);
 
-    // clean up nanomsg
-    if (rstate->conn.peerinfo != NULL)
-        nn_freemsg(rstate->conn.peerinfo);
-    // clean up RDMA
+    // clean up MR
     for (int i = 0; i < rstate->conn.num_mr; i++) {
         ibv_dereg_mr(rstate->conn.mr + i);
     }
 
-    // TODO: close qp and cq, instead of context
-    ibv_destroy_qp(rstate->conn.qp);
-    ibv_destroy_cq(rstate->conn.cq);
+    // clean up nanomsg
+    for (int i = 0; i < rstate->num_conns; i++) {
+        struct rdma_conn *conn = rstate->conns[i];
+        if (conn->peerinfo != NULL)
+            nn_freemsg(conn->peerinfo);
+
+        // TODO: close qp and cq, instead of context
+        ibv_destroy_qp(conn->qp);
+        ibv_destroy_cq(conn->cq);
+
+        free(conn);
+    }
+    free(rstate->conns);
+    ibv_close_device(_context);
 
     return 0;
 }
@@ -129,11 +141,32 @@ static int _terminate(struct libd_transport * trans) {
 static int _serve(struct libd_transport *trans) {
     get_local_state(rstate,trans,struct uverbs_rdma_state);
     // Exchange with server
-    server_exchange_info(&rstate->conn, rstate->url);
 
-    // Enable QP, server only need to get to RTR
-    qp_stm_reset_to_init(&rstate->conn);
-    qp_stm_init_to_rtr(&rstate->conn);
+    for (;;) {
+        struct rdma_conn *conn = 
+            (struct rdma_conn *)calloc(1, sizeof(struct rdma_conn));
+
+        // save conn to conns
+        rstate->conns = realloc(rstate->conns, rstate->num_conns + 1);
+        rstate->conns[rstate->num_conns] = conn;
+        ++ (rstate->num_conns);
+
+        conn->num_mr = rstate->conn.num_mr;
+        conn->mr     = rstate->conn.mr;
+        conn->gid    = 0;
+        conn->port   = 1;
+        conn->context = _context;
+        conn->pd     = _pd;
+
+        // setup mr
+        conn->cq = ibv_create_cq(_context, rstate->cq_size, NULL, NULL, 0);
+        create_qp(conn);
+        server_exchange_info(conn, rstate->url);
+
+        // Enable QP, server only need to get to RTR
+        qp_stm_reset_to_init(conn);
+        qp_stm_init_to_rtr(conn);
+    }
 }
 
 struct libd_trdma_server rdma_uverbs_server = {

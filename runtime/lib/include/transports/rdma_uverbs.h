@@ -39,6 +39,9 @@ struct uverbs_rdma_state {
 
     // RDMA conn info
     struct rdma_conn conn;
+    // Conns for 
+    int num_conns;
+    struct rdma_conn **conns;
 
     // RDMA configs
     const char * device_name;
