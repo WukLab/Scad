@@ -8,7 +8,7 @@
 
 #include "libd.h"
 #include "libd_transport.h"
-#include "libd_trdma.h"
+#include "interfaces/libd_trdma.h"
 #include "transports/rdma_tcp.h"
 
 static int _request (int sock, uint64_t addr, uint64_t req_size, int op, void *data)
@@ -103,7 +103,7 @@ static void * _reg(struct libd_transport *trans, size_t s, void *buf) {
     if (buf == NULL) {
         return malloc(s);
     }
-    return NULL;
+    return buf;
 }
 
 static int _read(struct libd_transport *trans,

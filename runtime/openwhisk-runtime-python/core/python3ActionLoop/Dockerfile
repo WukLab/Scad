@@ -28,6 +28,7 @@ FROM python:3.7-buster AS build_libd
 RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev \
     libnanomsg-dev \
+    libibverbs-dev \
     && rm -rf /var/lib/apt/lists/*
 RUN pip install \
     cython
@@ -42,6 +43,7 @@ FROM python:3.7-buster
 RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev \
     libnanomsg-dev \
+    libibverbs-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install common modules for python

@@ -1,8 +1,8 @@
 #include <errno.h>
 
 #include "libd.h"
-#include "libd_trdma.h"
 #include "libd_transport.h"
+#include "interfaces/libd_trdma.h"
 
 #define operation_start(ret,trans,cur) \
     operation(ret,trans,cur); \

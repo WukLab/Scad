@@ -21,7 +21,7 @@ int _map_init(map *m, int ksize, const char * kt) {
     return 0;
 }
 
-int _map_insert(map *m, void *key, void *value) {
+int _map_insert(map *m, const void *key, const void *value) {
     if (_map_get(m, key) != NULL)
         return -1; 
     
@@ -31,12 +31,17 @@ int _map_insert(map *m, void *key, void *value) {
         m->values = (void **)realloc(m->values, sizeof(void *) * m->cap);
     }
 
-    m->keys[m->size] = key;
+    // copy keys
+    int ksize = m->ksize == -1 ? strlen(key) + 1 : m->ksize;
+    void * _key = malloc(ksize);
+    memcpy(_key, key, ksize);
+
+    m->keys[m->size] = _key;
     m->values[m->size] = value;
     return m->size ++;
 }
 
-void * _map_get(map *m, void *key) {
+void * _map_get(map *m, const void *key) {
     int ksize = m->ksize;
     for (int i = 0; i < m->size; i++) {
         int ret = 0;
@@ -54,6 +59,8 @@ void * _map_get(map *m, void *key) {
 }
 
 int _map_free(map *m) {
+    for (int i = 0; i < m->size; i++)
+        free(m->keys[i]);
     free(m->keys);
     free(m->values);
     return 0;

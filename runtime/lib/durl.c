@@ -44,7 +44,7 @@ struct libd_tstate * parse_durl(char * durl) {
 
     dprintf("parsing durl %s", durl);
     struct libd_tstate *state =
-        (struct libd_tstate *)malloc(sizeof(struct libd_tstate));
+        (struct libd_tstate *)calloc(1, sizeof(struct libd_tstate));
     map_init(state->config, string);
 
     parse_string(&cur, &state->name, ';');

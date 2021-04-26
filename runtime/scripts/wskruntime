@@ -41,7 +41,7 @@ def reset_container(name):
             pass
     _execute(['docker', 'stop', name])
     _execute(['docker', 'rm', name])
-    _execute('docker run --name={} -d whisk/actionloop-python-v3.7:latest'.format(name).split())
+    _execute('docker run --cap-add=IPC_LOCK --device=/dev/infiniband/uverbs1 --name={} -d whisk/actionloop-python-v3.7:latest'.format(name).split())
     print('reset container {} success'.format(name))
 
 def gen_activationid(length):

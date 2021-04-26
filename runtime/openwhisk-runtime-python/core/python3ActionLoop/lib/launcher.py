@@ -59,7 +59,8 @@ class LibdRuntime:
                 func(self, *args)
             del self.stash_msgs[aid]
     def create_action(self, aid):
-        action = LibdAction(self.cv, aid, self.server_url)
+        args = {"post_url":'http://172.17.0.1:2400'}
+        action = LibdAction(self.cv, aid, **args)
         self.actions[aid] = action
         return action
     def get_action(self, aid):
@@ -155,7 +156,6 @@ while True:
   aid = None
   transports = []
   for key in args:
-    print("on key", key, args[key], file=stderr)
     stderr.flush()
     if key == "value":
       payload = args["value"]
@@ -178,10 +178,13 @@ while True:
   except Exception as ex:
     print(traceback.format_exc(), file=stderr)
     res = {"error": str(ex)}
-  # TODO: terminate actions after finish?
   resjson = json.dumps(res, ensure_ascii=False).encode('utf-8')
   out.write(resjson)
   out.write(b'\n')
   stdout.flush()
   stderr.flush()
   out.flush()
+  # terminate actions after finish?
+  if action != None:
+    _runtime.terminate_action(aid)
+
