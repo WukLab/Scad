@@ -19,7 +19,7 @@ LD       := gcc
 INCLUDES := -I./include
 LIBS     := -lnanomsg -lcurl -lpthread -libverbs
 CFLAGS   := -fPIC -O2 -g -std=c11 -Wall $(INCLUDES) -DDEBUG
-LDFLAGS  := $(LDFLAGS) $(LIBS)
+LD_FLAGS := $(LD_FLAGS) $(if $(USE_RDMA),-fuse-ld=lld,) 
 
 .PNONY: all install clean ext_python ext_npjoin ext_npjoin_install tests
 
@@ -29,7 +29,7 @@ install: libd.so
 all: $(TARGETS)
 
 libd.so: $(OBJECTS)
-	$(LD) -fuse-ld=lld -shared -o $@ $(LDFLAGS) $^
+	$(LD) $(LD_FLAGS) -shared -o $@ $(LIBS) $^
 
 # Extensions.
 # Python interface module using cython

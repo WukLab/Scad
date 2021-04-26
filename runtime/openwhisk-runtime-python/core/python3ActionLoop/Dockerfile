@@ -29,12 +29,13 @@ RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev \
     libnanomsg-dev \
     libibverbs-dev \
+    lld \
     && rm -rf /var/lib/apt/lists/*
 RUN pip install \
     cython
 
 ADD libd /libd
-RUN make -C /libd ext_python
+RUN LD_FLAGS="-fuse-ld=lld" make -C /libd ext_python
 
 FROM python:3.7-buster
 # ARG GO_PROXY_BUILD_FROM=local

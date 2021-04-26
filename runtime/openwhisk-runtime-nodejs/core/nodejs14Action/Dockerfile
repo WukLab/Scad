@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y \
     unzip \
     libcurl4-openssl-dev \
     libnanomsg-dev \
+    libibverbs-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Add sources and copy the package.json to root container,
