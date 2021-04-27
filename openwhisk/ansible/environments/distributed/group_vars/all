@@ -34,6 +34,7 @@ apigw_host_v2: "http://{{ groups['apigateway']|first }}:{{apigateway.port.api}}/
 
 racksched_allow_multiple_instances: true
 invoker_allow_multiple_instances: true
+skip_pull_runtimes: true
 
 # Set kafka configuration
 kafka_heap: '512m'
@@ -44,7 +45,7 @@ kafka_topics_health_retentionMS: 300000
 kafka_topics_invoker_retentionBytes: 104857600
 kafka_topics_invoker_retentionMS: 300000
 
-env_hosts_dir: "{{ playbook_dir }}/environments/local"
+env_hosts_dir: "{{ playbook_dir }}/environments/distributed"
 
 container_pool_akka_client: false
 runtimes_enable_concurrency: true

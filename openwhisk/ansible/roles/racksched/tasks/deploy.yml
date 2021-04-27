@@ -338,7 +338,7 @@
     command: /bin/sh -c "exec /init.sh --id {{ racksched_index }} --uniqueName {{ racksched_index }}"
   when: not lean
 
-- name: wait until Racksched is up and running
+- name: wait until Racksched is up and running at {{ racksched.protocol }}://{{ ansible_host }}:{{ racksched.basePort + (racksched_index | int) }}/ping
   uri:
     url: "{{ racksched.protocol }}://{{ ansible_host }}:{{ racksched.basePort + (racksched_index | int) }}/ping"
     validate_certs: "no"

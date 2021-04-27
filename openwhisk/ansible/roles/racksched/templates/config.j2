@@ -6,3 +6,16 @@ include classpath("application.conf")
 #     prometheus-enabled = true
 #   }
 # }
+
+
+whisk {
+    kafka {
+        topics {
+            {{ racksched_name }} {
+                segment-bytes   =  536870912
+                retention-bytes = 1073741824
+                retention-ms    = 3600000
+            }
+        }
+    }
+}

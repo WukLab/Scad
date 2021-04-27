@@ -277,6 +277,7 @@ object RackSched {
     val instance = new RackSchedInstanceId(id,
       new RuntimeResources(0, ByteSize.fromString("0B"), ByteSize.fromString("0B")),
       None, None)
+    logger.debug(this, s"starting racksched with id ${id} and topic ${RackSchedInstanceId.rackSchedHealthTopic(id)}")
 
     if (!config.isValid) {
       abort("Bad configuration, cannot start.")
@@ -285,13 +286,14 @@ object RackSched {
     val msgProvider = SpiLoader.get[MessagingProvider]
 
     Seq(
-      ("completed" + instance.toString, "completed", Some(ActivationEntityLimit.MAX_ACTIVATION_LIMIT)),
+      ("completed" + instance.asString, "completed", Some(ActivationEntityLimit.MAX_ACTIVATION_LIMIT)),
       (RackSchedInstanceId.rackSchedHealthTopic(instance.toInt), "health", None),
       ("rackHealth", "rackHealth", None),
       (instance.toString, instance.toString, None),
       ("cacheInvalidation", "cache-invalidation", None),
       ("events", "events", None)).foreach {
       case (topic, topicConfigurationKey, maxMessageBytes) =>
+        logger.debug(this, s"creating topic ${topic} with config key ${topicConfigurationKey}")
         if (msgProvider.ensureTopic(config, topic, topicConfigurationKey, maxMessageBytes).isFailure) {
           abort(s"failure during msgProvider.ensureTopic for topic $topic")
         }

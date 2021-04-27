@@ -17,6 +17,6 @@
 ---
 # This playbook downloads the Openwhisk cli aka wsk from the API host.
 
-- hosts: ansible
+- hosts: edge
   roles:
   - cli-install

@@ -17,7 +17,7 @@
 ---
 # WARNING: This playbook wipes the database. This action is not reversible. Be very careful and know what you are doing.
 
-- hosts: ansible
+- hosts: localhost
   tasks:
     - import_tasks: tasks/wipeDatabase.yml
       vars:

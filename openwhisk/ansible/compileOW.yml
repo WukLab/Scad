@@ -1,0 +1,8 @@
+- hosts: all
+  tasks:
+  - name: fetch latest code
+    shell: 'cd {{  playbook_dir }} && git fetch origin && git checkout -B workload-analysis origin/workload-analysis  && git pull origin'
+  - name: compile and build runtimes
+    shell: cd {{ playbook_dir }}/../../runtime && make all
+  - name: compile and build openwhisk containers
+    shell: 'cd {{  playbook_dir }}/../ && ./gradlew distDocker'

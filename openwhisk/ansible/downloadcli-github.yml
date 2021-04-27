@@ -17,7 +17,7 @@
 ---
 # This playbook is used to download cli from Github and copy directly to bin
 
-- hosts: ansible
+- hosts: edge
   tasks:
   - name: grab the local CLI from the Github
     unarchive:

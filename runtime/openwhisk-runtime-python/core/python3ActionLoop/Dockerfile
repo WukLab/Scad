@@ -48,7 +48,6 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install common modules for python
-ADD disaggrt /disaggrt
 RUN pip install \
     beautifulsoup4==4.6.3 \
     httplib2==0.11.3 \
@@ -60,8 +59,10 @@ RUN pip install \
     simplejson==3.16.0 \
     virtualenv==16.0.0 \
     twisted==18.7.0 \
-    numpy==1.20.2 \
-    /disaggrt
+    numpy==1.20.2
+
+ADD disaggrt /disaggrt
+RUN pip install /disaggrt
 
 RUN mkdir -p /action
 WORKDIR /

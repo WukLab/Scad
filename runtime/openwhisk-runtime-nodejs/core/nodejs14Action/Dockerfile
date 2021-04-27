@@ -43,7 +43,7 @@ RUN cd / && npm install --no-package-lock --production \
 
 # compile and install libd
 ADD libd /libd
-RUN make -C /libd 
+RUN make -C /libd
 
 EXPOSE 8080 2333
 

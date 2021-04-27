@@ -71,6 +71,7 @@ class InvokerReactive(
 
   private val rackId = loadConfigOrThrow[Int](ConfigKeys.invokerRack)
   private val rackHealthTopic = RackSchedInstanceId.rackSchedHealthTopic(rackId)
+  logging.debug(this, s"rack health topic is ${rackHealthTopic}")
 
   private val logsProvider = SpiLoader.get[LogStoreProvider].instance(actorSystem)
   logging.info(this, s"LogStoreProvider: ${logsProvider.getClass}")
@@ -388,9 +389,10 @@ class InvokerReactive(
   }
 
   private val healthProducer = msgProvider.getProducer(config)
+  logging.debug(this, s"scheduling health pings to topic '${rackHealthTopic}'")
   Scheduler.scheduleWaitAtMost(1.seconds)(() => {
     healthProducer.send(rackHealthTopic, PingMessage(instance)).andThen {
-      case Failure(t) => logging.error(this, s"failed to ping the controller: $t")
+      case Failure(t) => logging.error(this, s"failed to ping the rack: $t")
     }
   })
 

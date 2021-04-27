@@ -20,7 +20,7 @@
 # dbUser - name of the user which should have access rights
 # dbPass - password of the user which should have access
 
-- name: check if {{ dbName }} with {{ db.provider }} exists
+- name: check if {{ dbName }} with {{ db.provider }} {{ db.host }} {{ dbUser }} {{ dbPass }} exists
   uri:
     url: "{{ db.protocol }}://{{ db.host }}:{{ db.port }}/{{ dbName }}"
     method: HEAD

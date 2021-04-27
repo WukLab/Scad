@@ -18,7 +18,7 @@
                 "kind": "nodejs:14",
                 "default": false,
                 "image": {
-                    "prefix": "",
+                    "prefix": "whisk",
                     "name": "action-nodejs-v14",
                     "tag": "latest"
                 },

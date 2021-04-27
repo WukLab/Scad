@@ -1,50 +1,77 @@
+SHELL := /bin/bash
+
 DAG ?= "2-node.json"
+ANSIBLE_SCRIPT =
+
+
+
+ifdef DIST
+ANSIBLE_SCRIPT = ./run_ansible.sh d
+else
+ANSIBLE_SCRIPT = ./run_ansible.sh
+endif
+
+
+
+.PHONY: run_experiment
 
 apigw:
-	./run_ansible.sh apigateway.yml
+	$(ANSIBLE_SCRIPT) apigateway.yml
 
 analyze:
 	./faas-profiler.sh WorkloadAnalyzer -p
 
+.ONESHELL:
 build_runtimes:
-	cd ../runtime && make all
+	if [[ -z $${DIST+x} ]]; then
+		cd ../runtime && make all;
+	fi
 
+build: build_runtimes build_ow dist_docker
+
+.ONESHELL:
 build_ow:
-	cd ../openwhisk && ./gradlew build -x test
+	if [[ -z $${DIST+x} ]]; then
+		cd ../openwhisk && ./gradlew build -x test
+	fi
 
 build_ow_base:
 	cd ../openwhisk-base && ./gradlew distDocker
 
-build: build_runtimes build_ow dist_docker
 
 cli:
 ifeq (,$(wildcard ../openwhisk/bin/wsk))
-	./run_ansible.sh downloadcli-github.yml
+	$(ANSIBLE_SCRIPT) downloadcli-github.yml
 endif
 
 couchdb: start_couchdb initdb
 
 controller:
-	./run_ansible.sh controller.yml
+	$(ANSIBLE_SCRIPT) controller.yml
 
+.ONESHELL:
 dist_docker:
-	cd ../openwhisk && ./gradlew distDocker
+	if [[ -z $${DIST+x} ]]; then
+		cd ../openwhisk && ./gradlew distDocker
+	else
+		${ANSIBLE_SCRIPT} compileOW.yml -e checkout="$$(git branch --show-current)"
+	fi
 
 initdb: wipe
-	./run_ansible.sh initdb.yml
+	$(ANSIBLE_SCRIPT) initdb.yml
 
 kafka:
-	./run_ansible.sh kafka.yml
+	$(ANSIBLE_SCRIPT) kafka.yml
 
 invoker:
-	./run_ansible.sh invoker.yml -e skip_pull_runtimes=true
+	$(ANSIBLE_SCRIPT) invoker.yml -e skip_pull_runtimes=true
 
 openwhisk:
-	./run_ansible.sh openwhisk.yml -e skip_pull_runtimes=true
+	$(ANSIBLE_SCRIPT) openwhisk.yml -e skip_pull_runtimes=true
 
 ow_base: build_ow_base
 	rm -rf ~/.openwhisk/wsklogs/*
-	cd ../openwhisk-base && git reset HEAD --hard && git apply ../ow-base.patch
+	cd ../openwhisk-base && git reset HEAD --hard && git apply ../ow-base.patch && ./gradlew distDocker
 	./ow_base_ansible.sh properties.yml
 	./ow_base_ansible.sh setup.yml
 	./ow_base_ansible.sh couchdb.yml
@@ -53,18 +80,20 @@ ow_base: build_ow_base
 	./ow_base_ansible.sh openwhisk.yml -e skip_pull_runtimes=true
 
 racksched:
-	./run_ansible.sh racksched.yml
+	$(ANSIBLE_SCRIPT) racksched.yml
 
 
 reset_db: wipe
 	../wskish/wskish put --file "$(DAG)"
 	../wskish/wskish post
 
-run_profiler:
+run_experiment: DAG_FILE = "$(EXPERIMENT)/dag.json"
+run_experiment: WORKLOAD_FILE = "$(EXPERIMENT)/workload.json"
+run_experiment:
 	../wskish/wskish delete
-	../wskish/wskish put --file "$(DAG)"
-	./faas-profiler.sh WorkloadInvoker -c zac-test.json
-	./faas-profiler.sh WorkloadAnalyzer -p
+	../wskish/wskish put --file $(DAG_FILE)
+	./faas-profiler.sh WorkloadInvoker -c $(WORKLOAD_FILE)
+	./faas-profiler.sh WorkloadAnalyzer -a
 
 run_test:
 	OPENWHISK_HOME="$(shell readlink -f ../openwhisk)" ./faas-profiler.sh configure.sh
@@ -72,19 +101,19 @@ run_test:
 	sleep 2
 
 setup:
-	./run_ansible.sh setup.yml
+	$(ANSIBLE_SCRIPT) setup.yml
 
 start_all: build teardown couchdb wipe openwhisk apigw
 
 start_couchdb: setup
-	./run_ansible.sh couchdb.yml
+	$(ANSIBLE_SCRIPT) couchdb.yml
 
 teardown:
 	docker stop invoker0 || true
 	docker stop $(shell docker ps -q) || true
 	docker rm $(shell docker ps -aq) || true
 
-test: build teardown couchdb wipe start_all apigw
+test: start_all
 	../wskish/wskish put --file "$(DAG)"
 	../wskish/wskish post
 
@@ -96,8 +125,25 @@ test_ow_base: ow_base
 	./faas-profiler.sh WorkloadInvoker -c workloads/2-node-base-ow.json
 	./faas-profiler.sh WorkloadAnalyzer -p
 
+test_numpy_overhead:
+	$(MAKE) py-n2r10
+	echo "Finished basic python...waiting 10s for thing to settle...."
+	sleep 10
+	$(MAKE) py-npn2r10
+
+py-n2r10: EXPERIMENT = experiments/python/n2-r10
+py-n2r10: run_experiment
+
+py-npn2r10: EXPERIMENT = experiments/python/np-n2-r10
+py-npn2r10: run_experiment
+
+js-n2r10: EXPERIMENT = experiments/javascript/n2-r10
+js-n2r10: run_experiment
+
+
 wipe:
-	./run_ansible.sh wipe.yml
+	$(ANSIBLE_SCRIPT) wipe.yml
 
 zk:
-	./run_ansible.sh zookeeper.yml
+	$(ANSIBLE_SCRIPT) zookeeper.yml
+

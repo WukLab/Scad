@@ -1,0 +1,83 @@
+{
+  "functions": [
+    {
+      "name": "function0",
+      "objects": [
+        {
+          "annotations": [
+            {
+              "key": "exec",
+              "value": "python"
+            }
+          ],
+          "exec": {
+            "kind": "python:3",
+            "code": "def main(args, action): return { }",
+            "binary": false,
+            "main": "main"
+          },
+          "limits": {
+            "concurrency": 1,
+            "logs": 10,
+            "resources": {
+              "cpu": 1.0,
+              "mem": "256 MB",
+              "storage": "512 MB"
+            },
+            "timeout": 60000
+          },
+          "name": "object0",
+          "parameters": [],
+          "publish": false,
+          "relationships": {
+            "corunning": [],
+            "dependents": [
+              "object1"
+            ],
+            "parents": []
+          },
+          "runtimeType": "compute",
+          "version": "0.0.1"
+        },
+        {
+          "annotations": [
+            {
+              "key": "exec",
+              "value": "python"
+            }
+          ],
+          "exec": {
+            "kind": "python:3",
+            "code": "def main(args, action): return { }",
+            "binary": false,
+            "main": "main"
+          },
+          "limits": {
+            "concurrency": 1,
+            "logs": 10,
+            "resources": {
+              "cpu": 1.0,
+              "mem": "256 MB",
+              "storage": "512 MB"
+            },
+            "timeout": 60000
+          },
+          "name": "object1",
+          "parameters": [],
+          "publish": false,
+          "relationships": {
+            "corunning": [],
+            "dependents": [],
+            "parents": [
+              "object0"
+            ]
+          },
+          "runtimeType": "compute",
+          "version": "0.0.1"
+        }
+      ],
+      "publish": true
+    }
+  ],
+  "publish": true
+}

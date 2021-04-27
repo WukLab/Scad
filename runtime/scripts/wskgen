@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 import requests
 import argparse
@@ -77,7 +77,6 @@ def gen_obj(meta, source):
         print('import', fullname)
         with open(fullname) as f:
             source = f.read() + '\n' + source
-        
 
     obj = {
         'annotations': [{'key': k, 'value':v} for k, v in annotations.items()],
@@ -115,7 +114,6 @@ def gen_json(funcname, l):
     for _, meta, source in l:
         func['objects'].append(gen_obj(meta, source))
     return { 'functions': [func], "publish": True }
-        
 
 if __name__ == '__main__':
 

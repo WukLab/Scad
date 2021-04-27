@@ -1,8 +1,10 @@
 import argparse
 import json
+import math
 import os
 import requests
 import sys
+import time
 
 # Disable annoying warning
 import urllib3
@@ -42,8 +44,14 @@ class WskProps:
 def read_example(filename: str):
     '''Read a JSON file from the examples directory
     '''
-    with open(os.path.join(DIR_NAME, "examples", filename), 'r') as f:
-        return f.read()
+    def rf(path):
+        with open(path, 'r') as f:
+            return f.read()
+    try:
+        return rf(os.path.join(DIR_NAME, "examples", filename))
+    except FileNotFoundError as e:
+        return rf(filename)
+
 
 
 
@@ -75,9 +83,12 @@ def send_request(req, verbose=False):
 def do_get_activation(host, activation_id, auth, verbose=False):
     result = '{}/api/v1/namespaces/_/activations/{}/result'.format(host, activation_id)
     logs = '{}/api/v1/namespaces/_/activations/{}/logs'.format(host, activation_id)
-    for url in [result, logs]:
-        req = requests.Request(url=url, method='GET', headers={'Content-Type': 'application/json'}, auth=auth)
-        send_request(req, verbose=verbose)
+
+    # send_request lambda with some params filled in
+    sr = lambda url: send_request(requests.Request(url=url, method='GET', headers={'Content-Type': 'application/json'}, auth=auth), verbose=verbose)
+    log_res = sr(logs)
+    result_res = sr(result)
+    return result_res
 
 def do_action_update(host, method, json_content, app_name, auth, verbose=False):
     url = '{}/api/v1/namespaces/_/actions/{}'.format(host, app_name)
@@ -94,6 +105,8 @@ def main():
     parser.add_argument('--app', help='The name of the action to represent the application in openwhisk.', default='test-action')
     parser.add_argument('--host', help='The openwhisk controller host. This should at minimum be a host name, but the http(s) protocol may also be specified along with a port', default=None)
     parser.add_argument('--auth', help='The auth string to use against the openwhisk API', default=None)
+    parser.add_argument('-n', '--non-blocking', help='Make a POST request non-blocking. If set, only the activation ID is returned', action='store_true')
+    parser.add_argument('-t', '--timeout', help='timeout for blocking activation waiting for successful response', default=10)
     parser.add_argument('-v', '--verbose', help="enable to print debug logs", action='store_true')
 
     args = parser.parse_args()
@@ -113,15 +126,24 @@ def main():
 
     resp = None
     if method != 'GET':
-        do_action_update(host, method, json_content, args.app, wskprops.auth, verbose=args.verbose)
+        resp = do_action_update(host, method, json_content, args.app, wskprops.auth, verbose=args.verbose)
     elif method == 'GET' and args.id is None:
         print("ERROR: Must provide activation ID when using 'get'")
         sys.exit(1)
     else:
         do_get_activation(host, args.id, wskprops.auth, args.verbose)
 
-
-
+    if method == 'POST':
+        aid = json.loads(resp.content)['activationId']
+        start = time.time()
+        iters = 0
+        while time.time() - start < args.timeout:
+            r = do_get_activation(host, aid, wskprops.auth, args.verbose)
+            if r.status_code == 200:
+                break
+            sleep_time = min(math.pow(2, iters), args.timeout)
+            time.sleep(sleep_time)
+            iters += 1
 
 
 if __name__ == "__main__":
