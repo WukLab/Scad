@@ -695,6 +695,7 @@ protected[actions] trait PrimitiveActions {
   protected val controllerActivationConfig =
     loadConfigOrThrow[ControllerActivationConfig](ConfigKeys.controllerActivation)
 
+  protected val useRdma: Boolean = loadConfigOrThrow[Boolean](ConfigKeys.useRdma)
 
   protected[controller] def invokeDag(
                                        user: Identity,
@@ -730,7 +731,9 @@ protected[actions] trait PrimitiveActions {
                 appId = Some(appActivationId),
                 corunning = Some(corunning),
                 activationId = Some(objId.objActivation))
-            })
+            },
+            useRdma
+          )
         }
       appActivator ! IncompleteActivation(appActivationId, Instant.now.toEpochMilli, application.namespace, application.name, user)
       Future.successful(Left(appActivationId))

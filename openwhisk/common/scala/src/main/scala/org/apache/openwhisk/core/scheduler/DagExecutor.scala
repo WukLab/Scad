@@ -25,8 +25,9 @@ object DagExecutor {
    * @return
    */
   def executeFunction[T](func: WhiskFunction, entityStore: EntityStore,
-                         invocation: (ExecutableWhiskActionMetaData, ActivationId, Seq[RunningActivation], RunningActivation) => Future[T])(
-                          implicit transid: TransactionId, ex: ExecutionContext, logging: Logging): Future[Unit] = {
+                         invocation: (ExecutableWhiskActionMetaData, ActivationId, Seq[RunningActivation], RunningActivation) => Future[T],
+                         useRdma: Boolean,
+                        )(implicit transid: TransactionId, ex: ExecutionContext, logging: Logging): Future[Unit] = {
     // Start the first objects of the first functions within the application.
     val funcId = ActivationId.generate()
     func.lookupObjectMetadata(entityStore) map { objs =>
@@ -45,7 +46,7 @@ object DagExecutor {
       // this one should be immutable, and we will make a copy for each new object we plan to schedule with that
       // particular object's activation id removed from the copied set.
       val objSeq = startingObjs.toSeq
-      val activations: Seq[RunningActivation] = objSeq.map(o => RunningActivation(o.toFQEN().toString, ActivationId.generate(), ParallelismInfo(0, 1)))
+      val activations: Seq[RunningActivation] = objSeq.map(o => RunningActivation(o.toFQEN().toString, ActivationId.generate(), ParallelismInfo(0, 1), useRdma))
       val siblingSet: Set[RunningActivation] = activations.toSet
       val x = objSeq zip activations map { obj =>
         (objMap(obj._1).toExecutableWhiskAction, obj._2)

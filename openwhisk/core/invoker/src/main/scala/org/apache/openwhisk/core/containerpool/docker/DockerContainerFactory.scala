@@ -48,7 +48,8 @@ class DockerContainerFactory(instance: InvokerInstanceId,
                              protected val userImagesRegistryConfig: RuntimesRegistryConfig =
                                loadConfigOrThrow[RuntimesRegistryConfig](ConfigKeys.userImagesRegistry),
                              dockerContainerFactoryConfig: DockerContainerFactoryConfig =
-                               loadConfigOrThrow[DockerContainerFactoryConfig](ConfigKeys.dockerContainerFactory))(
+                               loadConfigOrThrow[DockerContainerFactoryConfig](ConfigKeys.dockerContainerFactory),
+                             val useRdma: Boolean = loadConfigOrThrow[Boolean](ConfigKeys.useRdma))(
   implicit actorSystem: ActorSystem,
   ec: ExecutionContext,
   logging: Logging,
@@ -56,6 +57,15 @@ class DockerContainerFactory(instance: InvokerInstanceId,
   runc: RuncApi)
     extends ContainerFactory {
 
+  val extrConfig: Map[String, Set[String]] = {
+    if (useRdma) {
+      containerArgsConfig.extraArgs ++ Map("cap-add" -> Set("IPC_LOCK"), "device" -> Set("/dev/infiniband/uverbs1"))
+    } else {
+      containerArgsConfig.extraArgs
+    } map {
+      case (k, v) => ("--" + k, v)
+    }
+  }
   /** Create a container using docker cli */
   override def createContainer(tid: TransactionId,
                                name: String,
@@ -90,7 +100,7 @@ class DockerContainerFactory(instance: InvokerInstanceId,
 
   /** Perform cleanup on exit - to be registered as shutdown hook */
   override def cleanup(): Unit = {
-    implicit val transid = TransactionId.invoker
+    implicit val transid: TransactionId = TransactionId.invoker
     try {
       removeAllActionContainers()
     } catch {
@@ -114,7 +124,7 @@ class DockerContainerFactory(instance: InvokerInstanceId,
   @throws(classOf[TimeoutException])
   @throws(classOf[InterruptedException])
   private def removeAllActionContainers(): Unit = {
-    implicit val transid = TransactionId.invoker
+    implicit val transid: TransactionId = TransactionId.invoker
     val cleaning =
       docker.ps(filters = Seq("name" -> s"${ContainerFactory.containerNamePrefix(instance)}_"), all = true).flatMap {
         containers =>

@@ -34,6 +34,8 @@ class DepInvoker(invokerInstance: InvokerInstanceId, topSchedInstanceId: TopSche
   protected val controllerPrewarmConfig: Boolean =
     loadConfigOrThrow[Boolean](ConfigKeys.controllerDepPrewarm)
 
+  protected val useRdma: Boolean = loadConfigOrThrow[Boolean](ConfigKeys.useRdma)
+
   override def receive: Receive = {
     case e: DependencyInvocationMessage =>
       scheduleDependencyInvocationMessage(e)
@@ -109,7 +111,7 @@ class DepInvoker(invokerInstance: InvokerInstanceId, topSchedInstanceId: TopSche
     // schedule the next set of dependencies
     // generate the new activationIds
     // Use RunningActivation type so invokers can update the DB with network address
-    val siblingActivations: Seq[RunningActivation] = rel.dependents.map(x => RunningActivation(x.toFQEN().toString, ActivationId.generate(), parallelismIndex))
+    val siblingActivations: Seq[RunningActivation] = rel.dependents.map(x => RunningActivation(x.toFQEN().toString, ActivationId.generate(), parallelismIndex, useRdma))
     val siblingSet: Set[RunningActivation] = siblingActivations.toSet
     // for all of the next objects to be activated, get the action metadata and publish
     // to the load balancer
