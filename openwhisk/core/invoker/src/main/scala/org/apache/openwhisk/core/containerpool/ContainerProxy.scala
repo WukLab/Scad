@@ -409,13 +409,13 @@ class ContainerProxy(factory: (TransactionId,
     // Intermediate state, we were able to start a container
     // and we keep it in case we need to destroy it.
     case Event(completed: PreWarmCompleted, _) =>
-      logging.warn(this, s"CALL 1")
+      logging.debug(this, s"CALL 1")
       context.parent ! ColdStarted(completed.data)
       stay using completed.data
 
     // Run during prewarm init (for concurrent > 1)
     case Event(job: Run, data: PreWarmedData) =>
-      logging.warn(this, s"CALL 2")
+      logging.debug(this, s"CALL 2")
       implicit val transid = job.msg.transid
       logging.info(this, s"buffering for warming container ${data.container}; ${activeCount} activations in flight")
       runBuffer = runBuffer.enqueue(job)
@@ -423,7 +423,7 @@ class ContainerProxy(factory: (TransactionId,
 
     // Run during cold init (for concurrent > 1)
     case Event(job: Run, _: NoData) =>
-      logging.warn(this, s"CALL 3")
+      logging.debug(this, s"CALL 3")
       implicit val transid = job.msg.transid
       logging.info(this, s"buffering for cold warming container ${activeCount} activations in flight")
       runBuffer = runBuffer.enqueue(job)
@@ -431,19 +431,19 @@ class ContainerProxy(factory: (TransactionId,
 
     // Get Config after init
     case Event(config: LibdTransportConfig, data : WarmedData) =>
-      logging.warn(this, s"Get config after init")
+      logging.debug(this, s"Get config after init")
       val res = sendConfig(config, data.container)
       stay()
 
     // Get config before init
     case Event(config: LibdTransportConfig, _) =>
-      logging.warn(this, s"Get config before init")
+      logging.debug(this, s"Get config before init")
       configBuffer = configBuffer.enqueue(config)
       stay()
 
     // Init was successful
     case Event(completed: InitCompleted, data : PreWarmedData) =>
-      logging.warn(this, s"CALL 4")
+      logging.debug(this, s"CALL 4")
       // Its safe to dump all user config to container
       configBuffer.foreach (sendConfig(_, data.container))
       configBuffer = Queue.empty
@@ -453,14 +453,14 @@ class ContainerProxy(factory: (TransactionId,
 
     // Init was successful
     case Event(data: WarmedData, _: PreWarmedData) =>
-      logging.warn(this, s"CALL 5")
+      logging.debug(this, s"CALL 5")
       //in case concurrency supported, multiple runs can begin as soon as init is complete
       context.parent ! NeedWork(data)
       stay using data
 
     // Run was successful
     case Event(RunCompleted, data: WarmedData) =>
-      logging.warn(this, s"CALL 6")
+      logging.debug(this, s"CALL 6")
       activeCount -= 1
       val newData = data.withoutResumeRun()
       //if there are items in runbuffer, process them if there is capacity, and stay; otherwise if we have any pending activations, also stay
@@ -471,14 +471,14 @@ class ContainerProxy(factory: (TransactionId,
       }
     case Event(job: Run, data: WarmedData)
         if activeCount >= data.action.limits.concurrency.maxConcurrent && !rescheduleJob => //if we are over concurrency limit, and not a failure on resume
-      logging.warn(this, s"CALL 7")
+      logging.debug(this, s"CALL 7")
       implicit val transid = job.msg.transid
       logging.warn(this, s"buffering for maxed warm container ${data.container}; ${activeCount} activations in flight")
       runBuffer = runBuffer.enqueue(job)
       stay()
     case Event(job: Run, data: WarmedData)
         if activeCount < data.action.limits.concurrency.maxConcurrent && !rescheduleJob => //if there was a delay, and not a failure on resume, skip the run
-      logging.warn(this, s"CALL 8")
+      logging.debug(this, s"CALL 8")
       activeCount += 1
       implicit val transid = job.msg.transid
       bufferProcessing = false //reset buffer processing state
@@ -489,7 +489,7 @@ class ContainerProxy(factory: (TransactionId,
 
     //ContainerHealthError should cause rescheduling of the job
     case Event(FailureMessage(e: ContainerHealthError), data: WarmedData) =>
-      logging.warn(this, s"CALL 9")
+      logging.debug(this, s"CALL 9")
       implicit val tid = e.tid
       MetricEmitter.emitCounterMetric(LoggingMarkers.INVOKER_CONTAINER_HEALTH_FAILED_WARM)
       //resend to self will send to parent once we get to Removing state
@@ -508,7 +508,7 @@ class ContainerProxy(factory: (TransactionId,
     // - container will be destroyed
     // - buffered will be aborted (if init fails, we assume it will always fail)
     case Event(f: FailureMessage, data: PreWarmedData) =>
-      logging.warn(this, s"CALL 10")
+      logging.debug(this, s"CALL 10")
       logging.error(
         this,
         s"Failed during init of cold container ${data.getContainer}, queued activations will be aborted.")
@@ -697,7 +697,7 @@ class ContainerProxy(factory: (TransactionId,
   def sendConfig(config: LibdTransportConfig, container: Container) = config match {
     case LibdTransportConfig(activationId, request, result) =>
       val address = request.address + result
-      logging.warn(this, s"transport config: sending ${address} to ${container}")
+      logging.debug(this, s"transport config: sending ${address} to ${container}")
       if (request.create)
         container.addTransport(activationId, address.toFullString)
       else
@@ -910,7 +910,7 @@ class ContainerProxy(factory: (TransactionId,
             reschedule)(job.msg.transid)
           .map {
             case (runInterval, response) =>
-              logging.warn(this, s"RUN RESPONSE $response")
+              logging.debug(this, s"RUN RESPONSE $response")
               val initRunInterval = initInterval
                 .map(i => Interval(runInterval.start.minusMillis(i.duration.toMillis), runInterval.end))
                 .getOrElse(runInterval)

@@ -100,7 +100,7 @@ protected class ApacheBlockingContainerClient(hostname: String,
     request.addHeader(HttpHeaders.ACCEPT, "application/json")
     request.setEntity(entity)
 
-    logging.warn(this, s"BlockingClient: Send POST, ${endpoint}:POST -> $body")
+    logging.debug(this, s"BlockingClient: Send POST, ${endpoint}:POST -> $body")
 
     Future {
       blocking {
@@ -120,7 +120,7 @@ protected class ApacheBlockingContainerClient(hostname: String,
     request.addHeader(HttpHeaders.ACCEPT, "application/json")
     request.setEntity(entity)
 
-    logging.warn(this, s"BlockingClient: Libd, ${endpoint}:$method -> $body")
+    logging.debug(this, s"BlockingClient: Libd, ${endpoint}:$method -> $body")
 
     val callConn = newConnection
     Future {
@@ -145,7 +145,7 @@ protected class ApacheBlockingContainerClient(hostname: String,
     conn: CloseableHttpClient = connection)(implicit tid: TransactionId): Either[ContainerHttpError, ContainerResponse] = {
     val start = Instant.now
 
-    logging.warn(this, s"BlockingClient: execute, ${request.getURI}:${request.getMethod} -> $request")
+    logging.debug(this, s"BlockingClient: execute, ${request.getURI}:${request.getMethod} -> $request")
 
     Try(conn.execute(request)).map { response =>
       val containerResponse = Option(response.getEntity)
