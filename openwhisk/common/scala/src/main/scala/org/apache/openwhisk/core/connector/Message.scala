@@ -539,8 +539,6 @@ case class _RunningActivation(activationId: ActivationId,
 case class RunningActivation(objName: String,
                              objActivation: ActivationId,
                              parallelismInfo: ParallelismInfo,
-//                             transportName: String, // Name of the transport, should be same on both side // removed temporarily
-//                             transportType: String, // type of transport, // derived from object at invoker side
                              transportImpl: String, // Implementation of transport
                              needWait: Boolean,
                              needSignal: Boolean) extends WhiskEntity(EntityName(objActivation.asString), "runningActivation") {
@@ -563,8 +561,8 @@ case class RunningActivation(objName: String,
 object RunningActivation extends DefaultJsonProtocol with DocumentFactory[RunningActivation] {
 
   // TCP or RDMA?
-  def apply(objName: String, objActivation: ActivationId, parallelismInfo: ParallelismInfo): RunningActivation = {
-    RunningActivation(objName, objActivation, parallelismInfo, "uverbs", needWait = true, needSignal = true)
+  def apply(objName: String, objActivation: ActivationId, parallelismInfo: ParallelismInfo, useRdma: Boolean): RunningActivation = {
+    RunningActivation(objName, objActivation, parallelismInfo, if (useRdma) "uverbs" else "tcp", needWait = true, needSignal = true)
   }
 
   implicit val serdes: RootJsonFormat[RunningActivation] = jsonFormat(RunningActivation.apply,

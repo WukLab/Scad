@@ -28,6 +28,8 @@ import scala.collection._
 import scala.concurrent.duration._
 import scala.util.{Random, Try}
 import cats.implicits._
+import org.apache.openwhisk.core.ConfigKeys
+import pureconfig.loadConfigOrThrow
 
 sealed trait WorkerState
 case object Busy extends WorkerState
@@ -69,6 +71,8 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                     poolConfig: ContainerPoolConfig)(implicit val logging: Logging)
     extends Actor {
   import ContainerPool.resourceConsumptionOf
+
+  private val useRdma: Boolean = loadConfigOrThrow[Boolean](ConfigKeys.useRdma)
 
   implicit val ec = context.dispatcher
 
@@ -216,7 +220,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
             // We also log this into the run message
             // TODO: generate default.
-            val defaultAddresses = LibdAPIs.Transport.getDefaultTransport(r.action)
+            val defaultAddresses = LibdAPIs.Transport.getDefaultTransport(r.action, useRdma)
             val fetchedAddresses = for {
               runtime <- r.action.runtimeType
               if LibdAPIs.Transport.needWait(runtime)
