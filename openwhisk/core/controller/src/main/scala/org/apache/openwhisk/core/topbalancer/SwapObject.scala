@@ -5,7 +5,7 @@ import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.database.NoDocumentException
 import org.apache.openwhisk.core.entity.size.SizeInt
 import org.apache.openwhisk.core.entity.types.EntityStore
-import org.apache.openwhisk.core.entity.{ActionLimits, ActivationId, BasicAuthenticationAuthKey, ByteSize, CodeExecAsString, EntityName, ExecManifest, ExecutableWhiskActionMetaData, Identity, InvokerInstanceId, Namespace, ResourceLimit, Secret, Subject, UUID, WhiskAction}
+import org.apache.openwhisk.core.entity.{ActionLimits, ActivationId, BasicAuthenticationAuthKey, ByteSize, CodeExecAsString, EntityName, ExecManifest, Identity, InvokerInstanceId, Namespace, ResourceLimit, Secret, Subject, UUID, WhiskAction}
 import spray.json.{DefaultJsonProtocol, RootJsonFormat}
 
 import scala.concurrent.duration.DurationInt
