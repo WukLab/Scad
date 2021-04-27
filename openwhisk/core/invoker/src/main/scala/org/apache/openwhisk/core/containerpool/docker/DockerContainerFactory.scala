@@ -57,14 +57,13 @@ class DockerContainerFactory(instance: InvokerInstanceId,
   runc: RuncApi)
     extends ContainerFactory {
 
-  val extrConfig: Map[String, Set[String]] = {
-    if (useRdma) {
+  val extraConfig: Map[String, Set[String]] = {
+    val x = if (useRdma) {
       containerArgsConfig.extraArgs ++ Map("cap-add" -> Set("IPC_LOCK"), "device" -> Set("/dev/infiniband/uverbs1"))
     } else {
       containerArgsConfig.extraArgs
-    } map {
-      case (k, v) => ("--" + k, v)
     }
+    x map { case (k, v) => ("--" + k, v) }
   }
   /** Create a container using docker cli */
   override def createContainer(tid: TransactionId,
@@ -92,7 +91,8 @@ class DockerContainerFactory(instance: InvokerInstanceId,
       dnsOptions = containerArgsConfig.dnsOptions,
       name = Some(name),
       useRunc = dockerContainerFactoryConfig.useRunc,
-      parameters ++ containerArgsConfig.extraArgs.map { case (k, v) => ("--" + k, v) })
+      parameters ++ extraConfig,
+    )
   }
 
   /** Perform cleanup on init */
