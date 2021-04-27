@@ -23,7 +23,7 @@ def main(params, action):
     context_dict_in_b64 = params["func2"]['meta']
     context_dict_in_byte = base64.b64decode(context_dict_in_b64)
     context_dict = pickle.loads(context_dict_in_byte)
-    buffer_pool = buffer_pool_lib.buffer_pool(trans, context_dict["buffer_pool_metadata"])
+    buffer_pool = buffer_pool_lib.buffer_pool({'mem1':trans}, context_dict["buffer_pool_metadata"])
     remote_cv_split_metadata = context_dict["remote_cv_split"]
     remote_cv_split = remote_array(buffer_pool, metadata=remote_cv_split_metadata)
 

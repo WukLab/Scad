@@ -2,3 +2,9 @@
 .metals/
 .vscode/
 openwhisk/.run
+*.o
+*.swp
+**/__pycache__
+*.diff
+*.patch
+*.so

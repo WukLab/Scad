@@ -46,15 +46,13 @@ def filemeta(f):
 
 def gen_obj(meta, source):
     # process memory objects
-    memory_source = "function main(params,action) {let t = action.get_transport('memory','rdma_server');let ret = t.serve();return {payload: 'serve'};}"
+    memory_source = "def main(_, action):\n    t = action.get_transport('memory', 'rdma_server')\n    t.serve()"
+
+    kind = 'python:3'
     annotations = {}
+    annotations['exec'] = 'python'
     if meta['type'] == 'memory':
-        kind = 'nodejs:14'
         source = memory_source
-        annotations['exec'] = 'javascript'
-    else:
-        kind = 'python:3'
-        annotations['exec'] = 'python'
 
     name = meta.get('name')
 
@@ -101,6 +99,9 @@ def gen_obj(meta, source):
         'runtimeType': meta['type'],
         'version': "0.0.1"
     }
+
+    if 'parallelism' in meta:
+        obj['parallelism'] = meta['parallelism']
 
     return obj
 

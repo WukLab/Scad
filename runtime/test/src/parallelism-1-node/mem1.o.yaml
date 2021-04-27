@@ -1,0 +1,6 @@
+type: memory
+parallelism: 10
+corunning:
+    - compute1
+limits:
+    mem: 512 MB

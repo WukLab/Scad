@@ -117,7 +117,9 @@ static int _terminate(struct libd_transport * trans) {
 
     // clean up MR
     for (int i = 0; i < rstate->conn.num_mr; i++) {
+        void * buf = rstate->conn.mr[i].addr;
         ibv_dereg_mr(rstate->conn.mr + i);
+        free(buf);
     }
 
     // clean up nanomsg
@@ -147,7 +149,8 @@ static int _serve(struct libd_transport *trans) {
             (struct rdma_conn *)calloc(1, sizeof(struct rdma_conn));
 
         // save conn to conns
-        rstate->conns = realloc(rstate->conns, rstate->num_conns + 1);
+        rstate->conns = realloc(rstate->conns,
+            (rstate->num_conns + 1) * sizeof(void *));
         rstate->conns[rstate->num_conns] = conn;
         ++ (rstate->num_conns);
 
@@ -161,6 +164,7 @@ static int _serve(struct libd_transport *trans) {
         // setup mr
         conn->cq = ibv_create_cq(_context, rstate->cq_size, NULL, NULL, 0);
         create_qp(conn);
+        dprintf("server listening on %s...", rstate->url);
         server_exchange_info(conn, rstate->url);
 
         // Enable QP, server only need to get to RTR

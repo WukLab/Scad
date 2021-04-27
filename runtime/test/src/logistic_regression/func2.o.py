@@ -25,7 +25,7 @@ def main(params, action):
     context_dict_in_byte = base64.b64decode(context_dict_in_b64)
     context_dict = pickle.loads(context_dict_in_byte)
 
-    buffer_pool = buffer_pool_lib.buffer_pool(trans, context_dict["buffer_pool_metadata"])
+    buffer_pool = buffer_pool_lib.buffer_pool({'mem1':trans}, context_dict["buffer_pool_metadata"])
     load_csv_dataset_remote = remote_array(buffer_pool, metadata=context_dict["remote_input"])
     dataset = load_csv_dataset_remote.materialize()
     # preprocess
@@ -53,7 +53,7 @@ def main(params, action):
             cross_validation_split_fold.append(cross_validation_split_dataset_copy.pop(cross_validation_split_index))
         cross_validation_split_dataset_split.append(cross_validation_split_fold)
     cross_validation_split_dataset_split_in_numpy = np.asarray(cross_validation_split_dataset_split)
-    remote_cv_split = remote_array(buffer_pool, input_ndarray=cross_validation_split_dataset_split_in_numpy)
+    remote_cv_split = remote_array(buffer_pool, input_ndarray=cross_validation_split_dataset_split_in_numpy, transport_name='mem1')
 
     # update context
     context_dict["remote_cv_split"] = remote_cv_split.get_array_metadata()

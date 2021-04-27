@@ -18,12 +18,12 @@ def main(params, action):
     # setup
     trans = action.get_transport('mem1', 'rdma')
     trans.reg(buffer_pool_lib.buffer_size)
-    buffer_pool = buffer_pool_lib.buffer_pool(trans)
+    buffer_pool = buffer_pool_lib.buffer_pool({'mem1':trans})
 
     # loading data
     csv = urllib.request.urlopen("http://172.17.0.1:8123/pima-indians-diabetes.csv")
     load_csv_dataset = np.genfromtxt(csv, delimiter=',')
-    remote_input = remote_array(buffer_pool, input_ndarray=load_csv_dataset)
+    remote_input = remote_array(buffer_pool, input_ndarray=load_csv_dataset, transport_name = 'mem1')
     # update context
     remote_input_metadata = remote_input.get_array_metadata()
     context_dict = {}

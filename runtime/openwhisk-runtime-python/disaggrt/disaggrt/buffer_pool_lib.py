@@ -8,7 +8,8 @@ import math
 
 # global parameters
 page_size = 256
-page_buffer_size = 655360000
+# default, 64M
+page_buffer_size = 1024 * 1024 * 64
 metadata_reserve_mem = 0
 buffer_size = page_buffer_size
 # @todo hint prefetch
@@ -32,7 +33,7 @@ class local_page_node:
             for transport_name, trans_info in self.transport_map.items():
                 cur_remote_addr, cur_block_size, cur_offset = trans_info
                 trans_map[transport_name].write(cur_block_size, cur_remote_addr, cur_offset + base_offset)
-                print("Sending {0}byte data to {1} at offset {2}".format(cur_block_size, transport_name,  cur_offset + base_offset))
+                # print("Sending {0}byte data to {1} at offset {2}".format(cur_block_size, transport_name,  cur_offset + base_offset))
 
     def add_transport_pair(self, transport_name, remote_addr, cur_block_size):
         cur_trans_offset = self.block_size
@@ -160,7 +161,7 @@ class buffer_pool:
             cur_trans_port_name, cur_remote_addr, cur_mem_size_in_byte = remote_metadata_per_transport
             for i in range(0, cur_mem_size_in_byte, stride_size):
                 cur_read_size = min(stride_size, cur_mem_size_in_byte - i)
-                print("fetch from mem {0} at remote addr {1} with size {2}".format(cur_trans_port_name, cur_remote_addr, cur_read_size))
+                # print("fetch from mem {0} at remote addr {1} with size {2}".format(cur_trans_port_name, cur_remote_addr, cur_read_size))
                 self.trans_map[cur_trans_port_name].read(cur_read_size, cur_remote_addr, buf_offset)
                 cur_remote_addr = cur_remote_addr + cur_read_size
                 buf_offset = buf_offset + cur_read_size

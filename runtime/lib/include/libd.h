@@ -90,12 +90,14 @@ struct libd_tstate {
 };
 
 struct libd_transport {
+    struct libd_tstate * tstate;
+    const struct libd_t * _impl;
+
     // TODO: multi threading
     pthread_mutex_t lock;           // lock for tstate
     pthread_t pt;
 
-    struct libd_tstate * tstate;
-    const struct libd_t * _impl;
+    char initd;
 };
 
 struct libd_t {

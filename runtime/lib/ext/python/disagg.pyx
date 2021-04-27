@@ -67,7 +67,8 @@ cdef class LibdAction:
             # raise exception if type is not found
             # delay construct of object by function wrap
             trans = {
-                'rdma': partial(LibdTransportRDMA, self)
+                'rdma':        partial(LibdTransportRDMA,       self),
+                'rdma_server': partial(LibdTransportRDMAServer, self)
             }[ttype](name)
             self.transports[name] = trans
         # raise exception if name is not found
@@ -78,7 +79,6 @@ cdef class LibdAction:
 cdef class LibdTransport:
     cdef clibd.libd_transport * _c_trans
     cdef object action
-    cdef object cv
     def __cinit__(self, LibdAction action, str name, *argv):
         self.action = action
         self._c_trans = clibd.libd_action_get_transport(
@@ -87,6 +87,16 @@ cdef class LibdTransport:
         if self._c_trans is NULL:
             raise MemoryError()
     # we do not need to have __dealloc__ for all transports, clib will handle this
+
+cdef class LibdTransportRDMAServer(LibdTransport):
+    def serve(self):
+        while True:
+            ret = clibd.libd_trdma_server_serve(self._c_trans);
+            if ret != -errno.EAGAIN:
+                return ret
+            # TODO: can be interrupted before it get the lock.
+            with self.action.cv:
+                self.action.cv.wait()
 
 cdef class LibdTransportRDMA(LibdTransport):
     # use of buf is required

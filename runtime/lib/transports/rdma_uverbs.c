@@ -101,27 +101,31 @@ static int _init(struct libd_transport *trans) {
     init_config_set(cq_size, 16);
 
     // init the RDMA connection
-    memset(&rstate->conn, 0, sizeof(struct rdma_conn));
-    rstate->conn.gid = 0;
-    rstate->conn.port = 1;
+    if (!trans->initd) {
+        memset(&rstate->conn, 0, sizeof(struct rdma_conn));
+        rstate->conn.gid = 0;
+        rstate->conn.port = 1;
 
-    // init using the global context and PD
-    if (_context == NULL)
-        _context = create_context(rstate->num_devices, rstate->device_name);
-    rstate->conn.context = _context;
-    if (rstate->conn.context == NULL) {
-        dprintf("create context fail");
-        return -1;
-    }
+        // init using the global context and PD
+        if (_context == NULL)
+            _context = create_context(rstate->num_devices, rstate->device_name);
+        rstate->conn.context = _context;
+        if (rstate->conn.context == NULL) {
+            dprintf("create context fail");
+            return -1;
+        }
 
-    if (_pd == NULL){
-        _pd = ibv_alloc_pd(_context);
-        dprintf("allocate pd at %p", _pd);
-    }
-    rstate->conn.pd = _pd;
-    if (rstate->conn.pd == NULL) {
-        dprintf("create pd fail");
-        return -1;
+        if (_pd == NULL){
+            _pd = ibv_alloc_pd(_context);
+            dprintf("allocate pd at %p", _pd);
+        }
+        rstate->conn.pd = _pd;
+        if (rstate->conn.pd == NULL) {
+            dprintf("create pd fail");
+            return -1;
+        }
+
+        trans->initd = 1;
     }
 
     // Create QP
@@ -155,14 +159,16 @@ static int _connect(struct libd_transport *trans) {
 
 static int _terminate(struct libd_transport * trans) {
     get_local_state(rstate,trans,struct uverbs_rdma_state);
-    // TODO: cleanup local data structure
+    dprintf("calling terminate with %d mrs", rstate->conn.num_mr);
 
     // clean up nanomsg
     if (rstate->conn.peerinfo != NULL)
         free(rstate->conn.peerinfo);
     // clean up RDMA
     for (int i = 0; i < rstate->conn.num_mr; i++) {
+        void * buf = rstate->conn.mr[i].addr;
         ibv_dereg_mr(rstate->conn.mr + i);
+        free(buf);
     }
 
     // TODO: close qp and cq, instead of context

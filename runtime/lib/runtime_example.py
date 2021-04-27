@@ -17,7 +17,7 @@ def main(args, action):
     trans = action.get_transport(transport_name, 'rdma')
 
     # register buffer for rdma
-    trans.reg(1024)
+    trans.reg(4096)
 
     # trans.buf is the zero-copy rdma buffer, can be accessed as normal python buffer
     # forexample, you can use pack to pack a python object into buffer
@@ -42,15 +42,15 @@ if __name__ == '__main__':
 
     cv = threading.Condition()
     # in real launch, this part will be handled by serverless system
-    action = LibdAction(cv, activation_id, server_url)
+    action = LibdAction(cv, activation_id)
 
-    transport_url = "{};rdma_tcp;".format(transport_name);
+    transport_url = "{};rdma_uverbs;".format(transport_name);
     action.add_transport(transport_url)
 
     def delayed_config():
         time.sleep(5)
-        extra_url = "url,tcp://localhost:{};size,{};".format(
-            server_port, memory_block_size)
+        extra_url = "url,tcp://localhost:{};".format(
+            server_port)
         action.config_transport(transport_name, extra_url)
 
     config_thread = threading.Thread(

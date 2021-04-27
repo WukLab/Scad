@@ -44,5 +44,6 @@ int libd_trdma_read  (struct libd_transport * trans, size_t size, uint64_t addr,
 }
 
 void * libd_trdma_reg   (struct libd_transport * trans, size_t size, void * buf) {
+    // TODO: make this also check status
     return transport_handler(libd_trdma, trans, reg)(trans, size, buf);
 }

@@ -97,9 +97,10 @@ int libd_action_config_transport(struct libd_action *action, char *name, char *d
 
 struct libd_transport * libd_action_get_transport(struct libd_action * action, char * name) {
     struct libd_transport * trans; 
-    // TODO: block here will cause timeout in node runtime
-    while ((trans = map_get(struct libd_transport, action->transports, name)) == NULL) ;
-    return trans;
+
+    // not block at c level
+    // while ((trans = map_get(struct libd_transport, action->transports, name)) == NULL) ;
+    return map_get(struct libd_transport, action->transports, name);
 }
 
 // find impl and add action

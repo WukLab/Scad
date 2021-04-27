@@ -67,6 +67,7 @@ class LibdRuntime:
         return self.actions[aid]
     def terminate_action(self, name):
         # TODO: call of dealloc is not garenteed, use ternimate?
+        action.terminate()
         del self.actions[name]
 
 # Params: a list of strings. Body: the body of http request
@@ -77,7 +78,6 @@ def _trans_add      (runtime, params, body):
 def _trans_config   (runtime, params, body):
     debug('try to config', params, body)
     if params[0] in runtime.actions:
-        debug('call config', params, body)
         action = runtime.get_action(params[0])
         action.config_transport(params[1], body['durl'])
         debug('finish config', params, body)

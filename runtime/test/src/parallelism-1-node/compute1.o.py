@@ -1,4 +1,5 @@
 #@ type: compute
+#@ parallelism: 10
 #@ corunning:
 #@   mem1:
 #@     trans: mem1

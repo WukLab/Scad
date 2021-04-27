@@ -562,8 +562,9 @@ case class RunningActivation(objName: String,
 
 object RunningActivation extends DefaultJsonProtocol with DocumentFactory[RunningActivation] {
 
+  // TCP or RDMA?
   def apply(objName: String, objActivation: ActivationId, parallelismInfo: ParallelismInfo): RunningActivation = {
-    RunningActivation(objName, objActivation, parallelismInfo, "tcp", needWait = true, needSignal = true)
+    RunningActivation(objName, objActivation, parallelismInfo, "uverbs", needWait = true, needSignal = true)
   }
 
   implicit val serdes: RootJsonFormat[RunningActivation] = jsonFormat(RunningActivation.apply,
