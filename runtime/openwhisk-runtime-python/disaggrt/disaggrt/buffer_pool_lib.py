@@ -223,3 +223,19 @@ class buffer_pool:
             cur_begin_offset = self.get_buffer_offset(mem_size, remote_metadata_list)
         trans_port_name = remote_metadata_list[0][0]
         return True, self.get_buffer_slice(trans_port_name, cur_begin_offset, mem_size)
+
+    def reserve_remote_mem(self, transport_name, mem_size):
+        if transport_name not in self.trans_metadata:
+            self.trans_metadata[transport_name] = 0
+        remote_addr = self.trans_metadata[transport_name]
+        self.trans_metadata[transport_name] = remote_addr + mem_size
+        return remote_addr
+
+    def request_mem_on_buffer_for_array(self, cur_transport_name, cur_mem_size):
+        return self.trans_map[cur_transport_name], self.get_buffer_offset(cur_mem_size)
+
+    def flush_to_remote(self, transport_name, cur_remote_addr, buf_offset, cur_mem_size):
+        print("write to {0} at addr {1} with size {2}".format(transport_name, cur_remote_addr, cur_mem_size))
+        self.trans_map[transport_name].write(cur_mem_size, cur_remote_addr, buf_offset)
+
+
