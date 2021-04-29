@@ -137,7 +137,7 @@ class remote_array():
         trans_object, buf_offset = self.buffer_pool.request_mem_on_buffer_for_array(transport_name, cur_mem_size)
         self.buf_offset_map[request_start_idx] = [buf_offset, cur_mem_size]
         # print(type(trans_object.buf[buf_offset : buf_offset + cur_mem_size]))
-        return trans_object.buf[buf_offset:buf_offset + cur_mem_size], buf_offset
+        return np.asarray(trans_object.buf).view(dtype=np.uint8)[buf_offset:buf_offset + cur_mem_size]
 
     # def fresh_write_to_buffer(self, data, request_start_idx = 0, request_end_idx = -1):
     #     if request_end_idx == -1:
