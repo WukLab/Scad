@@ -20,11 +20,13 @@ import numpy as np
 import base64
 import urllib.request
 import disaggrt.buffer_pool_lib as buffer_pool_lib
-from disaggrt.rdma_array import remote_array
+from disaggrt.rdma_array import *
 
 from numpy import genfromtxt
 from numpy.lib import recfunctions as rfn
 from npjoin import join
+
+# import pandas as pd
 
 scheme_in = {
   "cc_call_center_sk": np.dtype(np.float32) ,
@@ -105,31 +107,44 @@ def main(params, action):
 
     # build transport
     trans_s5_name = '5_out_mem'
-    # print(f"[tpcds] {tag_print}: starting writing back")
     trans_s5 = action.get_transport(trans_s5_name, 'rdma')
     trans_s5.reg(buffer_pool_lib.buffer_size)
+    bp_s5 = buffer_pool_lib.buffer_pool({trans_s5_name:trans_s5})
 
     # data operation
     join_meta = join.prepare_join_float32(cs['cs_ship_addr_sk'])
     df1_idx, df2_idx = join.join_on_table_float32(*join_meta, ca['ca_address_sk'])
-    df = join.structured_array_merge(trans_s3.buf, cs, ca, df1_idx, df2_idx,
+    dfbuf = np.empty(len(df1_idx) * (cs.itemsize + ca.itemsize), dtype=np.uint8)
+    df = join.structured_array_merge(dfbuf, cs, ca, df1_idx, df2_idx,
             [n for n in cs.dtype.names if n != 'cs_ship_addr_sk'],
             [n for n in ca.dtype.names])
-    # print(f'[tpcds] {tag_print} df: ', df.itemsize, df.shape, df.dtype)
-    list_addr = ['Williamson County', 'Williamson County', 'Williamson County', 'Williamson County', 'Williamson County']
+    # print(f'[tpcds] {tag_print} df beforejoin: ', df.itemsize, df.shape, df.dtype)
+    list_addr = ['Williamson County'.encode(), 'Williamson County'.encode(), 'Williamson County'.encode(), 'Williamson County'.encode(), 'Williamson County'.encode()]
     cc = cc[np.isin(cc['cc_county'], list_addr)][['cc_call_center_sk']]
     join_meta = join.prepare_join_float32(df['cs_call_center_sk'])
     df1_idx, df2_idx = join.join_on_table_float32(*join_meta, cc['cc_call_center_sk'])
-    df = join.structured_array_merge(trans_s3.buf, df, cc, df1_idx, df2_idx,
-            [n for n in df.dtype.names],
-            [n for n in cc.dtype.names])
+
+    merged_dtype = join.merge_dtypes(cs, ca, 
+            ['cs_order_number', 'cs_ext_ship_cost', 'cs_net_profit'],
+            [])
+
+    # init rdma array buf for join
+    rdma_array = init_empty_remote_array(bp_s5, trans_s5_name, merged_dtype, (len(df1_idx),))
+    buf = rdma_array.request_mem_on_buffer_for_array(0, len(df1_idx))
+
+    df = join.structured_array_merge(buf, df, cc, df1_idx, df2_idx,
+            ['cs_order_number', 'cs_ext_ship_cost', 'cs_net_profit'],
+            [])
+    # df = df[['cs_order_number', 'cs_ext_ship_cost', 'cs_net_profit']]
+
     # print(f'[tpcds] {tag_print} df: ', df.itemsize, df.shape, df.dtype)
 
-    df = df[['cs_order_number', 'cs_ext_ship_cost', 'cs_net_profit']]
-
     # write back
-    bp_s5 = buffer_pool_lib.buffer_pool({trans_s5_name:trans_s5})
-    rdma_array = remote_array(bp_s5, input_ndarray=df, transport_name=trans_s5_name)
+    rdma_array.flush_slice(0, len(df1_idx))
+
+    # debug
+    # df = pd.DataFrame(data=df, columns=['cs_order_number', 'cs_ext_ship_cost', 'cs_net_profit'])
+    # df.to_csv('/home/jil/serverless/Disagg-Serverless/runtime/test/src/tpcds_16/step5.csv')
 
     # transfer the metedata
     context_dict = {}

@@ -10,12 +10,13 @@
 #@     type: rdma
 
 import pickle
-import pandas as pd
 import numpy as np
 import base64
 import urllib.request
 import disaggrt.buffer_pool_lib as buffer_pool_lib
 from disaggrt.rdma_array import remote_array
+
+# import pandas as pd
 
 def main(params, action):
     tag_print = "step6"
@@ -33,10 +34,16 @@ def main(params, action):
     df_s5_arr = remote_array(bp_s5, metadata=context_dict["df"])
     cs = df_s5_arr.materialize()
 
+    # debug
+    # df = pd.DataFrame(data=cs, columns=['cs_order_number', 'cs_ext_ship_cost', 'cs_net_profit'])
+    # df.to_csv('/home/jil/serverless/Disagg-Serverless/runtime/test/src/tpcds_16/step5_6.csv')
+
     # data opeartion
     a1 = np.unique(cs[['cs_order_number']]).size
-    a2 = cs['cs_ext_ship_cost'].sum()
-    a3 = cs['cs_net_profit'].sum()
+    a2 = np.nansum(cs['cs_ext_ship_cost'])
+    a3 = np.nansum(cs['cs_net_profit'])
+
+    print("[tpcds] final query result: ", a1, a2, a3)
 
     # build transport
     # trans_s6_name = '6_out_mem'

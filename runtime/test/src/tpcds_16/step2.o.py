@@ -64,7 +64,7 @@ def main(_, action):
     # print(f"[tpcds] {tag_print}: finish reading csv")
 
     # data operation
-    df = df['cr_order_number']
+    df = df[['cr_order_number']]
     df = rfn.repack_fields(df)
 
     # build transport

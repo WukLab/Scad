@@ -26,6 +26,9 @@ from numpy import genfromtxt
 from numpy.lib import recfunctions as rfn
 import numpy_groupies as npg
 from npjoin import join
+from numpy_groupies.aggregate_numpy import aggregate
+
+# import pandas as pd
 
 scheme_in = {
     "d_date_sk":            np.dtype(np.float32),
@@ -101,6 +104,7 @@ def main(params, action):
     csv = urllib.request.urlopen(tableurl)
 
     df = genfromtxt(csv, delimiter='|', dtype=build_dtype(scheme_in))
+    df = df[['d_date', 'd_date_sk']]
 
     # build transport
     trans_s3_name = '3_out_mem'
@@ -108,34 +112,53 @@ def main(params, action):
     trans_s3.reg(buffer_pool_lib.buffer_size)
 
     # data operation
-    cs = cs[['cs_order_number', 'cs_warehouse_sk']]
-    # cs = cs[~np.isnan(cs['cs_order_number'])]
-    uniques, reverses = np.unique(cs[['cs_order_number']], return_inverse=True)
-    groups = npg.aggregate(reverses, cs['cs_warehouse_sk'], func='nunique')
+    # print(f'[tpcds] {tag_print} cs: ', cs.itemsize, cs.shape, cs.dtype)
+    cs_tmp = cs[['cs_order_number', 'cs_warehouse_sk']]
+    cs_tmp = cs_tmp[~np.isnan(cs_tmp['cs_order_number']) & ~np.isnan(cs_tmp['cs_warehouse_sk'])]
+    # print(f'[tpcds] {tag_print} cs_tmp: ', cs_tmp.itemsize, cs_tmp.shape, cs_tmp.dtype)
+    uniques, reverses = np.unique(cs_tmp[['cs_order_number']], return_inverse=True)
+    groups = aggregate(reverses, cs_tmp['cs_warehouse_sk'], lambda a: len(set(a)))
     wh_uc = rfn.merge_arrays([uniques, groups], flatten = True, usemask = False)
-    print(f'[tpcds] {tag_print} wh_uc: ', wh_uc.itemsize, wh_uc.shape, wh_uc.dtype)
     wh_uc.dtype.names = ('cs_order_number', 'cs_warehouse_sk')
-    print(f'[tpcds] {tag_print} wh_uc: ', wh_uc.itemsize, wh_uc.shape, wh_uc.dtype)
-    target_order_numbers = wh_uc[wh_uc['cs_warehouse_sk'] > 1]['cs_order_number']
-    cs_sj_f1 = cs[np.isin(cs['cs_order_number'], target_order_numbers)]
+    # print(f'[tpcds] {tag_print} wh_uc: ', wh_uc.itemsize, wh_uc.shape, wh_uc.dtype, wh_uc)
+    # wh_uc = wh_uc[~np.isnan(wh_uc['cs_order_number']) & ~np.isnan(wh_uc['cs_warehouse_sk'])]
+    # print(f'[tpcds] {tag_print} wh_uc(after nan): ', wh_uc.itemsize, wh_uc.shape, wh_uc.dtype, wh_uc)
 
+    target_order_numbers = wh_uc[wh_uc['cs_warehouse_sk'] > 1]['cs_order_number']
+    # print(f'[tpcds] {tag_print} target_order_num: ', target_order_numbers.itemsize, target_order_numbers.shape, target_order_numbers.dtype)
+
+    # with open('/home/jil/serverless/Disagg-Serverless/runtime/test/src/tpcds_16/saved_target_order_numbers.npy', 'wb') as f:
+        # np.save(f, target_order_numbers)
+
+    # print(f'[tpcds] {tag_print} cs: ', cs.itemsize, cs.shape, cs.dtype)
+    cs_sj_f1 = cs[np.isin(cs['cs_order_number'], target_order_numbers)]
+    # print(f'[tpcds] {tag_print} cs_sj_f1: ', cs_sj_f1.itemsize, cs_sj_f1.shape, cs_sj_f1.dtype)
     df1 = cs_sj_f1[np.isin(cs_sj_f1['cs_order_number'], cr['cr_order_number'])]
+    del cs
     del cs_sj_f1
 
-    df = df[['d_date', 'd_date_sk']]
-    df = df[np.datetime64(df['d_date']) > np.datetime64('2002-02-01') & np.datetime64(df['d_date']) < np.datetime64('2002-04-01')]
+    # df = df[np.datetime64(df['d_date'].encode()) > np.datetime64('2002-02-01') & np.datetime64(df['d_date'].encode()) < np.datetime64('2002-04-01')]
+    df = df[np.vectorize(lambda x: x[0:4] == '2002'.encode() and ((x[5:7] == '02'.encode() and x[8:] != '01'.encode()) or x[5:7] == '03'.encode()), otypes=[bool])(df['d_date'])]
     df2 = df[['d_date_sk']]
 
+    print(f'[tpcds] {tag_print} df1: ', df1.itemsize, df1.shape, df1.dtype, df1)
+    print(f'[tpcds] {tag_print} df2: ', df2.itemsize, df2.shape, df2.dtype, df2)
     join_meta = join.prepare_join_float32(df1['cs_ship_date_sk'])
     df1_idx, df2_idx = join.join_on_table_float32(*join_meta, df2['d_date_sk'])
+    print("df1_idx: ", df1_idx)
+    print("df2_idx: ", df1_idx)
     df = join.structured_array_merge(trans_s3.buf, df1, df2, df1_idx, df2_idx,
             [n for n in df1.dtype.names],
             [n for n in df2.dtype.names if n != 'd_date_sk'])
-    # print(f'[tpcds] {tag_print} df: ', df.itemsize, df.shape, df.dtype)
+    print(f'[tpcds] {tag_print} df: ', df.itemsize, df.shape, df.dtype)
 
     # write back
     bp_s3 = buffer_pool_lib.buffer_pool({trans_s3_name:trans_s3})
     rdma_array = remote_array(bp_s3, input_ndarray=df, transport_name=trans_s3_name)
+
+    # debug
+    # df = pd.DataFrame(data=df, columns=['cs_order_number', 'cs_ext_ship_cost', 'cs_net_profit', 'cs_ship_date_sk', 'cs_ship_addr_sk', 'cs_call_center_sk', 'cs_warehouse_sk'])
+    # df.to_csv('/home/jil/serverless/Disagg-Serverless/runtime/test/src/tpcds_16/step3.csv')
 
     # transfer the metedata
     context_dict = {}

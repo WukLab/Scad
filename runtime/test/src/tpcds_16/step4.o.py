@@ -15,6 +15,8 @@ from disaggrt.rdma_array import remote_array
 
 from numpy import genfromtxt
 
+# import pandas as pd
+
 scheme_in = {
   "ca_address_sk": np.dtype(np.float32) ,
   "ca_address_id": np.dtype('S16') ,
@@ -49,7 +51,8 @@ def main(_, action):
     # print(f"[tpcds] {tag_print}: finish reading csv")
 
     # data operation
-    cs = cs[cs.ca_state == 'GA'.encode()][['ca_address_sk']]
+    cs = cs[cs['ca_state'] == 'GA'.encode()][['ca_address_sk']]
+    print(f"[tpcds] {tag_print} df_step4: ", cs.dtype, cs.shape)
 
     # build transport
     trans_name = '4_out_mem'
@@ -61,6 +64,10 @@ def main(_, action):
     buffer_pool = buffer_pool_lib.buffer_pool({trans_name:trans})
     rdma_array = remote_array(buffer_pool, input_ndarray=cs, transport_name=trans_name)
     # print(f"[tpcds] {tag_print}: finish writing back")
+
+    # debug
+    # df = pd.DataFrame(data=cs, columns=['ca_address_sk'])
+    # df.to_csv('/home/jil/serverless/Disagg-Serverless/runtime/test/src/tpcds_16/step4.csv')
 
     # transfer the metedata
     context_dict = {}
