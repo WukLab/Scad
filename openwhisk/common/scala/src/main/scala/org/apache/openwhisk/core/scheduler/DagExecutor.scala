@@ -54,10 +54,10 @@ object DagExecutor {
         invocation.apply(execObj._1.get, funcId, (siblingSet - execObj._2).toSeq, execObj._2)
       }
     } recoverWith {
-      case t: Throwable => {
-        logging.debug(this, s"failed to recover when launching DAG objects: $t")
+      case t: Throwable =>
+        logging.error(this, s"failed to recover when launching DAG objects: $t")
+        t.printStackTrace()
         Future.failed(t)
-      }
     }
   }
 }

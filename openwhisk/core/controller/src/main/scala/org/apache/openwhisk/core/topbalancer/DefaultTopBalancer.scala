@@ -42,6 +42,7 @@ import pureconfig.generic.auto._
 import spray.json._
 
 import java.nio.charset.StandardCharsets
+import java.util.Objects
 import java.util.concurrent.atomic.AtomicReference
 import scala.annotation.tailrec
 import scala.collection.concurrent.TrieMap
@@ -181,8 +182,8 @@ class DefaultTopBalancer(config: WhiskConfig,
   override def publish(action: ExecutableWhiskActionMetaData, msg: ActivationMessage)(implicit transid: TransactionId): Future[Future[Either[ActivationId, WhiskActivation]]] = {
     transid.mark(this, LoggingMarkers.TOPSCHED_SCHED_BEGIN)
     val (racksToUse, stepSizes) = (state.racks, state.stepSizes)
-    val hash = ShardingContainerPoolBalancer.generateHash(msg.user.namespace.name, action.fullyQualifiedName(false))
 
+    val hash: Int = Objects.hash(msg.user.namespace.name.toString, action.namespace.segment(1).getOrElse(action.fullyQualifiedName(false))).abs
 
     if (racksToUse.nonEmpty) {
       val homeInvoker = hash % racksToUse.size
