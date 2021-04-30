@@ -57,6 +57,9 @@ dist_docker:
 		${ANSIBLE_SCRIPT} compileOW.yml -e checkout="$$(git branch --show-current)"
 	fi
 
+edge:
+	$(ANSIBLE_SCRIPT) edge.yml
+
 initdb: wipe
 	$(ANSIBLE_SCRIPT) initdb.yml
 
@@ -78,6 +81,9 @@ ow_base: build_ow_base
 	./ow_base_ansible.sh wipe.yml
 	./ow_base_ansible.sh initdb.yml
 	./ow_base_ansible.sh openwhisk.yml -e skip_pull_runtimes=true
+
+properties:
+	$(ANSIBLE_SCRIPT) properties.yml
 
 racksched:
 	$(ANSIBLE_SCRIPT) racksched.yml

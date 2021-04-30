@@ -57,6 +57,7 @@ class DockerContainerFactory(instance: InvokerInstanceId,
   runc: RuncApi)
     extends ContainerFactory {
 
+  logging.debug(this, s"Created DockerContainerFactory with containerArgsConfig: ${containerArgsConfig}")
   val extraConfig: Map[String, Set[String]] = {
     val x = if (useRdma) {
       containerArgsConfig.extraArgs ++ Map("cap-add" -> Set("IPC_LOCK"), "device" -> Set("/dev/infiniband/uverbs1"))

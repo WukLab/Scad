@@ -45,7 +45,7 @@
 
 - name: copy controller cert for authentication
   copy:
-    src: "{{ openwhisk_home }}/ansible/roles/controller/files/{{ item }}"
+    src: "{{ local_openwhisk_home }}/ansible/roles/controller/files/{{ item }}"
     dest: "{{ nginx.confdir }}"
   with_items:
         - "{{ controller.ssl.cert }}"
@@ -102,3 +102,7 @@
       - "{{ nginx.port.https }}:443"
     env:
       TZ: "{{ docker.timezone }}"
+
+- name: attach overlay network to running container
+  shell: 'docker network connect {{ container_network }} nginx'
+  when: container_network != "bridge"

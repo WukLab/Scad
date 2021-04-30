@@ -18,7 +18,7 @@
 mode: deploy
 lean: false
 prompt_user: true
-openwhisk_home: "{{ lookup('env', 'OPENWHISK_HOME') | default(playbook_dir ~ '/..', true) }}"
+local_openwhisk_home: "{{ lookup('env', 'OPENWHISK_HOME') | default(playbook_dir ~ '/..', true) }}"
 openwhisk_cli_home: "{{ lookup('env', 'OPENWHISK_CLI') | default(openwhisk_home ~ '/../openwhisk-cli', true) }}"
 exclude_logs_from: []
 
@@ -68,7 +68,7 @@ whisk:
 #
 
 manifestfile: "{{ manifest_file | default('/ansible/files/runtimes.json') }}"
-runtimesManifest: "{{ runtimes_manifest | default(lookup('file', openwhisk_home ~ '{{ manifestfile }}') | from_json) }}"
+runtimesManifest: "{{ runtimes_manifest | default(lookup('file', local_openwhisk_home ~ '{{ manifestfile }}') | from_json) }}"
 
 limits:
   invocationsPerMinute: "{{ limit_invocations_per_minute | default(5000) }}"
@@ -450,7 +450,7 @@ catalog_repos:
 # The location specifies the official website where Openwhisk CLI is hosted in
 # remote mode or location to save the binaries of the OpenWhisk CLI in local mode.
 
-openwhisk_cli_tag: "{{ cli_tag | default(lookup('ini', 'git_tag section=openwhisk-cli file=' ~ openwhisk_home ~ '/ansible/files/package-versions.ini')) }}"
+openwhisk_cli_tag: "{{ cli_tag | default(lookup('ini', 'git_tag section=openwhisk-cli file=' ~ local_openwhisk_home ~ '/ansible/files/package-versions.ini')) }}"
 openwhisk_cli:
   installation_mode: "{{ cli_installation_mode | default(lookup('env', 'OPENWHISK_CLI_MODE')) | default('remote', true) }}"
   archive_name: OpenWhisk_CLI

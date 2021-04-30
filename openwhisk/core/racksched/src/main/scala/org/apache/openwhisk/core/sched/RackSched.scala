@@ -209,7 +209,16 @@ object RackSched {
   def main(args: Array[String]): Unit = {
     implicit val actorSystem = ActorSystem("racksched-actor-system")
     implicit val logger = new AkkaLogging(akka.event.Logging.getLogger(actorSystem, this))
-    start(args)
+    try {
+      start(args)
+    } catch {
+      case exception: Exception =>
+        System.out.println("caught exception.....")
+        exception.printStackTrace()
+        if (exception.getCause != null) {
+          exception.getCause.printStackTrace()
+        }
+    }
   }
 
   def start(args: Array[String])(implicit actorSystem: ActorSystem, logger: Logging): Unit = {

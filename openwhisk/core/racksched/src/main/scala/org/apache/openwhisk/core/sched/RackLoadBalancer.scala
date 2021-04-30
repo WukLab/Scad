@@ -628,7 +628,7 @@ class RackSimpleBalancer(config: WhiskConfig,
             logging.warn(this, s"Failed to send message to topic: ${originatingInvoker.getSchedResultTopic}: ${exception}")
         })
     })
-    producer.send(topic, msg).andThen {
+    producer.send(topic, sentMsg).andThen {
       case Success(status) =>
         transid.mark(this, LoggingMarkers.RACKSCHED_SCHED_END)
         transid.finished(

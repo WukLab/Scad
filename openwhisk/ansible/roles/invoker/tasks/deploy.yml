@@ -119,7 +119,7 @@
     loop_var: inv_item
 
 - name: check, that required databases exist
-  include_tasks: "{{ openwhisk_home }}/ansible/tasks/db/checkDb.yml"
+  include_tasks: "{{ local_openwhisk_home }}/ansible/tasks/db/checkDb.yml"
   vars:
     dbName: "{{ inv_item }}"
     dbUser: "{{ db.credentials.invoker.user }}"
@@ -385,6 +385,10 @@
     ports: "{{ invoker_ports_to_expose }}"
     command: /bin/sh -c "exec /init.sh --id {{ invoker_index }} --uniqueName {{ invoker_index }}"
   when: not lean
+
+- name: attach overlay network to running container
+  shell: 'docker network connect {{ container_network }} {{ invoker_name }}'
+  when: container_network != "bridge"
 
 - name: wait until Invoker is up and running
   uri:

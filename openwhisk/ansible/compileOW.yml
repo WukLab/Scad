@@ -1,8 +1,11 @@
 - hosts: all
+  vars:
+    gh_branch: main
+    repo_dir: /home/wuklab/projects/disagg-serverless
   tasks:
   - name: fetch latest code
-    shell: 'cd {{  playbook_dir }} && git fetch origin && git checkout -B workload-analysis origin/workload-analysis  && git pull origin'
+    shell: 'cd {{ repo_dir }} && git fetch origin && git checkout -B {{gh_branch}} origin/{{gh_branch}}  && git pull origin'
   - name: compile and build runtimes
-    shell: cd {{ playbook_dir }}/../../runtime && make all
+    shell: cd {{repo_dir }}/runtime && make all
   - name: compile and build openwhisk containers
-    shell: 'cd {{  playbook_dir }}/../ && ./gradlew distDocker'
+    shell: 'cd {{ repo_dir }}/openwhisk && ./gradlew distDocker'

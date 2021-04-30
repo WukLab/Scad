@@ -6,3 +6,12 @@ include classpath("application.conf")
 #     prometheus-enabled = true
 #   }
 # }
+
+whisk {
+  container-factory {
+    use-rdma = {{ use_rdma }}
+    container-args {
+      network: {{ container_network }}
+    }
+  }
+}

@@ -87,7 +87,7 @@
     loop_var: rksch_item
 
 - name: check, that required databases exist
-  include_tasks: "{{ openwhisk_home }}/ansible/tasks/db/checkDb.yml"
+  include_tasks: "{{ local_openwhisk_home }}/ansible/tasks/db/checkDb.yml"
   vars:
     dbName: "{{ rksch_item }}"
     dbUser: "{{ db.credentials.racksched.user }}"
@@ -133,7 +133,7 @@
   fail:
     msg: "racksched index is invalid. expected: /racksched{{ groups['rackscheds'].index(inventory_hostname) }} found: {{ rksch_item.Names[0] }}"
   with_items: "{{ rackschedInfo }}"
-  when: not racksched.allowMultipleInstances and rksch_item.Names[0] != "/{{ racksched_name }}"
+  when: not racksched.allowMultipleInstances and rksch_item.Names[0] != racksched_name
   loop_control:
     loop_var: rksch_item
 
@@ -337,6 +337,10 @@
     ports: "{{ racksched_ports_to_expose }}"
     command: /bin/sh -c "exec /init.sh --id {{ racksched_index }} --uniqueName {{ racksched_index }}"
   when: not lean
+
+- name: attach overlay network to running container
+  shell: 'docker network connect {{ container_network }} {{ racksched_name }}'
+  when: container_network != "bridge"
 
 - name: wait until Racksched is up and running at {{ racksched.protocol }}://{{ ansible_host }}:{{ racksched.basePort + (racksched_index | int) }}/ping
   uri:

@@ -61,13 +61,17 @@ class ControllerInstanceId(val asString: String) extends InstanceId {
   override val toString: String = source
 
   override val toJson: JsValue = ControllerInstanceId.serdes.write(this)
+
+  def convertToRackSchedId(): Try[RackSchedInstanceId] = Try(RackSchedInstanceId(asString.toInt, RuntimeResources.none()))
 }
 
 class TopSchedInstanceId(override val asString: String) extends ControllerInstanceId(asString) {
   validate(asString)
   override val instanceType = "topsched"
+  override val source = s"$instanceType$asString"
+  override val toString: String = source
 
-  def topic: String = s"topsched"
+  def topic: String = instanceType
 }
 
 object InvokerInstanceId extends DefaultJsonProtocol {

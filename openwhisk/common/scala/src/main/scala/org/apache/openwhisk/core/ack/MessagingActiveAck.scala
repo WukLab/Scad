@@ -20,7 +20,6 @@ package org.apache.openwhisk.core.ack
 import org.apache.kafka.common.errors.RecordTooLargeException
 import org.apache.openwhisk.common.{Logging, TransactionId}
 import org.apache.openwhisk.core.connector.{AcknowledegmentMessage, EventMessage, MessageProducer}
-import org.apache.openwhisk.core.entity
 import org.apache.openwhisk.core.entity._
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -39,13 +38,19 @@ class MessagingActiveAck(producer: MessageProducer, instance: InstanceId, eventS
     implicit val transid: TransactionId = tid
 
     def send(msg: AcknowledegmentMessage, recovery: Boolean = false) = {
-      val topic = "completed" + controllerInstance.asInstanceOf[entity.RackSchedInstanceId].asString
-      producer.send(topic = topic, msg).andThen {
-        case Success(_) =>
-          val info = if (recovery) s"recovery ${msg.messageType}" else msg.messageType
-          logging.info(this, s"posted $info of activation ${acknowledegment.activationId} to ${topic}")
+      controllerInstance.convertToRackSchedId() match {
+        case Success(value) =>
+          val topic = "completed" + value.asString
+          producer.send(topic = topic, msg).andThen {
+            case Success(_) =>
+              val info = if (recovery) s"recovery ${msg.messageType}" else msg.messageType
+              logging.info(this, s"posted $info of activation ${acknowledegment.activationId} to ${topic}")
+            case Failure(exception) =>
+              logging.debug(this, s"Failed to post acknowledgement of ${acknowledegment.activationId} to ${topic}: ${exception}")
+          }
         case Failure(exception) =>
-          logging.debug(this, s"Failed to post acknowledgement of ${acknowledegment.activationId} to ${topic}: ${exception}")
+          logging.warn(this, s"failed to convert controller ID to racksched ID: ${controllerInstance}, ${exception}")
+          Future.failed(exception)
       }
     }
 

@@ -15,7 +15,9 @@
 # limitations under the License.
 #
 
-openwhisk_tmp_dir: "{{ lookup('env', 'OPENWHISK_TMP_DIR')| default(lookup('env', 'HOME') + '/.openwhisk', true) }}"
+openwhisk_home: "{{ lookup('env', 'OPENWHISK_HOME') | default('/home/wuklab/projects/disagg-serverless/openwhisk', true) }}"
+
+openwhisk_tmp_dir: "{{ lookup('env', 'OPENWHISK_TMP_DIR')| default('/home/' + ansible_user_id + '/.openwhisk', true) }}"
 config_root_dir: "{{ openwhisk_tmp_dir }}/wskconf"
 whisk_logs_dir: "{{ openwhisk_tmp_dir }}/wsklogs"
 coverage_enabled: "{{ lookup('env', 'GRADLE_COVERAGE') | default('false', true) | bool}}"
@@ -50,3 +52,8 @@ env_hosts_dir: "{{ playbook_dir }}/environments/distributed"
 container_pool_akka_client: false
 runtimes_enable_concurrency: true
 limit_action_concurrency_max: 500
+
+use_rdma: "true"
+invoker_container_network_name: poros
+container_network: poros
+cli_tag: "latest"

@@ -39,6 +39,10 @@
       /bin/sh -c
       "docker-entrypoint.sh --requirepass {{ redis.password }}"
 
+- name: attach overlay network to running container
+  shell: 'docker network connect {{ container_network }} redis'
+  when: container_network != "bridge"
+
 - name: wait until redis is up and running
   shell: "docker run --link redis:redis --rm redis:{{ redis.version }} redis-cli -h redis -p 6379 -a {{ redis.password }} ping"
   register: result

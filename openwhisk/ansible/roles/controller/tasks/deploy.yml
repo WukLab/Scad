@@ -86,10 +86,13 @@
     dest: "{{ controller.confdir }}/{{ controller_name }}"
   become: "{{ controller.dir.become }}"
 
+- debug:
+    msg: "{{local_openwhisk_home}} - {{ openwhisk_home }} - {{ controller.confdir }}"
+
 - name: copy certificates
   when: controller.protocol == 'https'
   copy:
-    src: "{{ openwhisk_home }}/ansible/roles/controller/files/{{ item }}"
+    src: "{{ local_openwhisk_home }}/ansible/roles/controller/files/{{ item }}"
     mode: 0666
     dest: "{{ controller.confdir }}/{{ controller_name }}"
   with_items:
@@ -98,7 +101,7 @@
   become: "{{ controller.dir.become }}"
 
 - name: check, that required databases exist
-  include_tasks: "{{ openwhisk_home }}/ansible/tasks/db/checkDb.yml"
+  include_tasks: "{{ local_openwhisk_home }}/ansible/tasks/db/checkDb.yml"
   vars:
     dbName: "{{ item }}"
     dbUser: "{{ db.credentials.controller.user }}"
@@ -347,6 +350,10 @@
     command:
       /bin/sh -c
       "exec /init.sh {{ controller_index }}"
+
+- name: attach overlay network to running container
+  shell: 'docker network connect {{ container_network }} {{ controller_name }}'
+  when: container_network != "bridge"
 
 - name: wait until the Controller in this host is up and running
   uri:

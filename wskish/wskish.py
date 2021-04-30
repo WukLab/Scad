@@ -137,7 +137,7 @@ def main():
         aid = json.loads(resp.content)['activationId']
         start = time.time()
         iters = 0
-        while time.time() - start < args.timeout:
+        while time.time() - start < args.timeout and not args.non_blocking:
             r = do_get_activation(host, aid, wskprops.auth, args.verbose)
             if r.status_code == 200:
                 break
