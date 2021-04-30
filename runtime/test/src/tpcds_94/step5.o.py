@@ -29,37 +29,32 @@ from npjoin import join
 # import pandas as pd
 
 scheme_in = {
-  "cc_call_center_sk": np.dtype(np.float32) ,
-  "cc_call_center_id": np.dtype('S16') ,
-  "cc_rec_start_date": np.dtype('S10') ,
-  "cc_rec_end_date": np.dtype('S10') ,
-  "cc_closed_date_sk": np.dtype(np.float32) ,
-  "cc_open_date_sk": np.dtype(np.float32) ,
-  "cc_name": np.dtype('S50') ,
-  "cc_class": np.dtype('S50') ,
-  "cc_employees": np.dtype(np.float32) ,
-  "cc_sq_ft": np.dtype(np.float32) ,
-  "cc_hours": np.dtype('S20') ,
-  "cc_manager": np.dtype('S40') ,
-  "cc_mkt_id": np.dtype(np.float32) ,
-  "cc_mkt_class": np.dtype('S50') ,
-  "cc_mkt_desc": np.dtype('S100') ,
-  "cc_market_manager": np.dtype('S40') ,
-  "cc_division": np.dtype(np.float32) ,
-  "cc_division_name": np.dtype('S50') ,
-  "cc_company": np.dtype(np.float32) ,
-  "cc_company_name": np.dtype('S50') ,
-  "cc_street_number": np.dtype('S10') ,
-  "cc_street_name": np.dtype('S60') ,
-  "cc_street_type": np.dtype('S15') ,
-  "cc_suite_number": np.dtype('S10') ,
-  "cc_city": np.dtype('S60') ,
-  "cc_county": np.dtype('S30') ,
-  "cc_state": np.dtype('S2') ,
-  "cc_zip": np.dtype('S10') ,
-  "cc_country": np.dtype('S20') ,
-  "cc_gmt_offset": np.dtype(np.float32) ,
-  "cc_tax_percentage": np.dtype(np.float32) ,
+    "web_site_sk": np.dtype(np.float32),
+    "web_site_id": np.dtype('S16'),
+    "web_rec_start_date": np.dtype('S10'),
+    "web_rec_end_date": np.dtype('S10'),
+    "web_name": np.dtype('S50'),
+    "web_open_date_sk": np.dtype(np.float32),
+    "web_close_date_sk": np.dtype(np.float32),
+    "web_class": np.dtype('S50'),
+    "web_manager": np.dtype('S40'),
+    "web_mkt_id": np.dtype(np.float32),
+    "web_mkt_class": np.dtype('S50'),
+    "web_mkt_desc": np.dtype('S100'),
+    "web_market_manager": np.dtype('S40'),
+    "web_company_id": np.dtype(np.float32),
+    "web_company_name": np.dtype('S50'),
+    "web_street_number": np.dtype('S10'),
+    "web_street_name": np.dtype('S60'),
+    "web_street_type": np.dtype('S15'),
+    "web_suite_number": np.dtype('S10'),
+    "web_city": np.dtype('S60'),
+    "web_county": np.dtype('S30'),
+    "web_state": np.dtype('S2'),
+    "web_zip": np.dtype('S10'),
+    "web_country": np.dtype('S20'),
+    "web_gmt_offset": np.dtype(np.float32),
+    "web_tax_percentage": np.dtype(np.float32),
 }
 
 def build_dtype(schema):
@@ -100,7 +95,7 @@ def main(params, action):
     # print(f"[tpcds] {tag_print}: finish reading rdma")
 
     # print(f"[tpcds] {tag_print}: start reading csv")
-    tableurl = "http://localhost:8123/call_center.csv"
+    tableurl = "http://localhost:8123/web_site.csv"
     csv = urllib.request.urlopen(tableurl)
 
     cc = genfromtxt(csv, delimiter='|', dtype=build_dtype(scheme_in))
@@ -112,20 +107,19 @@ def main(params, action):
     bp_s5 = buffer_pool_lib.buffer_pool({trans_s5_name:trans_s5})
 
     # data operation
-    join_meta = join.prepare_join_float32(cs['cs_ship_addr_sk'])
+    join_meta = join.prepare_join_float32(cs['ws_ship_addr_sk'])
     df1_idx, df2_idx = join.join_on_table_float32(*join_meta, ca['ca_address_sk'])
     dfbuf = np.empty(len(df1_idx) * (cs.itemsize + ca.itemsize), dtype=np.uint8)
     df = join.structured_array_merge(dfbuf, cs, ca, df1_idx, df2_idx,
-            [n for n in cs.dtype.names if n != 'cs_ship_addr_sk'],
+            [n for n in cs.dtype.names if n != 'ws_ship_addr_sk'],
             [n for n in ca.dtype.names])
-    # print(f'[tpcds] {tag_print} df beforejoin: ', df.itemsize, df.shape, df.dtype)
-    list_addr = ['Williamson County'.encode(), 'Williamson County'.encode(), 'Williamson County'.encode(), 'Williamson County'.encode(), 'Williamson County'.encode()]
-    cc = cc[np.isin(cc['cc_county'], list_addr)][['cc_call_center_sk']]
-    join_meta = join.prepare_join_float32(df['cs_call_center_sk'])
-    df1_idx, df2_idx = join.join_on_table_float32(*join_meta, cc['cc_call_center_sk'])
+
+    cc = cc[cc['web_company_name'] == 'pri'.encode()][['web_site_sk']]
+    join_meta = join.prepare_join_float32(df['ws_web_site_sk'])
+    df1_idx, df2_idx = join.join_on_table_float32(*join_meta, cc['web_site_sk'])
 
     merged_dtype = join.merge_dtypes(df, cc, 
-            ['cs_order_number', 'cs_ext_ship_cost', 'cs_net_profit'],
+            ['ws_order_number', 'ws_ext_ship_cost', 'ws_net_profit'],
             [])
 
     # init rdma array buf for join
@@ -133,11 +127,10 @@ def main(params, action):
     buf = rdma_array.request_mem_on_buffer_for_array(0, len(df1_idx))
 
     df = join.structured_array_merge(buf, df, cc, df1_idx, df2_idx,
-            ['cs_order_number', 'cs_ext_ship_cost', 'cs_net_profit'],
+            ['ws_order_number', 'ws_ext_ship_cost', 'ws_net_profit'],
             [])
-    # df = df[['cs_order_number', 'cs_ext_ship_cost', 'cs_net_profit']]
 
-    # print(f'[tpcds] {tag_print} df: ', df.itemsize, df.shape, df.dtype)
+    print(f'[tpcds] {tag_print} df: ', df.itemsize, df.shape, df.dtype)
 
     # write back
     rdma_array.flush_slice(0, len(df1_idx))
