@@ -122,5 +122,7 @@ cdef extern from "khash_python.h":
 
     khuint_t kh_needed_n_buckets(khuint_t element_n) nogil
 
+    uint32_t lookup3(uint32_t, uint32_t, uint32_t) nogil
+
 
 include "khash_for_primitive_helper.pxi"
