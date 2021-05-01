@@ -20,7 +20,7 @@ import numpy as np
 import base64
 import urllib.request
 import disaggrt.buffer_pool_lib as buffer_pool_lib
-from disaggrt.rdma_array import remote_array
+from disaggrt.rdma_array import *
 
 from npjoin import join
 
@@ -65,18 +65,26 @@ def main(params, action):
     join_meta = join.prepare_join_float32(df1['d_date_sk'])
     df1_idx, df2_idx = join.join_on_table_float32(*join_meta, df2['sr_returned_date_sk'])
     # print('indexes', len(df1_idx), len(df2_idx), df1_idx, df2_idx)
-    df3buf = np.empty(len(df1_idx) * (df1.itemsize + df2.itemsize), dtype=np.uint8)
+    # df3buf = np.empty(len(df1_idx) * (df1.itemsize + df2.itemsize), dtype=np.uint8)
     # print('df3buf', df3buf.shape, 'itemsize', df1.itemsize + df2.itemsize)
     # print('trans_s3.buf', trans_s3.buf.shape, 'itemsize', trans_s3.buf.itemsize)
     # df = join.structured_array_merge(df3buf, df1, df2, df1_idx, df2_idx,
-    df = join.structured_array_merge(trans_s3.buf, df1, df2, df1_idx, df2_idx,
+
+    # init rdma array, and allocate buffer
+    bp_s3 = buffer_pool_lib.buffer_pool({trans_s3_name:trans_s3})
+    merged_dtype = join.merge_dtypes(df1, df2, 
+            [n for n in df1.dtype.names if n != 'd_date_sk'],
+            [n for n in df2.dtype.names if n != 'sr_returned_date_sk'])
+    rdma_array = init_empty_remote_array(bp_s3, "3_out_mem", merged_dtype, (len(df1_idx),))
+    buf = rdma_array.request_mem_on_buffer_for_array(0, len(df1_idx))
+
+    df = join.structured_array_merge(buf, df1, df2, df1_idx, df2_idx,
             [n for n in df1.dtype.names if n != 'd_date_sk'],
             [n for n in df2.dtype.names if n != 'sr_returned_date_sk'])
     # print(f'[tpcds] {tag_print} df: ', df.itemsize, df.shape, df.dtype)
 
     # write back
-    bp_s3 = buffer_pool_lib.buffer_pool({trans_s3_name:trans_s3})
-    rdma_array = remote_array(bp_s3, input_ndarray=df, transport_name=trans_s3_name)
+    rdma_array.flush_slice(0, len(df1_idx))
 
     # transfer the metedata
     context_dict = {}

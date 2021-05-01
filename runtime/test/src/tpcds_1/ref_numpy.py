@@ -175,11 +175,14 @@ def main():
     print('indexes', len(df1_idx), len(df2_idx), df1_idx, df2_idx)
     # finally, we collect results into some new memory.
     # TODO: use a function to calculate output type
+    df3dtype = join.merge_dtypes(df1, df2,
+            [n for n in df1.dtype.names if n != 'd_date_sk'], 
+            [n for n in df2.dtype.names if n != 'sr_returned_date_sk'])
     df3buf = np.empty(len(df1_idx) * (df1.itemsize + df2.itemsize), dtype=np.uint8)
     print('df3buf', df3buf.shape, 'itemsize', df1.itemsize + df2.itemsize)
     # send the indexers and required fields into the array
     df3 = join.structured_array_merge(df3buf, df1, df2, df1_idx, df2_idx,
-            [n for n in df1.dtype.names if n != 'd_date_sk'],
+            [n for n in df1.dtype.names if n != 'd_date_sk'], 
             [n for n in df2.dtype.names if n != 'sr_returned_date_sk'])
     print('df3 meta', df3.itemsize, df3.shape, df3.dtype)
     # print('df3', df3)

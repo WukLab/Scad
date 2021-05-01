@@ -124,7 +124,7 @@ dtypes = [('Complex128', 'complex128', 'khcomplex128_t'),
 {{for name, dtype, c_type in dtypes}}
 
 
-{{if dtype != 'int64'}}
+{{if dtype != 'int64' and dtype != 'float32'}}
 
 ctypedef struct {{name}}VectorData:
     {{c_type}} *data
@@ -186,7 +186,7 @@ dtypes = [('Complex128', 'complex128', 'khcomplex128_t'),
 
 cdef class {{name}}Vector:
 
-    {{if dtype != 'int64'}}
+    {{if dtype != 'int64' and dtype != 'float32'}}
     cdef:
         bint external_view_exists
         {{name}}VectorData *data
@@ -544,8 +544,8 @@ cdef class {{name}}HashTable(HashTable):
                     labels[i] = idx
 
         if return_inverse:
-            return uniques.to_array(), labels.base  # .base -> underlying ndarray
-        return uniques.to_array()
+            return uniques, labels.base  # .base -> underlying ndarray
+        return uniques
 
     def unique(self, const {{dtype}}_t[:] values, bint return_inverse=False):
         """
@@ -602,6 +602,13 @@ cdef class {{name}}HashTable(HashTable):
             The labels from values to uniques
         """
         uniques_vector = {{name}}Vector()
+        return self._unique(values, uniques_vector, na_sentinel=na_sentinel,
+                            na_value=na_value, ignore_na=True, mask=mask,
+                            return_inverse=True)
+
+    def factorize_with(self, const {{dtype}}_t[:] values, {{name}}Vector uniques_vector,
+		  Py_ssize_t na_sentinel=-1,
+                  object na_value=None, object mask=None):
         return self._unique(values, uniques_vector, na_sentinel=na_sentinel,
                             na_value=na_value, ignore_na=True, mask=mask,
                             return_inverse=True)

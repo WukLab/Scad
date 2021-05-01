@@ -250,7 +250,6 @@ def main():
     print('time: ')
     print(time_table)
 
-    '''
     merged_u.to_csv('./ref_output_merged_u.csv')
     final.to_csv('./ref_output_final.csv')
 
@@ -258,9 +257,8 @@ def main():
 
     i = 1
     for d in dfs:
-      d.to_csv('./steps/ref_output_' + str(i) + '.csv')
+      d.to_csv('./steps_reference/ref_output_' + str(i) + '.csv')
       i += 1
-    '''
 
 if __name__ == "__main__":
   main()
