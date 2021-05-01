@@ -219,19 +219,25 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
             activationMap = activationMap + (r.msg.activationId -> actor)
 
             // We also log this into the run message
-            // TODO: generate default.
             val defaultAddresses = LibdAPIs.Transport.getDefaultTransport(r.action, useRdma)
             val fetchedAddresses = for {
               runtime <- r.action.runtimeType
               if LibdAPIs.Transport.needWait(runtime)
               seq <- r.msg.siblings
-            } yield seq.map { ra =>
-              val aid = r.msg.activationId
-              val name = LibdAPIs.Transport.getName(ra)
-              val impl = LibdAPIs.Transport.getImpl(ra, runtime)
-              addressBook
-                .postWait(ra.objActivation, TransportRequest.config(name, impl, aid))
-                .toFullString
+            } yield seq.groupBy(LibdAPIs.Transport.getName).flatMap {
+              // check parallelism, if we have multiple elements with same name
+              // We mangle the name
+              case (name, ras) =>
+                val isPar = ras.size > 1
+                ras.zipWithIndex.map { case (ra, par) =>
+                  val aid = r.msg.activationId
+                  val impl = LibdAPIs.Transport.getImpl(ra, runtime)
+                  val request = if (isPar) TransportRequest.configPar(name, par, impl, aid)
+                                else TransportRequest.config(name, impl, aid)
+                  addressBook
+                    .postWait(ra.objActivation, request)
+                    .toFullString
+                }
             }
             val transports =
               (defaultAddresses.getOrElse(Seq.empty) ++ fetchedAddresses.getOrElse(Seq.empty)) match {

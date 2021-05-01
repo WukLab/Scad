@@ -33,6 +33,11 @@ case class TransportRequest(name: String,
 object TransportRequest {
   def config(name: String, impl: String, activationId : ActivationId): TransportRequest =
     apply(name, activationId, TransportAddress(s"$name;$impl;"), false)
+  def configPar(name: String,
+                parallelism : Int,
+                impl: String,
+                activationId : ActivationId): TransportRequest =
+    apply(name, activationId, TransportAddress(s"$name@$parallelism;$impl;"), false)
 }
 
 
@@ -95,5 +100,11 @@ class CorunningAddressBook(pool: ContainerPool)(implicit logging: Logging) {
   def remove(activationId: ActivationId): Unit = {
     addressBook.retain { case ((id, _), _) => id != activationId }
   }
+
+
+  // create http server here
+
+//  val route =
+//  val callback_service = BasicHttpService.startHttpService(route=, port=0443)
 
 }
