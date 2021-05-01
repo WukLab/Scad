@@ -18,7 +18,7 @@ TARGETS    := libd.so
 LD       := gcc
 INCLUDES := -I./include
 LIBS     := -lnanomsg -lcurl -lpthread -libverbs
-CFLAGS   := -fPIC -O2 -g -std=c11 -Wall $(INCLUDES) -DDEBUG
+CFLAGS   := -fPIC -O2 -g -std=c11 -Wall $(INCLUDES) # -DDEBUG
 LD_FLAGS := $(LD_FLAGS) $(if $(USE_RDMA),-fuse-ld=lld,)
 
 .PNONY: all install clean ext_python ext_npjoin ext_npjoin_install tests
@@ -42,7 +42,7 @@ ext_npjoin_install: ext_npjoin
 	pip install ext/np_join
 
 memory_server: ext/host/memory_server.o $(OBJECTS)
-	$(LD) -o $@ $^ $(LDFLAGS)
+	$(LD) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 tests:
 	make -C tests
