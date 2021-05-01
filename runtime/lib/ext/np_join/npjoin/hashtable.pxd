@@ -131,3 +131,18 @@ cdef class Int64Vector:
     cdef inline void append(self, int64_t x)
     cdef extend(self, int64_t[:] x)
 
+# added for float32
+cdef struct Float32VectorData:
+    float32_t *data
+    Py_ssize_t n, m
+
+cdef class Float32Vector:
+    cdef Float32VectorData *data
+    cdef ndarray ao
+    cdef bint external_view_exists
+
+    cdef resize(self)
+    cpdef ndarray to_array(self)
+    cdef inline void append(self, float32_t x)
+    cdef extend(self, float32_t[:] x)
+

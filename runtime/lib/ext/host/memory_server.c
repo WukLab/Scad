@@ -5,7 +5,7 @@
 
 #define ACTIVATION_ID ("00000000")
 
-#define SIZE (1024 * 1024 * 64)
+#define SIZE (1024 * 1024 * 1024 * 1)
 
 
 int main(int argc, char *argv[]) {

@@ -20,34 +20,39 @@ from numpy cimport (
     uint64_t,
 )
 
-from npjoin.hashtable cimport Float32HashTable
+from npjoin.hashtable cimport Float32HashTable, Float32Vector
+
+def merge_dtypes(ndarray left, ndarray right,
+        list left_fields, list right_fields):
+    left_dtypes = [(name, t) for name, t
+                             in left.dtype.descr
+                             if name in left_fields]
+    right_dtypes = [(name, t) for name, t
+                             in right.dtype.descr
+                             if name in right_fields]
+    return np.dtype(left_dtypes + right_dtypes)
 
 # simply merge two array, do not repack.
 def structured_array_merge(
     uint8_t [::1] buf,
     ndarray left, ndarray right,
-    intp_t [::1] left_indexer, intp_t [::1] right_indexer,
-    list left_fields, list right_fields):
+    ndarray[intp_t] left_indexer, ndarray[intp_t] right_indexer,
+    list left_fields, list right_fields
+    size_t offset = 0):
 
     cdef:
         Py_ssize_t size
 
     # get new dtype
-    left_dtypes = [(name, t) for name, t
-                    in left.dtype.descr
-                    if name in left_fields]
-    right_dtypes = [(name, t) for name, t
-                    in right.dtype.descr
-                    if name in right_fields]
-    merged_dtypes = np.dtype(left_dtypes + right_dtypes)
-
+    merged_dtypes = merge_dtypes(left, right, left_fields, right_fields)
     size = len(left_indexer) * merged_dtypes.itemsize
     # allocate new array on buffer
-    # TODO: buf size, check padding
-    joined = np.asarray(buf[:size]).view(dtype = merged_dtypes)
+    joined = np.asarray(buf[offset:offset+size]).view(dtype = merged_dtypes)
+    # print('merged dtype', merged_dtypes, 'item', merged_dtypes.itemsize, 'array', joined.shape)
 
     # assign col by col, using numpy
     # TODO: better copy algorithm
+    # see https://stackoverflow.com/questions/5355744/numpy-joining-structured-arrays
     for f in left_fields:
         joined[f] = left[f][left_indexer]
     for f in right_fields:
@@ -79,7 +84,7 @@ def prepare_join_float32(
         int64_t unique_size
         Float32HashTable hashtable
         ndarray[intp_t] left_index
-        ndarray[float32_t] left_unique
+        Float32Vector left_unique
 
     size = len(left)
     # TODO: check this size
