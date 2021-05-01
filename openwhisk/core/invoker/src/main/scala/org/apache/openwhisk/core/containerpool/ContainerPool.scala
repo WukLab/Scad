@@ -219,7 +219,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
             activationMap = activationMap + (r.msg.activationId -> actor)
 
             // We also log this into the run message
-            val defaultAddresses = LibdAPIs.Transport.getDefaultTransport(r.action)
+            val defaultAddresses = LibdAPIs.Transport.getDefaultTransport(r.action, useRdma)
             val fetchedAddresses = for {
               runtime <- r.action.runtimeType
               if LibdAPIs.Transport.needWait(runtime)
