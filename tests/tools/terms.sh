@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -x
 
 tmux new-session -t 'wuklab' -d
 tmux split-window -v
@@ -14,4 +15,4 @@ tmux select-layout even-vertical
 tmux bind-key e set-window-option synchronize-panes
 # set option once
 tmux set-option synchronize-panes on
-tmux -2 attach-session -t 'wuklab'
+tmux attach-session -t 'wuklab'

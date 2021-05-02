@@ -8,4 +8,4 @@
   - name: compile and build runtimes
     shell: cd {{repo_dir }}/runtime && make all
   - name: compile and build openwhisk containers
-    shell: 'cd {{ repo_dir }}/openwhisk && ./gradlew distDocker'
+    shell: 'cd {{ repo_dir }}/openwhisk && ./gradlew distDocker -x test'

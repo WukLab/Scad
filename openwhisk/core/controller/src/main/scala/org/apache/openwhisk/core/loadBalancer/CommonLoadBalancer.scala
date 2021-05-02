@@ -175,6 +175,7 @@ abstract class CommonLoadBalancer(config: WhiskConfig,
   /** 3. Send the activation to the invoker */
   protected def sendActivationToInvoker(producer: MessageProducer,
                                         msg: ActivationMessage,
+                                        prevAid: Option[ActivationId],
                                         invoker: InvokerInstanceId): Future[RecordMetadata] = {
     implicit val transid: TransactionId = msg.transid
 

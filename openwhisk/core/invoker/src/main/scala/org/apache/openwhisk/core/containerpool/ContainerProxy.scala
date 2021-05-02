@@ -20,8 +20,8 @@ package org.apache.openwhisk.core.containerpool
 import akka.actor.Actor
 import akka.actor.ActorRef
 import akka.actor.Cancellable
-import java.time.Instant
 
+import java.time.Instant
 import akka.actor.Status.{Failure => FailureMessage}
 import akka.actor.{FSM, Props, Stash}
 import akka.event.Logging.InfoLevel
@@ -35,9 +35,9 @@ import akka.pattern.pipe
 import pureconfig.loadConfigOrThrow
 import pureconfig.generic.auto._
 import akka.stream.ActorMaterializer
+
 import java.net.InetSocketAddress
 import java.net.SocketException
-
 import org.apache.openwhisk.common.MetricEmitter
 import org.apache.openwhisk.common.TransactionId.systemPrefix
 
@@ -54,6 +54,7 @@ import org.apache.openwhisk.core.entity.ExecManifest.ImageName
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size._
 import org.apache.openwhisk.core.invoker.Invoker.LogsCollector
+import org.apache.openwhisk.core.invoker.ResultActivation
 import org.apache.openwhisk.core.scheduler.FinishActivation
 import org.apache.openwhisk.http.Messages
 
@@ -929,7 +930,7 @@ class ContainerProxy(factory: (TransactionId,
                 response)
               resultWaiter.foreach(waiter => {
                 if (!activation.name.asString.contains("invokerHealthTestAction")) {
-                  waiter ! activation
+                  waiter ! ResultActivation(activation, job.action)
                 }
               })
             activation

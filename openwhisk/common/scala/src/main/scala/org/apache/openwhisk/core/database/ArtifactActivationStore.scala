@@ -22,7 +22,6 @@ import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import spray.json.JsObject
 import org.apache.openwhisk.common.{Logging, LoggingMarkers, TransactionId}
-import org.apache.openwhisk.core.containerpool.Interval
 import org.apache.openwhisk.core.entity._
 
 import scala.concurrent.Future
@@ -40,14 +39,12 @@ class ArtifactActivationStore(actorSystem: ActorSystem, actorMaterializer: Actor
   def store(activation: WhiskActivation, context: UserContext)(
     implicit transid: TransactionId,
     notifier: Option[CacheChangeNotification]): Future[DocInfo] = {
-    logging.debug(this, s"storing activation response: '${activation.activationId}' - ${activation.name}. ||latency: ${Interval.currentLatency()}")
-
     val res = WhiskActivation.put(artifactStore, activation)
 
     res onComplete {
       case Success(id) =>
         transid.mark(this, LoggingMarkers.INVOKER_ACTIVATION_STORING)
-        logging.debug(this, s"stored final activation response: ${activation.activationId}. - ${activation.name} ||latency: ${Interval.currentLatency()}")
+        logging.debug(this, s"stored final activation response: ${activation.activationId}. - ${activation.name} ||latency: ${activation.duration.getOrElse(-1)}")
 
       case Failure(t) =>
         logging.error(

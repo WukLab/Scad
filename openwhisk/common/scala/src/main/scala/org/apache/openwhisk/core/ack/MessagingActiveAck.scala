@@ -17,6 +17,7 @@
 
 package org.apache.openwhisk.core.ack
 
+import org.apache.kafka.clients.producer.RecordMetadata
 import org.apache.kafka.common.errors.RecordTooLargeException
 import org.apache.openwhisk.common.{Logging, TransactionId}
 import org.apache.openwhisk.core.connector.{AcknowledegmentMessage, EventMessage, MessageProducer}
@@ -37,7 +38,7 @@ class MessagingActiveAck(producer: MessageProducer, instance: InstanceId, eventS
                      acknowledegment: AcknowledegmentMessage): Future[Any] = {
     implicit val transid: TransactionId = tid
 
-    def send(msg: AcknowledegmentMessage, recovery: Boolean = false) = {
+    def send(msg: AcknowledegmentMessage, recovery: Boolean = false): Future[RecordMetadata] = {
       controllerInstance.convertToRackSchedId() match {
         case Success(value) =>
           val topic = "completed" + value.asString
@@ -59,7 +60,7 @@ class MessagingActiveAck(producer: MessageProducer, instance: InstanceId, eventS
       eventSender.foreach { s =>
         EventMessage.from(activationResult, instance.source, userId) match {
           case Success(msg) => s.send(msg)
-          case Failure(t)   => logging.error(this, s"activation event was not sent: $t")
+          case Failure(t) => logging.error(this, s"activation event was not sent: $t")
         }
       }
     }

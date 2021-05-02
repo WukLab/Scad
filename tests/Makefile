@@ -52,7 +52,7 @@ controller:
 .ONESHELL:
 dist_docker:
 	if [[ -z $${DIST+x} ]]; then
-		cd ../openwhisk && ./gradlew distDocker
+		cd ../openwhisk && ./gradlew distDocker -x test
 	else
 		${ANSIBLE_SCRIPT} compileOW.yml -e checkout="$$(git branch --show-current)"
 	fi

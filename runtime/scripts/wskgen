@@ -61,8 +61,8 @@ def gen_obj(meta, source):
         "concurrency": 1,
         "logs": 10,
         "resources": {
-            "cpu": meta.get('limits', {}).get('cpu', 4.0),
-            "mem": meta.get('limits', {}).get('mem', '256 MB'),
+            "cpu": meta.get('limits', {}).get('cpu', 1.0),
+            "mem": meta.get('limits', {}).get('mem', '128 MB'),
             "storage": meta.get('limits', {}).get('storage', '512 MB')
         },
         "timeout": 60000

@@ -301,7 +301,7 @@ class ShardingContainerPoolBalancer(
           this,
           s"scheduled activation ${msg.activationId}, action '${msg.action.asString}' ($actionType), ns '${msg.user.namespace.name.asString}', resource limit ${resourceLimit.limits} (${resourceLimitInfo}), time limit ${timeLimit.duration.toMillis} ms (${timeLimitInfo}) to ${invoker}")
         val activationResult = setupActivation(msg, action, invoker)
-        sendActivationToInvoker(messageProducer, msg, invoker).map(_ => activationResult)
+        sendActivationToInvoker(messageProducer, msg, None, invoker).map(_ => activationResult)
       }
       .getOrElse {
         // report the state of all invokers
@@ -344,7 +344,7 @@ object ShardingContainerPoolBalancer extends LoadBalancerProvider {
         actorRefFactory: ActorRefFactory,
         messagingProvider: MessagingProvider,
         messagingProducer: MessageProducer,
-        sendActivationToInvoker: (MessageProducer, ActivationMessage, InvokerInstanceId) => Future[RecordMetadata],
+        sendActivationToInvoker: (MessageProducer, ActivationMessage, Option[ActivationId], InvokerInstanceId) => Future[RecordMetadata],
         monitor: Option[ActorRef]): ActorRef = {
 
         InvokerPool.prepare(instance, WhiskEntityStore.datastore())
@@ -352,7 +352,7 @@ object ShardingContainerPoolBalancer extends LoadBalancerProvider {
         actorRefFactory.actorOf(
           InvokerPool.props(
             (f, i) => f.actorOf(InvokerActor.props(i, instance)),
-            (m, i) => sendActivationToInvoker(messagingProducer, m, i),
+            (m, i) => sendActivationToInvoker(messagingProducer, m, None, i),
             messagingProvider.getConsumer(whiskConfig, s"health${instance.asString}", "health", maxPeek = 128),
             monitor))
       }

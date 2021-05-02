@@ -64,7 +64,7 @@ class LeanBalancer(config: WhiskConfig,
 
     /** 2. Update local state with the activation to be executed scheduled. */
     val activationResult = setupActivation(msg, action, invokerName)
-    sendActivationToInvoker(messageProducer, msg, invokerName).map(_ => activationResult)
+    sendActivationToInvoker(messageProducer, msg, None, invokerName).map(_ => activationResult)
   }
 
   /** Creates an invoker for executing user actions. There is only one invoker in the lean model. */

@@ -328,9 +328,9 @@ class InvokerReactive(
       if (msg.content.isDefined) {
         logging.warn(this, s"content for activation ${msg.activationId} is defined, but waitForContent is ${msg.waitForContent.get}")
       }
-      // no content provided during scheduling, need to send to the waiting map until its content arrives
-      activationWaiter ! msg
-      return Future.successful(())
+    // no content provided during scheduling, need to send to the waiting map until its content arrives
+    activationWaiter ! msg
+    return Future.successful(())
     }
     //set trace context to continue tracing
     WhiskTracerProvider.tracer.setTraceContext(transid, msg.traceContext)

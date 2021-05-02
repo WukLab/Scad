@@ -89,7 +89,7 @@ class RackPool(childFactory: (ActorRefFactory, RackSchedInstanceId) => ActorRef,
 
   implicit val transid: TransactionId = TransactionId.rackHealth
   implicit val logging: Logging = new AkkaLogging(context.system.log)
-  implicit val timeout: Timeout = Timeout(5.seconds)
+  implicit val timeout: Timeout = Timeout(60.seconds)
   implicit val ec: ExecutionContext = context.dispatcher
 
   // State of the actor. Mutable vars with immutable collections prevents closures or messages
@@ -271,7 +271,7 @@ class RackActor(rackInstance: RackSchedInstanceId, topsched: TopSchedInstanceId)
   implicit val logging: Logging = new AkkaLogging(context.system.log)
   val name = s"rack${rackInstance.toInt}"
 
-  val healthyTimeout: FiniteDuration = 10.seconds
+  val healthyTimeout: FiniteDuration = 60.seconds
 
   // This is done at this point to not intermingle with the state-machine
   // especially their timeouts.

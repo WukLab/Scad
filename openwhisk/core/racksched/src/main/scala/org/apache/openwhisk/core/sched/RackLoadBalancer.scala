@@ -154,7 +154,7 @@ class RackSimpleBalancer(config: WhiskConfig,
   // in the case of an error, the scheduling message will be removed after ~5 minutes if the number of expected scheduled
   // messages does not come through.
   // the key of the map is (app activation ID, function activation ID, scheduled function name, parallelismIdx)
-  val preScheduled: mutable.Map[(ActivationId, ActivationId, FullyQualifiedEntityName), (InvokerInstanceId, Int, Int)] = mutable.Map.empty
+  val preScheduled: mutable.Map[(ActivationId, ActivationId, FullyQualifiedEntityName), (InvokerInstanceId, ActivationId, Int, Int)] = mutable.Map.empty
 
   /** Build a cluster of all loadbalancers */
   private val cluster: Option[Cluster] = if (loadConfigOrThrow[ClusterConfig](ConfigKeys.cluster).useClusterBootstrap) {
@@ -272,48 +272,49 @@ class RackSimpleBalancer(config: WhiskConfig,
     val (invokersToUse, stepSizes) =
       if (!isBlackboxInvocation) (schedulingState.managedInvokers, schedulingState.managedStepSizes)
       else (schedulingState.blackboxInvokers, schedulingState.blackboxStepSizes)
-    val chosen: Option[InvokerInstanceId] = if (invokersToUse.nonEmpty) {
+    val chosen: Option[(InvokerInstanceId, Option[ActivationId])] = if (invokersToUse.nonEmpty) {
       val hash = ShardingContainerPoolBalancer.generateHash(msg.user.namespace.name, action.fullyQualifiedName(false))
       val homeInvoker = hash % invokersToUse.size
       val stepSize = stepSizes(hash % stepSizes.size)
-      val defaultSchedule = () =>
-        ShardingContainerPoolBalancer.schedule(
+      val defaultSchedule = () => ShardingContainerPoolBalancer.schedule(
           action.limits.concurrency.maxConcurrent,
           action.fullyQualifiedName(true),
           invokersToUse,
           schedulingState.invokerSlots,
           action.limits.resources.limits,
           homeInvoker,
-          stepSize)
+          stepSize) map { v =>
+        (v._1, None, v._2)
+      }
 
-      val invoker: Option[(InvokerInstanceId, Boolean)] = msg.waitForContent match {
+
+      val invoker: Option[(InvokerInstanceId, Option[ActivationId], Boolean)] = msg.waitForContent match {
         case Some(content) =>
-          if (content > 1) {
+          if (content > 1 && msg.prewarmOnly.isEmpty) {
             msg.appActivationId flatMap { appId =>
               msg.functionActivationId flatMap { funcId =>
                 val key = (appId, funcId, msg.action)
                 preScheduled.get(key) match {
                   case Some(value) =>
                     // this message came through the scheduler before..return the same result
-                    if (value._2 + 1 >= value._3) {
+                    if (value._3 + 1 >= value._4) {
                       // we've reached the max number of messages to schedule..let's get rid of it
                       preScheduled.remove(key)
-                      Some((value._1, false))
+                      Some((value._1, Some(value._2), false))
                     } else {
-                      preScheduled.put(key, (value._1, value._2 + 1, value._3))
-                      Some((value._1, false))
+                      preScheduled.put(key, (value._1, value._2, value._3 + 1, value._4))
                     }
+                    Some((value._1, Some(value._2), false))
                   case None =>
                     // we have not seen the message yet..schedule the result, then store the scheduling message
                     // and set a timer to remove it
                     defaultSchedule() match {
-                      case Some((value: InvokerInstanceId, check)) =>
-                        // waitForContent includes all previous nodes, but this activation msg is a parallelism copy,
-                        // then one of the nodes from "waitForContent" is parallelized, so substract 1, and add the
-                        // number of parallel copies
-                        preScheduled.put(key, (value, 1, content + msg.parallelismIdx.max - 1))
+                      case Some((value: InvokerInstanceId, _, check)) =>
+                        preScheduled.put(key, (value, msg.activationId, 1, content))
                         actorSystem.getScheduler.scheduleOnce(FiniteDuration(5, MINUTES))(() => preScheduled.remove(key))
-                        Some((value, check))
+                        // set NONE for previous activation ID is important in order to actually send the scheduling message
+                        // to the invoker.
+                        Some((value, None, check))
                       case _ => None
                     }
                 }
@@ -325,7 +326,7 @@ class RackSimpleBalancer(config: WhiskConfig,
         case None => defaultSchedule()
       }
       invoker.foreach {
-        case (_, true) =>
+        case (_, _, true) =>
           val metric =
             if (isBlackboxInvocation)
               LoggingMarkers.BLACKBOX_SYSTEM_OVERLOAD
@@ -334,11 +335,12 @@ class RackSimpleBalancer(config: WhiskConfig,
           MetricEmitter.emitCounterMetric(metric)
         case _ =>
       }
-      invoker.map { v => v._1 }
+      invoker.map { v => (v._1, v._2) }
     } else {
       None
     }
-    chosen.map { invoker =>
+    chosen match {
+      case Some((invoker, aid)) =>
         // MemoryLimit() and TimeLimit() return singletons - they should be fast enough to be used here
         val resourceLimit = action.limits.resources
         val resourceLimitInfo = if (resourceLimit == ResourceLimit()) { "std" } else { "non-std" }
@@ -346,11 +348,10 @@ class RackSimpleBalancer(config: WhiskConfig,
         val timeLimitInfo = if (timeLimit == TimeLimit()) { "std" } else { "non-std" }
         logging.info(
           this,
-          s"scheduled activation ${msg.activationId}, action '${msg.action.asString}' ($actionType), ns '${msg.user.namespace.name.asString}', resource limit ${resourceLimit} (${resourceLimitInfo}), time limit ${timeLimit.duration.toMillis} ms (${timeLimitInfo}) to ${invoker}")
+          s"scheduled activation ${msg.activationId} to $invoker, (prewarmOnly: ${msg.prewarmOnly.isDefined}) action '${msg.action.asString}' ($actionType), ns '${msg.user.namespace.name.asString}', resource limit ${resourceLimit} (${resourceLimitInfo}), time limit ${timeLimit.duration.toMillis} ms (${timeLimitInfo})")
         val activationResult = setupActivation(msg, action, invoker)
-        sendActivationToInvoker(messageProducer, msg, invoker).map(_ => activationResult)
-      }
-      .getOrElse {
+        sendActivationToInvoker(messageProducer, msg, aid, invoker).map(_ => activationResult)
+      case None =>
         // report the state of all invokers
         val invokerStates = invokersToUse.foldLeft(Map.empty[InvokerState, Int]) { (agg, curr) =>
           val count = agg.getOrElse(curr.status, 0) + 1
@@ -361,7 +362,7 @@ class RackSimpleBalancer(config: WhiskConfig,
           this,
           s"failed to schedule activation ${msg.activationId}, action '${msg.action.asString}' ($actionType), ns '${msg.user.namespace.name.asString}' - invokers to use: $invokerStates")
         Future.failed(LoadBalancerException("No invokers available"))
-      }
+    }
   }
 
   /**
@@ -602,14 +603,19 @@ class RackSimpleBalancer(config: WhiskConfig,
   }
 
   /** 3. Send the activation to the invoker */
+
+  /**
+   * @param producer
+   * @param msg
+   * @param prevActivationId if this message was previously scheduled from another activation, this is the activation id that came through previously.
+   * @param invoker
+   * @return
+   */
   protected def sendActivationToInvoker(producer: MessageProducer,
                                         msg: ActivationMessage,
+                                        prevActivationId: Option[ActivationId],
                                         invoker: InvokerInstanceId): Future[RecordMetadata] = {
     implicit val transid: TransactionId = msg.transid
-
-    if (msg.parallelismIdx.index != 0) {
-      return Future.successful(null)
-    }
 
     val sentMsg = msg.copy(rootControllerIndex = rackschedInstance)
     val topic = invoker.getMainTopic
@@ -623,20 +629,33 @@ class RackSimpleBalancer(config: WhiskConfig,
     sentMsg.sendResultToInvoker.foreach(args => {
       val originatingInvoker = args._1
       val originalActivationId = args._2
-      producer.send(originatingInvoker.getSchedResultTopic, SchedulingDecision(originalActivationId, sentMsg.activationId, invoker, transid, sentMsg.parallelismIdx))
+      val nextAid: ActivationId = prevActivationId.getOrElse(sentMsg.activationId)
+      producer.send(originatingInvoker.getSchedResultTopic,
+        SchedulingDecision(originalActivationId, nextAid, invoker, transid, sentMsg.parallelismIdx, sentMsg.siblings))
         .failed.foreach(exception => {
             logging.warn(this, s"Failed to send message to topic: ${originatingInvoker.getSchedResultTopic}: ${exception}")
         })
     })
-    producer.send(topic, sentMsg).andThen {
-      case Success(status) =>
-        transid.mark(this, LoggingMarkers.RACKSCHED_SCHED_END)
-        transid.finished(
-        this,
+
+    // If the prevActivationId is empty, this is a new function being scheduled. In the case where it is _not_ empty
+    // this means another function which was responsible for the scheduling already came through, we really just needed
+    // to send the scheduling decision (above). So, to prevent scheduling the same object twice, just run prevent
+    // sending the scheduling message to the destination.
+    if (prevActivationId.isEmpty) {
+      producer.send(topic, sentMsg).andThen {
+        case Success(status) =>
+          transid.mark(this, LoggingMarkers.RACKSCHED_SCHED_END)
+          transid.finished(
+            this,
             start,
-        s"posted to ${status.topic()}[${status.partition()}][${status.offset()}]",
+            s"posted to ${status.topic()}[${status.partition()}][${status.offset()}]",
             logLevel = InfoLevel)
-      case Failure(_) => transid.failed(this, start, s"error on posting to topic $topic")
+        case Failure(_) => transid.failed(this, start, s"error on posting to topic $topic")
+      }
+    } else {
+      // hack hack hack
+      // some dummy value because (as of writing) result actually not used anywhere
+      Future.successful(new RecordMetadata(null, 0, 0,0,0,0,0))
     }
   }
 
@@ -665,7 +684,7 @@ object RackLoadBalancer extends RackLoadBalancerProvider {
       override def createInvokerPool(actorRefFactory: ActorRefFactory,
                                      messagingProvider: MessagingProvider,
                                      messagingProducer: MessageProducer,
-                                     sendActivationToInvoker: (MessageProducer, ActivationMessage, InvokerInstanceId) => Future[RecordMetadata],
+                                     sendActivationToInvoker: (MessageProducer, ActivationMessage, Option[ActivationId], InvokerInstanceId) => Future[RecordMetadata],
                                      monitor: Option[ActorRef]): ActorRef = {
 
         InvokerPool.prepare(instance, WhiskEntityStore.datastore())
@@ -673,7 +692,7 @@ object RackLoadBalancer extends RackLoadBalancerProvider {
         actorRefFactory.actorOf(
           InvokerPool.props(
             (f, i) => f.actorOf(InvokerActor.props(i, instance)),
-            (m, i) => sendActivationToInvoker(messagingProducer, m, i),
+            (m, i) => sendActivationToInvoker(messagingProducer, m, None, i),
             messagingProvider.getConsumer(whiskConfig, instance.healthTopic, instance.healthTopic, maxPeek = 128),
             monitor))
       }

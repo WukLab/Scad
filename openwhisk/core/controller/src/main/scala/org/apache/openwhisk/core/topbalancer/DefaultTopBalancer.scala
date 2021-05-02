@@ -197,7 +197,7 @@ class DefaultTopBalancer(config: WhiskConfig,
 
       val rack: Option[RackSchedInstanceId] = msg.waitForContent match {
         case Some(content) =>
-          if (content > 1) {
+          if (content > 1 && msg.prewarmOnly.isEmpty) {
             msg.appActivationId flatMap { appId =>
               msg.functionActivationId flatMap { funcId =>
                 val key = (appId, funcId, msg.action)
@@ -207,11 +207,10 @@ class DefaultTopBalancer(config: WhiskConfig,
                     if (value._2 + 1 >= value._3) {
                       // we've reached the max number of messages to schedule..let's get rid of it
                       preScheduled.remove(key)
-                      Some(value._1)
                     } else {
                       preScheduled.put(key, (value._1, value._2 + 1, value._3))
-                      Some(value._1)
                     }
+                    Some(value._1)
                   case None =>
                     // we have not seen the message yet..schedule the result, then store the scheduling message
                     // and set a timer to remove it
@@ -220,7 +219,12 @@ class DefaultTopBalancer(config: WhiskConfig,
                         // waitForContent includes all previous nodes, but this activation msg is a parallelism copy,
                         // then one of the nodes from "waitForContent" is parallelized, so substract 1, and add the
                         // number of parallel copies
-                        preScheduled.put(key, (value, 1, content + msg.parallelismIdx.max - 1))
+                        val maxScheds = action.relationships match {
+                          case Some(value) =>
+                            msg.parallelismIdx.max * value.parents.length
+                          case None => msg.parallelismIdx.max
+                        }
+                        preScheduled.put(key, (value, 1, content + maxScheds))
                         actorSystem.getScheduler.scheduleOnce(FiniteDuration(5, MINUTES))(() => preScheduled.remove(key))
                         Some(value)
                       case _ => None
@@ -300,7 +304,7 @@ class DefaultTopBalancer(config: WhiskConfig,
     val start = transid.started(
       this,
       LoggingMarkers.CONTROLLER_KAFKA,
-      s"posting topic '$topic' with activation id '${msg.activationId}'",
+      s"posting topic '$topic' with activation id '${msg.activationId}' (prewarmOnly: ${msg.prewarmOnly.isDefined})",
       logLevel = InfoLevel)
     transid.mark(this, LoggingMarkers.TOPSCHED_SCHED_END)
 //    logging.debug(this, s"posting to racksched: ${msg.activationId}: ||latency: ${Interval.currentLatency()}")

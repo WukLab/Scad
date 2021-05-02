@@ -34,14 +34,14 @@ import org.apache.openwhisk.common.Https.HttpsConfig
 import org.apache.openwhisk.common.{AkkaLogging, ConfigMXBean, Logging, LoggingMarkers, TransactionId}
 import org.apache.openwhisk.core.WhiskConfig
 import org.apache.openwhisk.core.connector.{DependencyInvocationMessageContext, MessagingProvider}
-import org.apache.openwhisk.core.containerpool.logging.LogStoreProvider
-import org.apache.openwhisk.core.database.{ActivationStoreProvider, CacheChangeNotification, RemoteCacheInvalidation}
+import org.apache.openwhisk.core.containerpool.logging.{LogStore, LogStoreProvider}
+import org.apache.openwhisk.core.database.{ActivationStore, ActivationStoreProvider, ArtifactStore, CacheChangeNotification, RemoteCacheInvalidation}
 import org.apache.openwhisk.core.entitlement._
 import org.apache.openwhisk.core.entity.ActivationId.ActivationIdGenerator
 import org.apache.openwhisk.core.entity.ExecManifest.Runtimes
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.loadBalancer.LoadBalancerProvider
-import org.apache.openwhisk.core.topbalancer.{AppActivator, RackState, TopBalancerProvider}
+import org.apache.openwhisk.core.topbalancer.{AppActivator, RackState, TopBalancer, TopBalancerProvider}
 import org.apache.openwhisk.http.{BasicHttpService, BasicRasService}
 import org.apache.openwhisk.spi.SpiLoader
 
@@ -102,9 +102,9 @@ class Controller(val instance: TopSchedInstanceId,
   }
 
   // initialize datastores
-  private implicit val authStore = WhiskAuthStore.datastore()
-  private implicit val entityStore = WhiskEntityStore.datastore()
-  private implicit val cacheChangeNotification = Some(new CacheChangeNotification {
+  private implicit val authStore: ArtifactStore[WhiskAuth] = WhiskAuthStore.datastore()
+  private implicit val entityStore: ArtifactStore[WhiskEntity] = WhiskEntityStore.datastore()
+  private implicit val cacheChangeNotification: Some[CacheChangeNotification] = Some(new CacheChangeNotification {
     val remoteCacheInvalidaton = new RemoteCacheInvalidation(whiskConfig, "controller", instance)
     override def apply(k: CacheKey) = {
       remoteCacheInvalidaton.invalidateWhiskActionMetaData(k)
@@ -114,15 +114,15 @@ class Controller(val instance: TopSchedInstanceId,
   implicit val ec: ExecutionContext = actorSystem.dispatcher
   implicit val appActivator: ActorRef = actorSystem.actorOf(Props { AppActivator() })
   // initialize backend services
-  private implicit val loadBalancer =
+  private implicit val loadBalancer: TopBalancer =
     SpiLoader.get[TopBalancerProvider].instance(whiskConfig, instance)
   logging.info(this, s"loadbalancer initialized: ${loadBalancer.getClass.getSimpleName}")(TransactionId.controller)
 
-  private implicit val entitlementProvider =
+  private implicit val entitlementProvider: EntitlementProvider =
     SpiLoader.get[EntitlementSpiProvider].instance(whiskConfig, loadBalancer, instance)
-  private implicit val activationIdFactory = new ActivationIdGenerator {}
-  private implicit val logStore = SpiLoader.get[LogStoreProvider].instance(actorSystem)
-  private implicit val activationStore =
+  private implicit val activationIdFactory: ActivationIdGenerator = new ActivationIdGenerator {}
+  private implicit val logStore: LogStore = SpiLoader.get[LogStoreProvider].instance(actorSystem)
+  private implicit val activationStore: ActivationStore =
     SpiLoader.get[ActivationStoreProvider].instance(actorSystem, materializer, logging)
 
   // register collections

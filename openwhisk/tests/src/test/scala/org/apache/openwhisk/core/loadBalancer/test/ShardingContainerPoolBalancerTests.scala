@@ -482,7 +482,7 @@ class ShardingContainerPoolBalancerTests
         actorRefFactory: ActorRefFactory,
         messagingProvider: MessagingProvider,
         messagingProducer: MessageProducer,
-        sendActivationToInvoker: (MessageProducer, ActivationMessage, InvokerInstanceId) => Future[RecordMetadata],
+        sendActivationToInvoker: (MessageProducer, ActivationMessage, Option[ActivationId], InvokerInstanceId) => Future[RecordMetadata],
         monitor: Option[ActorRef]): ActorRef =
         TestProbe().testActor
     }
