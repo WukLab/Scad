@@ -272,3 +272,37 @@ khuint_t static __inline__ kh_needed_n_buckets(khuint_t n_elements){
     khuint_t upper_bound = (khuint_t)(candidate * __ac_HASH_UPPER + 0.5);
     return (upper_bound < n_elements) ? 2*candidate : candidate;
 }
+
+#define rot(x,k) (((x)<<(k)) | ((x)>>(32-(k))))
+uint32_t static __inline__ lookup3(uint32_t k0, uint32_t k1, uint32_t k2) {
+    uint32_t a,b,c;
+      /* Set up the internal state */
+    a = b = c = 0xdeadbeef + (((uint32_t)1)<<2);
+    c+=k2;
+    b+=k1;
+    a+=k0;
+    c ^= b; c -= rot(b,14);
+    a ^= c; a -= rot(c,11);
+    b ^= a; b -= rot(a,25);
+    c ^= b; c -= rot(b,16);
+    a ^= c; a -= rot(c,4);
+    b ^= a; b -= rot(a,14);
+    c ^= b; c -= rot(b,24);
+    return c;
+
+    // switch(length)                     /* all the case statements fall through */
+    // { 
+    //     case 3 : c+=k[2];
+    //     case 2 : b+=k[1];
+    //     case 1 : a+=k[0];
+    //              c ^= b; c -= rot(b,14);
+    //              a ^= c; a -= rot(c,11);
+    //              b ^= a; b -= rot(a,25);
+    //              c ^= b; c -= rot(b,16);
+    //              a ^= c; a -= rot(c,4);
+    //              b ^= a; b -= rot(a,14);
+    //              c ^= b; c -= rot(b,24);
+    //     case 0:     /* case 0: nothing left to add */
+    //              break;
+    // }
+}

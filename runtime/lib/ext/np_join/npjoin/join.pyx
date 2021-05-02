@@ -21,6 +21,7 @@ from numpy cimport (
 )
 
 from npjoin.hashtable cimport Float32HashTable, Float32Vector
+from npjoin.khash cimport lookup3
 
 def merge_dtypes(ndarray left, ndarray right,
         list left_fields, list right_fields):
@@ -37,8 +38,7 @@ def structured_array_merge(
     uint8_t [::1] buf,
     ndarray left, ndarray right,
     ndarray[intp_t] left_indexer, ndarray[intp_t] right_indexer,
-    list left_fields, list right_fields
-    size_t offset = 0):
+    list left_fields, list right_fields):
 
     cdef:
         Py_ssize_t size
@@ -47,7 +47,7 @@ def structured_array_merge(
     merged_dtypes = merge_dtypes(left, right, left_fields, right_fields)
     size = len(left_indexer) * merged_dtypes.itemsize
     # allocate new array on buffer
-    joined = np.asarray(buf[offset:offset+size]).view(dtype = merged_dtypes)
+    joined = np.asarray(buf[:size]).view(dtype = merged_dtypes)
     # print('merged dtype', merged_dtypes, 'item', merged_dtypes.itemsize, 'array', joined.shape)
 
     # assign col by col, using numpy
@@ -145,6 +145,27 @@ def join_on(
 
     return (deindex(left_sorter, left_indexer),
             deindex(right_sorter, right_indexer))
+
+# partition function
+@cython.wraparound(False)
+@cython.boundscheck(False)
+def partition_on_float32(ndarray[float32_t] values, Py_ssize_t num_bins):
+    cdef:
+        Py_ssize_t i, size
+        ndarray[uint32_t] view
+        ndarray[intp_t] bins
+        ndarray[intp_t] sorter, groups
+
+    view = values.view(dtype = np.uint32)
+    size = view.shape[0]
+    bins = np.empty(size, dtype=np.intp)
+    with nogil:
+        for i in range(0, size):
+            bins[i] = lookup3(view[i], 0, 0) % num_bins
+
+    # we need to deindex on this result
+    sorter, groups = groupsort_indexer(bins, num_bins)
+    return sorter, groups[1:]
 
 # helper functions
 # take values from indexer
