@@ -73,6 +73,7 @@ trait SwapApi extends Directives with AuthorizedRouteProvider with Authenticated
             entity(as[JsObject]) { swap =>
               val swapObject = SwapObject.serdes.read(swap)
               logging.debug(this, s"scheduling new swap for $name:$swapObject")
+              scheduleSwap(swapObject, user)
               complete(OK)
             }
           case _ => reject
