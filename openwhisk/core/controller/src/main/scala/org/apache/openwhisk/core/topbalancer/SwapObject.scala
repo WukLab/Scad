@@ -33,11 +33,11 @@ object SwapObject extends DefaultJsonProtocol {
   }
 
   def swapAction(memory: ByteSize = 0.B): Option[WhiskAction] =
-    ExecManifest.runtimesManifest.resolveDefaultRuntime("nodejs:default").map { manifest =>
+    ExecManifest.runtimesManifest.resolveDefaultRuntime("python:3").map { manifest =>
       new WhiskAction(
         namespace = swapObjectIdentity.namespace.name.toPath,
         name = EntityName(s"swapAction"),
-        exec = CodeExecAsString(manifest, """function main(params,action) {let t = action.get_transport('server','rdma_server');let ret = t.serve();return {payload: 'serve'};}""", None),
+        exec = CodeExecAsString(manifest, """def main(_, action):\n    t = action.get_transport('memory', 'rdma_server')\n    t.serve()""", None),
         limits = ActionLimits(resources = ResourceLimit(RuntimeResources(0, memory, 0.B))))
     }
 
