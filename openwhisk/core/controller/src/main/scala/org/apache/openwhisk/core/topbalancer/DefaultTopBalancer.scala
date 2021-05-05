@@ -431,7 +431,10 @@ object DefaultTopBalancer extends TopBalancerProvider {
                                       sendActivationToRack: (MessageProducer, ActivationMessage, RackSchedInstanceId) => Future[RecordMetadata],
                                       monitor: Option[ActorRef]): ActorRef = {
 
-        RackPool.prepare(instance, WhiskEntityStore.datastore())
+        val store: EntityStore = WhiskEntityStore.datastore()
+        RackPool.prepare(instance, store)
+        SwapObject.prepare(store)
+
         actorRefFactory.actorOf(
           RackPool.props(
             (f, i) => f.actorOf(RackActor.props(i, instance)),

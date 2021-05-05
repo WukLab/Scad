@@ -322,9 +322,17 @@ class ContainerProxy(factory: (TransactionId,
       implicit val transid: TransactionId = job.msg.transid
       activeCount += 1
       // create a new container
+      val name = job.msg.swapFrom match {
+        case Some(value) =>
+          // This is a swap container, change name to activation ID
+          job.msg.activationId.toString
+        case None =>
+          ContainerProxy.containerName(instance, job.msg.user.namespace.name.asString, job.action.name.asString)
+
+      }
       val container = factory(
         job.msg.transid,
-        ContainerProxy.containerName(instance, job.msg.user.namespace.name.asString, job.action.name.asString),
+        name,
         job.action.exec.image,
         job.action.exec.pull,
         job.action.limits.resources.limits.mem,
@@ -901,7 +909,6 @@ class ContainerProxy(factory: (TransactionId,
 
         val serverUrl = "8081"
         val envMix = LibdAPIs.Action.mix(env)(serverUrl, job.msg.activationId.toString, job.corunningConfig)
-
         container
           .run(
             parameters,
