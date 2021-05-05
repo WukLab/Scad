@@ -154,7 +154,7 @@ def partition_on_float32(ndarray[float32_t] values, Py_ssize_t num_bins):
         Py_ssize_t i, size
         ndarray[uint32_t] view
         ndarray[intp_t] bins
-        ndarray[intp_t] sorter, groups
+        ndarray[intp_t] sorter, groups, sumgroups
 
     view = values.view(dtype = np.uint32)
     size = view.shape[0]
@@ -165,7 +165,30 @@ def partition_on_float32(ndarray[float32_t] values, Py_ssize_t num_bins):
 
     # we need to deindex on this result
     sorter, groups = groupsort_indexer(bins, num_bins)
-    return sorter, groups[1:]
+    sumgroups = np.cumsum(groups)
+    return sorter, sumgroups
+
+@cython.wraparound(False)
+@cython.boundscheck(False)
+def partition_on_float32_pair(ndarray[float32_t] values, ndarray[float32_t] values2, Py_ssize_t num_bins):
+    cdef:
+        Py_ssize_t i, size
+        ndarray[uint32_t] view, view2
+        ndarray[intp_t] bins
+        ndarray[intp_t] sorter, groups, sumgroups
+
+    view = values.view(dtype = np.uint32)
+    view2 = values2.view(dtype = np.uint32)
+    size = view.shape[0]
+    bins = np.empty(size, dtype=np.intp)
+    with nogil:
+        for i in range(0, size):
+            bins[i] = lookup3(view[i], view2[i], 0) % num_bins
+
+    # we need to deindex on this result
+    sorter, groups = groupsort_indexer(bins, num_bins)
+    sumgroups = np.cumsum(groups)
+    return sorter, sumgroups
 
 # helper functions
 # take values from indexer

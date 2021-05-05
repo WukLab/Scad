@@ -59,7 +59,9 @@ RUN pip install \
     simplejson==3.16.0 \
     virtualenv==16.0.0 \
     twisted==18.7.0 \
-    numpy==1.20.2
+    numpy==1.20.2 \
+    wheel \
+    numpy_groupies
 
 ADD disaggrt /disaggrt
 RUN pip install /disaggrt

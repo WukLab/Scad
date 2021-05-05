@@ -61,8 +61,10 @@ class FileParamLoader(ParamLoader):
     def get(self):
         params = {} 
         for obj in self.infiles:
-            with open(self.infiles[obj]) as f:  
-                params[obj] = json.load(f)
+            params[obj] = []
+            for filename in self.infiles[obj]:
+                with open(filename) as f:  
+                    params[obj].append(json.load(f))
         return params
 
     def put(self, rv):
@@ -72,15 +74,25 @@ class FileParamLoader(ParamLoader):
                 json.dump(rv, f)
 
 class MetaFileParamLoader(FileParamLoader):
-    def __init__(self, meta, path="/tmp"):
+    def __init__(self, meta, parIndex, path="/tmp"):
         self.path = path
-        infiles = { o:self.iofile(o) for o in meta.get('parents', []) }
-        outfile = self.iofile(meta['name'])
+        self.parIndex = parIndex
+        infiles = {
+            o:self.ioInFile(o)
+            for o in meta.get('parents', []) }
+        outfile = self.ioOutFile(meta['name'])
         super().__init__(infiles, outfile)
 
-    def iofile(self, obj):
-        filename =  "rundisagg.{}.json".format(obj)
+    def ioOutFile(self, obj):
+        filename = "rundisagg.{}.json".format(obj)
+        if self.parIndex is not None:
+            filename = "rundisagg.{}@{}.json".format(obj, self.parIndex)
         return os.path.join(self.path, filename)
+
+    def ioInFile(self, obj):
+        filename = "rundisagg.{}*.json".format(obj)
+        files = glob(os.path.join(self.path, filename))
+        return files
 
 def execute(filename, action, loader):
     spec = importlib.util.spec_from_file_location("module.name", filename)
@@ -101,8 +113,8 @@ def build_action(activation_id, transports, **kwargs):
 def parse_memory_transports(mems):
     mems = mems or []
     template = "{0};rdma_{2};url,tcp://localhost:{1};"
-    def parse(mem):
-        args = mem.split(':') 
+
+    def build(args):
         # no implementation
         if len(args) == 2:
             args.append('tcp')
@@ -120,7 +132,27 @@ def parse_memory_transports(mems):
         args = args[:3]
         args.append(extra_params)
         return "{0};rdma_{2};url,{1};{3}".format(*args)
-    return [parse(m) for m in mems]
+
+    def parse(mem):
+        args = mem
+        parNum = 0
+        if '@' in mem:
+            parNum, args = mem.split('@')
+
+        args = args.split(':') 
+
+        if parNum == 0:
+            return [build(args)]
+        else:
+            transports = []
+            for i in range(int(parNum)):
+                _args = args.copy()
+                _args[0] = '{}@{}'.format(args[0], i)
+                _args[1] = str(int(args[1]) + i)
+                transports.append(build(_args))
+            return transports
+
+    return [t for m in mems for t in parse(m)]
 
 if __name__ == '__main__':
     SERVER_URL = "localhost:2333"
@@ -133,16 +165,21 @@ if __name__ == '__main__':
                         help='corunning memory objects, in format <name>:port')
     parser.add_argument('-p', '--print_output', action='store_true',
                         help='print output')
+    parser.add_argument('-i', '--par_index', type=int,
+                        help='enable parallel mode')
     parser.add_argument('objectfile', type=str,
                         help='object file')
     args = parser.parse_args()
 
     _, meta, _ = filemeta(args.objectfile)
-    params = MetaFileParamLoader(meta)
+    params = MetaFileParamLoader(meta, args.par_index)
+
+    if args.par_index is not None:
+        os.environ["__OW_PAR"] = str(args.par_index)
 
     transports = parse_memory_transports(args.memory)
     action_args = {
-        'post_url': 'http://localhost:2400/',
+#        'post_url': 'http://localhost:2400/',
 #        'plugins': 'monitor'
     }
     print('building action with transports', transports, action_args)

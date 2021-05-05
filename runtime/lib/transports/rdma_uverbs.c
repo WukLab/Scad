@@ -165,11 +165,13 @@ static int _terminate(struct libd_transport * trans) {
     if (rstate->conn.peerinfo != NULL)
         free(rstate->conn.peerinfo);
     // clean up RDMA
+    // TODO: change this free
     for (int i = 0; i < rstate->conn.num_mr; i++) {
         void * buf = rstate->conn.mr[i].addr;
         ibv_dereg_mr(rstate->conn.mr + i);
-        free(buf);
     }
+    for (int i = 0; i < rstate->conn.num_buf; i++)
+        free(rstate->conn.buf[i]);
 
     // TODO: close qp and cq, instead of context
     ibv_destroy_qp(rstate->conn.qp);
@@ -182,11 +184,15 @@ static int _terminate(struct libd_transport * trans) {
 static void * _reg(struct libd_transport *trans, size_t s, void *buf) {
     get_local_state(rstate,trans,struct uverbs_rdma_state);
 
+    create_mr(&rstate->conn, s, IBV_ACCESS_LOCAL_WRITE, buf);
     if (buf == NULL) {
-        // This buffer will be fine if its in the same PD
-        create_mr(&rstate->conn, s, IBV_ACCESS_LOCAL_WRITE);
+        // insert buf here
         buf = (void *) (rstate->conn.mr[0].addr);
+        rstate->conn.num_buf += 1;
+        rstate->conn.buf = realloc(rstate->conn.buf, rstate->conn.num_buf * sizeof(void *));
+        rstate->conn.buf[rstate->conn.num_buf - 1] = buf;
     }
+
     return buf;
 }
 
