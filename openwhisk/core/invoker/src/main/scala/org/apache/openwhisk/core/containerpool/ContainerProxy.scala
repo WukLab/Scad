@@ -866,6 +866,7 @@ class ContainerProxy(factory: (TransactionId,
       "function_activation_id" -> job.msg.functionActivationId.toJson,
       "app_activation_id" -> job.msg.appActivationId.toJson,
       "transaction_id" -> job.msg.transid.id.toJson,
+      "invoker_id" -> instance.instance.toJson.toString.toJson,
     )
 
     // if the action requests the api key to be injected into the action context, add it here;

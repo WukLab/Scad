@@ -32,13 +32,13 @@ object SwapObject extends DefaultJsonProtocol {
     Identity(Subject(whiskSystem), Namespace(EntityName(whiskSystem), uuid), BasicAuthenticationAuthKey(uuid, Secret()))
   }
 
-  def swapAction(memory: ByteSize = 0.B): Option[WhiskAction] =
+  def swapAction(memory: ByteSize = 128.MB): Option[WhiskAction] =
     ExecManifest.runtimesManifest.resolveDefaultRuntime("python:3").map { manifest =>
       new WhiskAction(
         namespace = swapObjectIdentity.namespace.name.toPath,
         name = EntityName(s"swapAction"),
         exec = CodeExecAsString(manifest, """def main(_, action):\n    t = action.get_transport('memory', 'rdma_server')\n    t.serve()""", None),
-        limits = ActionLimits(resources = ResourceLimit(RuntimeResources(0, memory, 0.B))))
+        limits = ActionLimits(resources = ResourceLimit(RuntimeResources(1.0, memory, 512.MB))))
     }
 
   def createSwapAction(db: EntityStore, action: WhiskAction): Future[Unit] = {
