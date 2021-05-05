@@ -21,7 +21,7 @@ def main(params, action):
     # read metadata to setup
     trans = action.get_transport('mem1', 'rdma')
     trans.reg(buffer_pool_lib.buffer_size)
-    context_dict_in_b64 = params["func1"]['meta']
+    context_dict_in_b64 = params["func1"][0]['meta']
     context_dict_in_byte = base64.b64decode(context_dict_in_b64)
     context_dict = pickle.loads(context_dict_in_byte)
 

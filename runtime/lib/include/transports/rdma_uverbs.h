@@ -17,6 +17,9 @@ struct rdma_conn {
     int num_mr;
     struct ibv_mr* mr;
 
+    int num_buf;
+    void ** buf;
+
     struct conn_info* peerinfo;
 
     // info for ib/eth
@@ -56,7 +59,7 @@ struct uverbs_rdma_state {
 struct ibv_context *create_context(int num_devices, const char *device_name);
 
 int create_qp(struct rdma_conn *conn);
-int create_mr(struct rdma_conn *conn, size_t size, int access);
+int create_mr(struct rdma_conn *conn, size_t size, int access, void *buffer);
 
 int qp_stm_reset_to_init(struct rdma_conn *conn);
 int qp_stm_init_to_rtr(struct rdma_conn *conn);

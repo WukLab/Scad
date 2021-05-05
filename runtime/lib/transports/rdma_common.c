@@ -43,10 +43,13 @@ int create_qp(struct rdma_conn *conn) {
     }
 }
 
-int create_mr(struct rdma_conn *conn, size_t size, int access) {
+int create_mr(struct rdma_conn *conn, size_t size, int access,
+              void * buffer) {
     int ret;
-    void * buffer = malloc(size);
     struct ibv_mr *mr;
+
+    if (buffer == NULL)
+        buffer = malloc(size);
 
     if (buffer == NULL) {
         dprintf("malloc fail");

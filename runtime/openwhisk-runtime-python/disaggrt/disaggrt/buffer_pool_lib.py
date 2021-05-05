@@ -8,7 +8,7 @@ import math
 
 # global parameters
 page_size = 256
-page_buffer_size = 655360000
+page_buffer_size = 1024 * 1024 * 64
 metadata_reserve_mem = 0
 buffer_size = page_buffer_size
 # @todo hint prefetch

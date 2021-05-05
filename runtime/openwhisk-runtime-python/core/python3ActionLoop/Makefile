@@ -20,7 +20,7 @@ GO_RUNTIME=openwhisk-runtime-go
 build:
 	cp -r ../../../$(GO_RUNTIME) .
 	cp -p -r ../../../lib ./libd
-	-make -C libd clean
+	-USE_RDMA=1 make -C libd clean
 	cp -p -r ../../disaggrt ./disaggrt
 	docker build -t $(IMG) .
 

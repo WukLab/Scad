@@ -91,7 +91,7 @@ static int _init(struct libd_transport *trans) {
 
     // create MRs
     int access = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ;
-	create_mr(&rstate->conn, rstate->size, access);
+	create_mr(&rstate->conn, rstate->size, access, NULL);
 
     dprintf("setup for %s: size %ld, url %s",
         trans->tstate->name, rstate->size, rstate->url);

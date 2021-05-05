@@ -224,7 +224,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
               runtime <- r.action.runtimeType
               if LibdAPIs.Transport.needWait(runtime)
               seq <- r.msg.siblings
-            } yield seq.groupBy(LibdAPIs.Transport.getName).flatMap {
+            } yield seq.toSet.groupBy(LibdAPIs.Transport.getName).flatMap {
               // check parallelism, if we have multiple elements with same name
               // We mangle the name
               case (name, ras) =>
