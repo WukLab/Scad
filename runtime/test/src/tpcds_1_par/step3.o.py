@@ -88,10 +88,10 @@ def main(params, action):
 
     print('after join', len(df1_idx))
 
+    # partition
     df2k1 = df2['sr_customer_sk'][df2_idx]
     df2k2 = df2['sr_store_sk'][df2_idx]
     print('after load', len(df2k1))
-    # partition
     indexer, groups = join.partition_on_float32_pair(
         df2k1, df2k2, s4_par)
     print('after partition')

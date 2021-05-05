@@ -13,6 +13,7 @@ from disaggrt.util import *
 
 from numpy import genfromtxt
 
+
 scheme_in = {
     "sr_returned_date_sk": np.dtype(np.float32),
     "sr_return_time_sk": np.dtype(np.float32),
@@ -42,8 +43,13 @@ def build_dtype(schema):
         'formats': list(schema.values()),
     })
 
+total_csv = 216
+
 def main(_, action):
-    tableurl = "http://localhost:8123/store_returns.csv"
+    parIndex = getParIndex()
+
+    tableurl = "http://localhost:8123/store_returns_{}_{}.csv".format(
+        parIndex + 1, total_csv)
     csv = urllib.request.urlopen(tableurl)
 
     df = genfromtxt(csv, delimiter='|', dtype=build_dtype(scheme_in))
