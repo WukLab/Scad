@@ -39,7 +39,7 @@ invoker_allow_multiple_instances: true
 skip_pull_runtimes: true
 
 # Set kafka configuration
-kafka_heap: '512m'
+kafka_heap: '2048m'
 kafka_topics_completed_retentionBytes: 104857600
 kafka_topics_completed_retentionMS: 300000
 kafka_topics_health_retentionBytes: 104857600
@@ -57,3 +57,4 @@ use_rdma: "true"
 invoker_container_network_name: poros
 container_network: poros
 cli_tag: "latest"
+db_host: wuklab-02.ucsd.edu

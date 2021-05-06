@@ -14,4 +14,42 @@ whisk {
       network: {{ container_network }}
     }
   }
+  container-pool {
+    user-memory: 55 g
+    concurrent-peek-factor: 0.5 #factor used to limit message peeking: 0 < factor <= 1.0 - larger number improves concurrent processing, but increases risk of message loss during invoker crash
+    akka-client: false # if true, use PoolingContainerClient for HTTP from invoker to action container (otherwise use ApacheBlockingContainerClient)
+    prewarm-expiration-check-interval: 1 minute # period to check for prewarm expiration
+    prewarm-expiration-check-interval-variance: 10 seconds # varies expiration across invokers to avoid many concurrent expirations
+    prewarm-expiration-limit: 100 # number of prewarms to expire in one expiration cycle (remaining expired will be considered for expiration in next cycle)
+    resources {
+        cpu = 64
+        mem = 55 g
+        storage = 128 g
+        min {
+            cpu = 1
+            mem = 128 m
+            storage = 128 m
+        }
+        max {
+            cpu = 16
+            mem = 512 m
+            storage = 2 g
+        }
+        std {
+            cpu = 1
+            mem = 256 m
+            storage = 1 g
+        }
+    }
+  }
+  concurrency-limit {
+    min = 1
+    max = 500
+    std = 1
+  }
+  container-proxy {
+      timeouts {
+        pause-grace = 5000 milliseconds
+      }
+  }
 }
