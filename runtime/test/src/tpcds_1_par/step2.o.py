@@ -48,41 +48,48 @@ total_csv = 216
 def main(_, action):
     parIndex = getParIndex()
 
-    tableurl = "http://localhost:8123/store_returns_{}_{}.csv".format(
-        parIndex + 1, total_csv)
-    csv = urllib.request.urlopen(tableurl)
+    remote_addr = 0
+    groupList = []
 
-    df = genfromtxt(csv, delimiter='|', dtype=build_dtype(scheme_in))
+    for i in range(num_csv_per_instance):
+        tableurl = "http://localhost:8123/store_returns_{}_216.csv".format(
+            parIndex * num_csv... + i, total_csv)
+        csv = urllib.request.urlopen(tableurl)
 
-    # Why use this variable here?
-    #wanted_columns = ['sr_customer_sk',
-    #    'sr_store_sk',
-    #    'sr_return_amt',
-    #    'sr_returned_date_sk']
+        df = genfromtxt(csv, delimiter='|', dtype=build_dtype(scheme_in))
 
-    s3_groups = 2
-    indexer, groups = join.partition_on_float32(
-        df['sr_returned_date_sk'], s3_groups)
+        # Why use this variable here?
+        #wanted_columns = ['sr_customer_sk',
+        #    'sr_store_sk',
+        #    'sr_return_amt',
+        #    'sr_returned_date_sk']
 
-    output_dtype = df.dtype
-    output_size = len(df)
-    output_bytes = df.nbytes
+        s3_groups = 2
+        indexer, groups = join.partition_on_float32(
+            df['sr_returned_date_sk'], s3_groups)
 
-    # write output data
-    trans_name = '2_out_mem'
-    trans = action.get_transport(trans_name, 'rdma')
-    trans.reg(output_bytes)
+        output_dtype = df.dtype
+        output_size = len(df)
+        output_bytes = df.nbytes
 
-    output_array = asArray(trans, output_dtype, output_size)
-    output_array[:] = df[indexer]
+        # write output data
+        trans_name = '2_out_mem'
+        trans = action.get_transport(trans_name, 'rdma')
+        trans.reg(output_bytes)
 
-    trans.write(output_bytes, 0)
+        output_array = asArray(trans, output_dtype, output_size)
+        output_array[:] = df[indexer]
+
+        trans.write(output_bytes, remote_addr)
+
+        remote_addr + output_bytes
+        groupList.append(groups.tolist())
 
     # transfer the metedata
     res = {
         # groups, array of groups 
-        'groups': [groups.tolist()],
-        'size': output_bytes
+        'groups': groupList,
+        'size': remote_addr
     }
     return res
 

@@ -34,7 +34,7 @@ class Swap:
         self.invoker = os.environ['__OW_INVOKER_ID']
         self.aid_app = os.environ['__OW_APP_ACTIVATION_ID']
         self.aid_func = os.environ['__OW_FUNCTION_ACTIVATION_ID']
-        self.url = "{}/api/v1/{}/swap/{}".format(
+        self.url = "{}/api/v1/namespaces/{}/swap/{}".format(
             host, os.environ['__OW_NAMESPACE'], os.environ['__OW_NAME'])
 
         self.action = action
@@ -42,14 +42,23 @@ class Swap:
 
     def postRequest(self, size):
         data = { 'originalAction':          self.name,
-                 'invoker':                 self.invoker,
+                 'source':                  json.loads(self.invoker),
                  'functionActivationId':    self.aid_func,
                  'appActivationId':         self.aid_app,
                  'mem':                     '{} MB'.format(size) }
         print('sending request to {} with data'.format(self.url), data)
-        r = requests.post(self.url, json = data, auth=auth)
+        r = requests.put(self.url, json = data, auth=auth)
         res = r.json()
         return res
+
+    def addSwap(self, size, laddr):
+        trans_name = 'swap' + str(self.count)
+
+        res = self.postRequest(size)
+        action.add_transport('{};rdma_uverbs;url,http://{}:2333;'.format(
+            trans_name, res)
+        trans = action.get_transport(trans_name, 'rdma')
+        return trans
 
 def main(_, action):
     print('makeing the swap call')

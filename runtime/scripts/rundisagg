@@ -135,13 +135,13 @@ def parse_memory_transports(mems):
 
     def parse(mem):
         args = mem
-        parNum = 0
+        parNum = '0'
         if '@' in mem:
             parNum, args = mem.split('@')
 
         args = args.split(':') 
 
-        if parNum == 0:
+        if int(parNum) <= 1:
             return [build(args)]
         else:
             transports = []
