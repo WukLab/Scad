@@ -271,7 +271,7 @@ class RackActor(rackInstance: RackSchedInstanceId, topsched: TopSchedInstanceId)
   implicit val logging: Logging = new AkkaLogging(context.system.log)
   val name = s"rack${rackInstance.toInt}"
 
-  val healthyTimeout: FiniteDuration = 60.seconds
+  val healthyTimeout: FiniteDuration = 10.seconds
 
   // This is done at this point to not intermingle with the state-machine
   // especially their timeouts.

@@ -165,7 +165,7 @@ kafka:
 
 kafka_connect_string: "{% set ret = [] %}\
                        {% for host in groups['kafkas'] %}\
-                         {{ ret.append( hostvars[host].ansible_host + ':' + ((kafka.advertisedPort+loop.index-1)|string) ) }}\
+                         {{ ret.append( host + ':' + ((kafka.advertisedPort+loop.index-1)|string) ) }}\
                        {% endfor %}\
                        {{ ret | join(',') }}"
 

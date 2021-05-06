@@ -172,11 +172,15 @@ class DepInvoker(invokerInstance: InvokerInstanceId, topSchedInstanceId: TopSche
               )
               transid.mark(this, LoggingMarkers.INVOKER_DEP_SCHED)
               publishToTopBalancer(message)
-                .onComplete(_ => {
-                  // once published, prewarm next objects in the DAG...
-                  if (controllerPrewarmConfig) {
-                    prewarmNextLevelDeps(message, obj)
-                  }
+                .onComplete({
+                  case Success(_) =>
+                    // once published, prewarm next objects in the DAG...
+                    if (controllerPrewarmConfig) {
+                      prewarmNextLevelDeps(message, obj)
+                    }
+                    logging.debug(this, s"published dep activation for ${obj.name} with ${message.activationId} to ${topschedTopic}")
+                  case Failure(exception) =>
+                    logging.warn(this, s"Failed to publish to topbalancer: ${exception}")
                 })
               Future.successful(message)
             }

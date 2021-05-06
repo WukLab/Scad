@@ -81,7 +81,7 @@ def send_request(req, verbose=False):
 
 
 def do_get_activation(host, activation_id, auth, verbose=False):
-    result = '{}/api/v1/namespaces/_/activations/{}/result'.format(host, activation_id)
+    result = '{}/api/v1/namespaces/_/activations/{}'.format(host, activation_id)
     logs = '{}/api/v1/namespaces/_/activations/{}/logs'.format(host, activation_id)
 
     # send_request lambda with some params filled in

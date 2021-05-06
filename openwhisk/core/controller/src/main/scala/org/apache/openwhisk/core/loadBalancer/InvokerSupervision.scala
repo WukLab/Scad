@@ -292,7 +292,7 @@ class InvokerActor(invokerInstance: InvokerInstanceId, controllerInstance: Contr
   implicit val logging: Logging = new AkkaLogging(context.system.log)
   val name = s"invoker${invokerInstance.toInt}"
 
-  val healthyTimeout: FiniteDuration = 60.seconds
+  val healthyTimeout: FiniteDuration = 10.seconds
 
   // This is done at this point to not intermingle with the state-machine
   // especially their timeouts.
