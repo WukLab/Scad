@@ -27,10 +27,9 @@ import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.WhiskConfig
 import org.apache.openwhisk.core.WhiskConfig.kafkaHosts
 import org.apache.openwhisk.core.WhiskConfig.wskApiHost
-import org.apache.openwhisk.core.connector.AcknowledegmentMessage
-import org.apache.openwhisk.core.connector.{ActivationMessage, MessageFeed, MessageProducer, MessagingProvider}
+import org.apache.openwhisk.core.connector.{AcknowledegmentMessage, ActivationMessage, MessageFeed, MessageProducer, MessagingProvider}
 import org.apache.openwhisk.core.containerpool.{ContainerPoolConfig, RuntimeResources}
-import org.apache.openwhisk.core.entity.{ActivationEntityLimit, ActivationId, ExecManifest, ExecutableWhiskActionMetaData, FullyQualifiedEntityName, InstanceId, InvokerInstanceId, RackSchedInstanceId, ResourceLimit, TimeLimit, UUID, WhiskActionMetaData, WhiskActivation, WhiskEntityStore}
+import org.apache.openwhisk.core.entity.{ActivationEntityLimit, ActivationId, ExecManifest, ExecutableWhiskActionMetaData, InstanceId, InvokerInstanceId, RackSchedInstanceId, TimeLimit, UUID, WhiskActionMetaData, WhiskActivation, WhiskEntityStore}
 import org.apache.openwhisk.core.loadBalancer.{ActivationEntry, FeedFactory, InvocationFinishedMessage, InvocationFinishedResult, InvokerHealth, ShardingContainerPoolBalancerConfig}
 import org.apache.openwhisk.spi.Spi
 import org.apache.openwhisk.spi.SpiLoader
@@ -52,6 +51,7 @@ import org.apache.openwhisk.core.loadBalancer.ShardingContainerPoolBalancerState
 
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.locks.ReentrantLock
 import scala.collection.concurrent.TrieMap
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext
@@ -153,8 +153,10 @@ class RackSimpleBalancer(config: WhiskConfig,
   // once int0 == int1, then the key should be removed from the map.
   // in the case of an error, the scheduling message will be removed after ~5 minutes if the number of expected scheduled
   // messages does not come through.
-  // the key of the map is (app activation ID, function activation ID, scheduled function name, parallelismIdx)
-  val preScheduled: mutable.Map[(ActivationId, ActivationId, FullyQualifiedEntityName), (InvokerInstanceId, ActivationId, Int, Int)] = mutable.Map.empty
+  // the key of the map is (app activation ID, function activation ID, scheduled function name)
+  val preschedLock = new ReentrantLock()
+  case class PreSchedKey(appId: ActivationId, funcId: ActivationId, msgFQEN: String)
+  val preScheduled: mutable.Map[PreSchedKey, (InvokerInstanceId, ActivationId, Int, Int)] = mutable.Map()
 
   /** Build a cluster of all loadbalancers */
   private val cluster: Option[Cluster] = if (loadConfigOrThrow[ClusterConfig](ConfigKeys.cluster).useClusterBootstrap) {
@@ -293,31 +295,36 @@ class RackSimpleBalancer(config: WhiskConfig,
           if (content > 1 && msg.prewarmOnly.isEmpty) {
             msg.appActivationId flatMap { appId =>
               msg.functionActivationId flatMap { funcId =>
-                val key = (appId, funcId, msg.action)
-                preScheduled.get(key) match {
-                  case Some(value) =>
-                    // this message came through the scheduler before..return the same result
-                    if (value._3 + 1 >= value._4) {
-                      // we've reached the max number of messages to schedule..let's get rid of it
-                      preScheduled.remove(key)
+                val key = PreSchedKey(appId, funcId, msg.action.qualifiedNameWithLeadingSlash)
+                try {
+                  preschedLock.lock()
+                  preScheduled.get(key) match {
+                    case Some(value) =>
+                      // this message came through the scheduler before..return the same result
+                      if (value._3 + 1 >= value._4) {
+                        // we've reached the max number of messages to schedule..let's get rid of it
+                        preScheduled.remove(key)
+                      } else {
+                        preScheduled.put(key, (value._1, value._2, value._3 + 1, value._4))
+                      }
                       Some((value._1, Some(value._2), false))
-                    } else {
-                      preScheduled.put(key, (value._1, value._2, value._3 + 1, value._4))
-                    }
-                    Some((value._1, Some(value._2), false))
-                  case None =>
-                    // we have not seen the message yet..schedule the result, then store the scheduling message
-                    // and set a timer to remove it
-                    defaultSchedule() match {
-                      case Some((value: InvokerInstanceId, _, check)) =>
-                        preScheduled.put(key, (value, msg.activationId, 1, content))
-                        actorSystem.getScheduler.scheduleOnce(FiniteDuration(5, MINUTES))(() => preScheduled.remove(key))
-                        // set NONE for previous activation ID is important in order to actually send the scheduling message
-                        // to the invoker.
-                        Some((value, None, check))
-                      case _ => None
-                    }
+                    case None =>
+                      // we have not seen the message yet..schedule the result, then store the scheduling message
+                      // and set a timer to remove it
+                      defaultSchedule() match {
+                        case Some((value: InvokerInstanceId, _, check)) =>
+                          preScheduled.put(key, (value, msg.activationId, 1, content))
+                          actorSystem.getScheduler.scheduleOnce(FiniteDuration(5, MINUTES))(() => preScheduled.remove(key))
+                          // set NONE for previous activation ID is important in order to actually send the scheduling message
+                          // to the invoker.
+                          Some((value, None, check))
+                        case _ => None
+                      }
+                  }
+                } finally {
+                  preschedLock.unlock()
                 }
+
               }
             }
           } else {
@@ -343,12 +350,10 @@ class RackSimpleBalancer(config: WhiskConfig,
       case Some((invoker, aid)) =>
         // MemoryLimit() and TimeLimit() return singletons - they should be fast enough to be used here
         val resourceLimit = action.limits.resources
-        val resourceLimitInfo = if (resourceLimit == ResourceLimit()) { "std" } else { "non-std" }
         val timeLimit = action.limits.timeout
-        val timeLimitInfo = if (timeLimit == TimeLimit()) { "std" } else { "non-std" }
         logging.info(
           this,
-          s"scheduled activation ${msg.activationId} to $invoker, (prewarmOnly: ${msg.prewarmOnly.isDefined}) action '${msg.action.asString}' ($actionType), ns '${msg.user.namespace.name.asString}', resource limit ${resourceLimit} (${resourceLimitInfo}), time limit ${timeLimit.duration.toMillis} ms (${timeLimitInfo})")
+          s"scheduled ${msg.activationId} to $invoker, action '${msg.action.asString}', prewarm: ${msg.prewarmOnly.isDefined}, ${resourceLimit}, time limit ${timeLimit.duration.toMillis}ms")
         val activationResult = setupActivation(msg, action, invoker)
         sendActivationToInvoker(messageProducer, msg, aid, invoker).map(_ => activationResult)
       case None =>
@@ -505,8 +510,6 @@ class RackSimpleBalancer(config: WhiskConfig,
     activationPromises.remove(aid).foreach(_.trySuccess(response))
     logging.info(this, s"received result ack for '$aid'")(tid)
   }
-
-
 
   /** 6. Process the completion ack and update the state */
   protected[sched] def processCompletion(aid: ActivationId,

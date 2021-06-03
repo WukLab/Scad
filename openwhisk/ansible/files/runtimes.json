@@ -101,7 +101,24 @@
                 "attached": {
                     "attachmentName": "codefile",
                     "attachmentType": "text/plain"
-                }
+                },
+                "stemCells": [
+                    {
+                        "initialCount": 5,
+                        "resources": {
+                            "cpu": 1.0,
+                            "mem": "256MB",
+                            "storage": "256MB"
+                        },
+                        "reactive": {
+                            "minCount": 4,
+                            "maxCount": 16,
+                            "ttl": "2 minutes",
+                            "threshold": 1,
+                            "increment": 1
+                        }
+                    }
+                ]
             }
         ],
         "swift": [

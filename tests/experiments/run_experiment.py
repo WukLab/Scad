@@ -48,8 +48,7 @@ def main():
   args = parser.parse_args()
   if not os.path.exists(args.experiment_dir) and not os.path.isdir(args.experiment_dir):
     print("experiment dir must exist")
-  if not os.path.exists(args.workload) and not os.path.isfile(args.workload):
-    print("workload file must exist")
+    sys.exit(1)
 
   print("wskgen")
   subprocess.check_call(shlex.split("{} -o {} {}".format(WSKGEN, ACTION, args.experiment_dir)))

@@ -1,0 +1,19 @@
+method,Element Length (ms),Per-Element Overhead (ms)
+Porus-2, 10, 11.73
+Porus-2, 100, 9
+Porus-2, 1000, 9.89
+Porus-8, 10, 12.4075
+Porus-8, 100, 9.3
+Porus-8, 1000, 15.295
+OpenWhisk-2, 10, 34.55
+OpenWhisk-2, 100, 33.1
+OpenWhisk-2, 1000, 31.64
+OpenWhisk-8, 10, 27.6575
+OpenWhisk-8, 100, 26.3375
+OpenWhisk-8, 1000, 31.83375
+AWS-2, 10, 114
+AWS-2, 100, 89.375
+AWS-2, 1000, 103.25
+AWS-8, 10, 96.59375
+AWS-8, 100, 63.125
+AWS-8, 1000, 60.65625

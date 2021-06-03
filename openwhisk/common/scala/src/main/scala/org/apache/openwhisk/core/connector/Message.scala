@@ -522,8 +522,8 @@ object DependencyInvocationMessage extends DefaultJsonProtocol {
   "activationId",
   "content",
   "dependency",
-  "appActivationId",
   "functionActivationId",
+  "appActivationId",
   "transid",
   "corunning")
 }

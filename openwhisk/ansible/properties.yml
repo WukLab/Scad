@@ -17,7 +17,7 @@
 ---
 # This playbook writes whisk.properties.
 
-- hosts: ansible
+- hosts: localhost
   tasks:
     - import_tasks: tasks/writeWhiskProperties.yml
       when: mode == "deploy"

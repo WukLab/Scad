@@ -44,6 +44,7 @@ import spray.json._
 import java.nio.charset.StandardCharsets
 import java.util.Objects
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.locks.ReentrantLock
 import scala.annotation.tailrec
 import scala.collection.concurrent.TrieMap
 import scala.collection.mutable
@@ -79,8 +80,10 @@ class DefaultTopBalancer(config: WhiskConfig,
   // once int0 == int1, then the key should be removed from the map
   // in the case of an error, the scheduling message will be removed after ~5 minutes if the number of expected scheduled
   // messages does not come through.
-  // the key of the map is (app activation ID, function activation ID, scheduled function name, parallelismIdx)
-  val preScheduled: mutable.Map[(ActivationId, ActivationId, FullyQualifiedEntityName), (RackSchedInstanceId, Int, Int)] = mutable.Map.empty
+  // the key of the map is (app activation ID, function activation ID, scheduled function name)
+  val preschedLock = new ReentrantLock()
+  case class PreSchedKey(appId: ActivationId, funcId: ActivationId, msgFQEN: String)
+  val preScheduled: mutable.Map[PreSchedKey, (RackSchedInstanceId, Int, Int)] = mutable.Map.empty
 
   protected val messageProducer: MessageProducer =
     messagingProvider.getProducer(config, Some(ActivationEntityLimit.MAX_ACTIVATION_LIMIT))
@@ -200,35 +203,41 @@ class DefaultTopBalancer(config: WhiskConfig,
           if (content > 1 && msg.prewarmOnly.isEmpty) {
             msg.appActivationId flatMap { appId =>
               msg.functionActivationId flatMap { funcId =>
-                val key = (appId, funcId, msg.action)
-                preScheduled.get(key) match {
-                  case Some(value) =>
-                    // this message came through the scheduler before..return the same result
-                    if (value._2 + 1 >= value._3) {
-                      // we've reached the max number of messages to schedule..let's get rid of it
-                      preScheduled.remove(key)
-                    } else {
-                      preScheduled.put(key, (value._1, value._2 + 1, value._3))
-                    }
-                    Some(value._1)
-                  case None =>
-                    // we have not seen the message yet..schedule the result, then store the scheduling message
-                    // and set a timer to remove it
-                    defaultSchedule() match {
-                      case Some(value) =>
-                        // waitForContent includes all previous nodes, but this activation msg is a parallelism copy,
-                        // then one of the nodes from "waitForContent" is parallelized, so substract 1, and add the
-                        // number of parallel copies
-                        val maxScheds = action.relationships match {
-                          case Some(value) =>
-                            msg.parallelismIdx.max * value.parents.length
-                          case None => msg.parallelismIdx.max
-                        }
-                        preScheduled.put(key, (value, 1, content + maxScheds))
-                        actorSystem.getScheduler.scheduleOnce(FiniteDuration(5, MINUTES))(() => preScheduled.remove(key))
-                        Some(value)
-                      case _ => None
-                    }
+                val key = PreSchedKey(appId, funcId, msg.action.qualifiedNameWithLeadingSlash)
+                try {
+                  preschedLock.lock()
+                  preScheduled.get(key) match {
+                    case Some(value) =>
+                      // this message came through the scheduler before..return the same result
+                      if (value._2 + 1 >= value._3) {
+                        // we've reached the max number of messages to schedule..let's get rid of it
+                        preScheduled.remove(key)
+                        logging.debug(this, s"removing $key from presched map: $value")
+                      } else {
+                        preScheduled.put(key, (value._1, value._2 + 1, value._3))
+                      }
+                      Some(value._1)
+                    case None =>
+                      // we have not seen the message yet..schedule the result, then store the scheduling message
+                      // and set a timer to remove it
+                      defaultSchedule() match {
+                        case Some(value) =>
+                          // waitForContent includes all previous nodes, but this activation msg is a parallelism copy,
+                          // then one of the nodes from "waitForContent" is parallelized, so substract 1, and add the
+                          // number of parallel copies
+                          val maxScheds = action.relationships match {
+                            case Some(value) =>
+                              msg.parallelismIdx.max * value.parents.length
+                            case None => msg.parallelismIdx.max
+                          }
+                          preScheduled.put(key, (value, 1, content + maxScheds))
+                          actorSystem.getScheduler.scheduleOnce(FiniteDuration(5, MINUTES))(() => preScheduled.remove(key))
+                          Some(value)
+                        case _ => None
+                      }
+                  }
+                } finally {
+                  preschedLock.unlock()
                 }
               }
             }
