@@ -191,12 +191,13 @@ class DefaultTopBalancer(config: WhiskConfig,
     if (racksToUse.nonEmpty) {
       val homeInvoker = hash % racksToUse.size
       val stepSize = stepSizes(hash % stepSizes.size)
-      val defaultSchedule = () =>
-        DefaultTopBalancer.schedule(action.limits.concurrency.maxConcurrent,
+      val defaultSchedule = () => DefaultTopBalancer.schedule(
+        action.limits.concurrency.maxConcurrent,
         action.fullyQualifiedName(true),
         racksToUse,
         homeInvoker,
-        stepSize)
+        stepSize,
+        msg.rerouteFromRack.map(x => x.toInt).getOrElse(Int.MinValue))
 
       val rack: Option[RackSchedInstanceId] = msg.waitForContent match {
         case Some(content) =>
@@ -401,15 +402,16 @@ object DefaultTopBalancer extends TopBalancerProvider {
                 racks: IndexedSeq[RackHealth],
                 index: Int,
                 step: Int,
-                stepsDone: Int = 0)(implicit logging: Logging, transId: TransactionId): Option[RackSchedInstanceId] = {
+                stepsDone: Int = 0,
+                rackSource: Int = Int.MinValue)(implicit logging: Logging, transId: TransactionId): Option[RackSchedInstanceId] = {
     val numRacks = racks.size
 
     if (numRacks > 0) {
       val rack = racks(index)
-      if (rack.status.isUsable) {
+      if (rack.status.isUsable && rack.id.toInt != rackSource) {
         Some(rack.id)
       } else {
-        // If we've gone through all invokers
+        // If we've gone through all racks
         if (stepsDone == numRacks + 1) {
           val healthyRacks = racks.filter(_.status.isUsable)
           if (healthyRacks.nonEmpty) {
@@ -422,7 +424,7 @@ object DefaultTopBalancer extends TopBalancerProvider {
           }
         } else {
           val newIndex = (index + step) % numRacks
-          schedule(maxConcurrent, fqn, racks, newIndex, step, stepsDone + 1)
+          schedule(maxConcurrent, fqn, racks, newIndex, step, stepsDone + 1, rackSource)
         }
       }
     } else {

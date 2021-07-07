@@ -286,8 +286,14 @@ class RackSimpleBalancer(config: WhiskConfig,
           action.limits.resources.limits,
           homeInvoker,
           stepSize,
-          swappingInvoker = msg.swapFrom) map { v =>
-        (v._1, None, v._2)
+          swappingInvoker = msg.swapFrom) flatMap { v =>
+        // Add additional condition that if we already have a re-route and it's our rack, that we attempt to
+        // schedule it anyways and make the assumption the top balancer could not find another rack for it.
+        if (v._2 && msg.rerouteFromRack.forall(f => f.toInt != rackschedInstance.toInt)) {
+          None
+        } else {
+          Some(v._1, None, v._2)
+        }
       }
 
       val invoker: Option[(InvokerInstanceId, Option[ActivationId], Boolean)] = msg.waitForContent match {
@@ -357,16 +363,21 @@ class RackSimpleBalancer(config: WhiskConfig,
         val activationResult = setupActivation(msg, action, invoker)
         sendActivationToInvoker(messageProducer, msg, aid, invoker).map(_ => activationResult)
       case None =>
+        logging.warn(this, s"system is overloaded. Re-routing through topsched")
         // report the state of all invokers
         val invokerStates = invokersToUse.foldLeft(Map.empty[InvokerState, Int]) { (agg, curr) =>
           val count = agg.getOrElse(curr.status, 0) + 1
           agg + (curr.status -> count)
         }
-
-        logging.error(
-          this,
-          s"failed to schedule activation ${msg.activationId}, action '${msg.action.asString}' ($actionType), ns '${msg.user.namespace.name.asString}' - invokers to use: $invokerStates")
-        Future.failed(LoadBalancerException("No invokers available"))
+        messageProducer.send("topsched", msg.copy(rerouteFromRack = Some(rackschedInstance))) .recoverWith {
+          case t: Throwable =>
+          logging.error(
+            this,
+            s"failed to re-route activation ${msg.activationId} to topsched: $t. action '${msg.action.asString}' ($actionType), ns '${msg.user.namespace.name.asString}' - invokers to use: $invokerStates")
+          Future.failed(LoadBalancerException(s"No invokers available, couldn't re-route to topsched: $t"))
+        } flatMap { x =>
+          Future.successful(Future.successful(Left(msg.activationId)))
+        }
     }
   }
 

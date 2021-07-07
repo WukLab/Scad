@@ -100,7 +100,6 @@ object Invoker {
     implicit val ec: ExecutionContext = actorSystem.getDispatcher
     val poolConfig: ContainerPoolConfig = loadConfigOrThrow[ContainerPoolConfig](ConfigKeys.containerPool)
     val limitConfig: ConcurrencyLimitConfig = loadConfigOrThrow[ConcurrencyLimitConfig](ConfigKeys.concurrencyLimit)
-    val assignedRack: Int = loadConfigOrThrow[Int](ConfigKeys.invokerRack)
 
     // Prepare Kamon shutdown
     CoordinatedShutdown(actorSystem).addTask(CoordinatedShutdown.PhaseActorSystemTerminate, "shutdownKamon") { () =>

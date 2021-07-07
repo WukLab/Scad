@@ -9,7 +9,7 @@ import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.connector.{ActivationMessage, DependencyInvocationMessage, Message, MessageProducer, ParallelismInfo, PartialPrewarmConfig, RunningActivation}
 import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.entity.SizeUnits.MB
-import org.apache.openwhisk.core.entity.{ActivationId, ActivationResponse, ByteSize, ExecutableWhiskAction, ExecutableWhiskActionMetaData, FullyQualifiedEntityName, Identity, InvokerInstanceId, TopSchedInstanceId, WhiskAction, WhiskActionMetaData, WhiskActionRelationship, WhiskActivation}
+import org.apache.openwhisk.core.entity.{ActivationId, ActivationResponse, ByteSize, ExecutableWhiskAction, ExecutableWhiskActionMetaData, FullyQualifiedEntityName, Identity, InvokerInstanceId, RackSchedInstanceId, TopSchedInstanceId, WhiskAction, WhiskActionMetaData, WhiskActionRelationship, WhiskActivation}
 import org.apache.openwhisk.core.entity.types.{AuthStore, EntityStore}
 import org.apache.openwhisk.core.scheduler.FinishActivation
 import pureconfig.loadConfigOrThrow
@@ -443,6 +443,7 @@ class ActivationWait()(implicit val logging: Logging) {
 
 class ActivationWaiter(runActor: ActorRef, msgProducer: MessageProducer)(implicit logging: Logging) extends Actor with Timers {
   val activations: mutable.Map[ActivationId, ActivationWait] = mutable.Map.empty
+  private val rackId: String = new RackSchedInstanceId(loadConfigOrThrow[Int](ConfigKeys.invokerRack), RuntimeResources.none()).toString
 
   override def receive: Receive = {
     case act: ActivationMessage =>
@@ -493,7 +494,7 @@ class ActivationWaiter(runActor: ActorRef, msgProducer: MessageProducer)(implici
       } else {
         logging.debug(this, "activation failed because not all dependencies were success")
         act.appActivationId.map(appId => {
-          msgProducer.send("topsched", FinishActivation(appId, ActivationResponse.applicationError(errMsg.get)))
+          msgProducer.send(rackId, FinishActivation(appId, ActivationResponse.applicationError(errMsg.get)))
         })
       }
       activations.remove(act.activationId)
