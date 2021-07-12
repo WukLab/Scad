@@ -7,9 +7,6 @@ import copy
 from visitor import *
 from symbolHelper import *
 
-# Project Config
-path = "test/lr.py"
-# path = "test/unitTest/lc_crteo.py"
 # function which we will not inline
 blackListFuncList = ["main", "append"]
 mainFuncName = "main"
@@ -216,36 +213,44 @@ def updateFuncOrderAndBlackList(definedFuncNameList, funcNameToNodeMap, mainFunc
     return resList
 
 
-# data strcuture preprocess
-src = open(path).read()
-srcModule = ast.parse(src)
-symbolSet = getSymbolSet(path)
-funcNameToNodeMap = utils.getFuncNameToNodeMap(srcModule.body)
-# list of functions that is defined by user except the mainFuncName we will inline
-definedFuncNameList = []
-for definedFuncName in funcNameToNodeMap.keys():
-    if definedFuncName != mainFuncName:
-        definedFuncNameList.append(definedFuncName)
+def inline(source):
+    # data strcuture preprocess
+    srcModule = ast.parse(source)
+    symbolSet = getSymbolSet(path)
+    funcNameToNodeMap = utils.getFuncNameToNodeMap(srcModule.body)
+    # list of functions that is defined by user except the mainFuncName we will inline
+    definedFuncNameList = []
+    for definedFuncName in funcNameToNodeMap.keys():
+        if definedFuncName != mainFuncName:
+            definedFuncNameList.append(definedFuncName)
 
-# rename variables in definedFuncs
-renameVisitorFuncName = copy.deepcopy(definedFuncNameList)
-srcModule = ReNameVariableVisitor(renameVisitorFuncName, blackListFuncList).visit(srcModule)
+    # rename variables in definedFuncs
+    renameVisitorFuncName = copy.deepcopy(definedFuncNameList)
+    srcModule = ReNameVariableVisitor(renameVisitorFuncName, blackListFuncList).visit(srcModule)
 
-# extend definedFuncs before extend the main functions
-definedFuncNameList = updateFuncOrderAndBlackList(definedFuncNameList, funcNameToNodeMap, mainFuncName)
+    # extend definedFuncs before extend the main functions
+    definedFuncNameList = updateFuncOrderAndBlackList(definedFuncNameList, funcNameToNodeMap, mainFuncName)
 
-# for definedFuncName in definedFuncNameList:
-#     defineFuncDefNode = funcNameToNodeMap[definedFuncName]
-#     defineFuncDefNode.body = InlineBody(defineFuncDefNode.body)
-#     funcNameToNodeMap[definedFuncName] = defineFuncDefNode
+    # for definedFuncName in definedFuncNameList:
+    #     defineFuncDefNode = funcNameToNodeMap[definedFuncName]
+    #     defineFuncDefNode.body = InlineBody(defineFuncDefNode.body)
+    #     funcNameToNodeMap[definedFuncName] = defineFuncDefNode
 
-mainFuncDefNode = funcNameToNodeMap[mainFuncName]
-mainFuncDefNode.body = InlineBody(mainFuncDefNode.body)
-InlineModule(srcModule, mainFuncName)
-code = astunparse.unparse(srcModule)
-print(code)
+    mainFuncDefNode = funcNameToNodeMap[mainFuncName]
+    mainFuncDefNode.body = InlineBody(mainFuncDefNode.body)
+    InlineModule(srcModule, mainFuncName)
+    code = astunparse.unparse(srcModule)
+    return code
 
-# mainFuncDefNode.body = InlineBody(mainFuncDefNode.body)
-# print(mainFuncDefNode.body)
-# code = astor.to_source(mainFuncDefNode)
-# print(code)
+    # mainFuncDefNode.body = InlineBody(mainFuncDefNode.body)
+    # print(mainFuncDefNode.body)
+    # code = astor.to_source(mainFuncDefNode)
+    # print(code)
+    
+
+if __name__ == '__main__':
+    # Project Config
+    path = "test/lr.py"
+    # path = "test/unitTest/lc_crteo.py"
+    inline(path)
+    
