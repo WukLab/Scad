@@ -8,8 +8,7 @@ import org.apache.openwhisk.common.tracing.WhiskTracerProvider
 import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.connector.{ActivationMessage, DependencyInvocationMessage, Message, MessageProducer, ParallelismInfo, PartialPrewarmConfig, RunningActivation}
 import org.apache.openwhisk.core.containerpool.RuntimeResources
-import org.apache.openwhisk.core.entity.SizeUnits.MB
-import org.apache.openwhisk.core.entity.{ActivationId, ActivationResponse, ByteSize, ExecutableWhiskAction, ExecutableWhiskActionMetaData, FullyQualifiedEntityName, Identity, InvokerInstanceId, RackSchedInstanceId, TopSchedInstanceId, WhiskAction, WhiskActionMetaData, WhiskActionRelationship, WhiskActivation}
+import org.apache.openwhisk.core.entity.{ActivationId, ActivationResponse, ExecutableWhiskAction, ExecutableWhiskActionMetaData, FullyQualifiedEntityName, Identity, InvokerInstanceId, RackSchedInstanceId, WhiskAction, WhiskActionMetaData, WhiskActionRelationship, WhiskActivation}
 import org.apache.openwhisk.core.entity.types.{AuthStore, EntityStore}
 import org.apache.openwhisk.core.scheduler.FinishActivation
 import pureconfig.loadConfigOrThrow
@@ -22,14 +21,14 @@ import scala.concurrent.duration.{Duration, FiniteDuration, SECONDS}
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
-class DepInvoker(invokerInstance: InvokerInstanceId, topSchedInstanceId: TopSchedInstanceId, msgProducer: MessageProducer)(
+class DepInvoker(invokerInstance: InvokerInstanceId, schedId: RackSchedInstanceId, msgProducer: MessageProducer)(
   implicit val ex: ExecutionContext,
   implicit val actorSystem: ActorSystem,
   implicit val entityStore: EntityStore,
   implicit val authStore: AuthStore,
   implicit val logging: Logging,
 ) extends Actor {
-  private val topschedTopic = topSchedInstanceId.topic
+  private val schedTopic: String = schedId.topic
   protected val controllerPrewarmConfig: Boolean =
     loadConfigOrThrow[Boolean](ConfigKeys.controllerDepPrewarm)
 
@@ -156,7 +155,7 @@ class DepInvoker(invokerInstance: InvokerInstanceId, topSchedInstanceId: TopSche
                 action.rev,
                 identity,
                 newActivation.objActivation, // activation id created here
-                topSchedInstanceId,
+                schedId,
                 blocking = false,
                 msg.content,
                 action.parameters.initParameters,
@@ -178,7 +177,7 @@ class DepInvoker(invokerInstance: InvokerInstanceId, topSchedInstanceId: TopSche
                     if (controllerPrewarmConfig) {
                       prewarmNextLevelDeps(message, obj)
                     }
-                    logging.debug(this, s"published dep activation for ${obj.name} with ${message.activationId} to ${topschedTopic}")
+                    // logging.debug(this, s"published dep activation for ${obj.name} with ${message.activationId} to ${schedTopic}")
                   case Failure(exception) =>
                     logging.warn(this, s"Failed to publish to topbalancer: ${exception}")
                 })
@@ -191,7 +190,7 @@ class DepInvoker(invokerInstance: InvokerInstanceId, topSchedInstanceId: TopSche
 
   private def publishToTopBalancer(activationMessage: ActivationMessage): Future[RecordMetadata] = {
     logging.debug(this, s"dep invoker scheduling action: ${activationMessage.activationId}")
-    msgProducer.send(topschedTopic, activationMessage)
+    msgProducer.send(schedTopic, activationMessage)
   }
 
   private def prewarmNextLevelDeps(activationMessage: ActivationMessage, obj: ExecutableWhiskActionMetaData)(implicit transid: TransactionId): Future[Unit] = {
@@ -199,7 +198,7 @@ class DepInvoker(invokerInstance: InvokerInstanceId, topSchedInstanceId: TopSche
       relationships.dependents.map(ref => {
         WhiskActionMetaData.get(entityStore, ref.getDocId()) flatMap { nextObj =>
           Future.successful(nextObj.toExecutableWhiskAction map { nextAction: ExecutableWhiskActionMetaData =>
-            val ppc = Some(PartialPrewarmConfig(1000, RuntimeResources(1, ByteSize(256, MB), ByteSize(0, MB))))
+            val ppc = Some(PartialPrewarmConfig(1000, nextObj.limits.resources.limits))
             implicit val tid: TransactionId = childOf(activationMessage.transid)
             val newMsg = activationMessage.copy(action = nextObj.fullyQualifiedName(false), transid = tid,
               prewarmOnly = ppc, waitForContent = None, sendResultToInvoker = None)
@@ -303,7 +302,7 @@ case class ResultWait()(implicit val logging: Logging, implicit val producer: Me
    */
   def drainQueue(): Unit = {
     activation foreach { act =>
-      decisions.foreach(d => sendResponse(act, d, enterTime))
+      decisions.dequeueAll(_ => true).foreach(d => sendResponse(act, d, enterTime))
     }
   }
 
@@ -471,6 +470,7 @@ class ActivationWaiter(runActor: ActorRef, msgProducer: MessageProducer)(implici
   }
 
   def addDepResult(currentWait: ActivationWait, depResultMessage: Option[DepResultMessage] = None, activationMsg: Option[ActivationMessage] = None): Unit = {
+    // logging.debug(this, s"adding dep result: ${currentWait}, result: ${depResultMessage}, act: ${activationMsg}")
     depResultMessage.foreach(dep => {
       currentWait.addDepResult(dep)
     })
@@ -481,7 +481,7 @@ class ActivationWaiter(runActor: ActorRef, msgProducer: MessageProducer)(implici
     if (currentWait.hasAllDeps){
       val act = currentWait.activationMsg.get
       val errMsg: Option[String] = currentWait.getErrors
-      logging.debug(this, s"activationWait err messages is ${errMsg}")
+      // logging.debug(this, s"activationWait err messages is ${errMsg}")
       if (errMsg.isEmpty) {
         val depSibs: Seq[RunningActivation] = currentWait.results.map(_.siblings).filter(_.isDefined).flatMap(_.get)
         val sibs: Option[Seq[RunningActivation]] = act.siblings match {
@@ -492,7 +492,7 @@ class ActivationWaiter(runActor: ActorRef, msgProducer: MessageProducer)(implici
         runActor ! act.copy(content = Some(currentWait.joinDeps()), waitForContent = None, siblings = sibs)
         act.transid.mark(this, LoggingMarkers.INVOKER_ACTIVATION_LEAVE_ACTIVATION_WAITER)
       } else {
-        logging.debug(this, "activation failed because not all dependencies were success")
+        logging.debug(this, s"activation ${act.appActivationId} failed because not all dependencies were success")
         act.appActivationId.map(appId => {
           msgProducer.send(rackId, FinishActivation(appId, ActivationResponse.applicationError(errMsg.get)))
         })
@@ -503,7 +503,7 @@ class ActivationWaiter(runActor: ActorRef, msgProducer: MessageProducer)(implici
   }
 
   def newContainer(activationId: ActivationId, res: Option[DepResultMessage] = None, activationMsg: Option[ActivationMessage] = None): Unit = {
-    logging.debug(this, s"Adding new activationWait container; ${activationId}")
+    // logging.debug(this, s"Adding new activationWait container; ${activationId}")
     val container = new ActivationWait();
     res foreach { dep =>
       container.addDepResult(dep)

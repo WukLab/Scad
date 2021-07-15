@@ -307,6 +307,7 @@ class RackSimpleBalancer(config: WhiskConfig,
                   preScheduled.get(key) match {
                     case Some(value) =>
                       // this message came through the scheduler before..return the same result
+                      // logging.debug(this, s"found presched ${msg.activationId}: $key")
                       if (value._3 + 1 >= value._4) {
                         // we've reached the max number of messages to schedule..let's get rid of it
                         preScheduled.remove(key)
@@ -319,7 +320,9 @@ class RackSimpleBalancer(config: WhiskConfig,
                       // and set a timer to remove it
                       defaultSchedule() match {
                         case Some((value: InvokerInstanceId, _, check)) =>
-                          preScheduled.put(key, (value, msg.activationId, 1, content))
+                          val v = (value, msg.activationId, 1, content)
+                          preScheduled.put(key, v)
+                          logging.debug(this, s"putting presched ${msg.activationId}: $key #### $v")
                           actorSystem.getScheduler.scheduleOnce(FiniteDuration(5, MINUTES))(() => preScheduled.remove(key))
                           // set NONE for previous activation ID is important in order to actually send the scheduling message
                           // to the invoker.
@@ -369,14 +372,21 @@ class RackSimpleBalancer(config: WhiskConfig,
           val count = agg.getOrElse(curr.status, 0) + 1
           agg + (curr.status -> count)
         }
-        messageProducer.send("topsched", msg.copy(rerouteFromRack = Some(rackschedInstance))) .recoverWith {
-          case t: Throwable =>
-          logging.error(
-            this,
-            s"failed to re-route activation ${msg.activationId} to topsched: $t. action '${msg.action.asString}' ($actionType), ns '${msg.user.namespace.name.asString}' - invokers to use: $invokerStates")
-          Future.failed(LoadBalancerException(s"No invokers available, couldn't re-route to topsched: $t"))
-        } flatMap { x =>
-          Future.successful(Future.successful(Left(msg.activationId)))
+        if (msg.rerouteFromRack.isDefined) {
+          // was already re-routed and couldn't be scheduled again. To prevent scheduling loop, cancel the message and
+          // mark the scheduling as failed.
+          logging.error(this, s"Message was already re-routed and couldn't be scheduled again. Failing activation: ${msg.activationId}")
+          Future.failed(LoadBalancerException(s"no invokers available and already re-routed. Activation ${msg.activationId} failed"))
+        } else {
+          messageProducer.send("topsched", msg.copy(rerouteFromRack = Some(rackschedInstance))) .recoverWith {
+            case t: Throwable =>
+              logging.error(
+                this,
+                s"failed to re-route activation ${msg.activationId} to topsched: $t. action '${msg.action.asString}' ($actionType), ns '${msg.user.namespace.name.asString}' - invokers to use: $invokerStates")
+              Future.failed(LoadBalancerException(s"No invokers available, couldn't re-route to topsched: $t"))
+          } flatMap { x =>
+            Future.successful(Future.successful(Left(msg.activationId)))
+          }
         }
     }
   }

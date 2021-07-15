@@ -69,8 +69,8 @@ class InvokerReactive(
   implicit val ec: ExecutionContext = actorSystem.dispatcher
   implicit val cfg: WhiskConfig = config
 
-  private val rackId = loadConfigOrThrow[Int](ConfigKeys.invokerRack)
-  private val rackHealthTopic = RackSchedInstanceId.rackSchedHealthTopic(rackId)
+  private val rackId: RackSchedInstanceId = new RackSchedInstanceId(loadConfigOrThrow[Int](ConfigKeys.invokerRack), RuntimeResources.none())
+  private val rackHealthTopic = RackSchedInstanceId.rackSchedHealthTopic(rackId.toInt)
   logging.debug(this, s"rack health topic is ${rackHealthTopic}")
 
   private val logsProvider = SpiLoader.get[LogStoreProvider].instance(actorSystem)
@@ -159,9 +159,11 @@ class InvokerReactive(
   private val activationWaiter: ActorRef = actorSystem.actorOf(Props {
     new ActivationWaiter(activationProcessor, msgProducer)
   })
+
+
   private val dependencyScheduler: ActorRef = actorSystem.actorOf(Props {
     // instance ID doesn't matter as current impl only supports one topscheduler. The topic is always the same.
-    new DepInvoker(instance, new TopSchedInstanceId("0"), msgProducer)
+    new DepInvoker(instance, rackId, msgProducer)
   })
 
   //number of peeked messages - increasing the concurrentPeekFactor improves concurrent usage, but adds risk for message loss in case of crash
@@ -223,11 +225,10 @@ class InvokerReactive(
    def handlePrewarmMessage(msg: ActivationMessage, partialConfig: PartialPrewarmConfig)(implicit transid: TransactionId): Future[Unit] = {
      val namespace = msg.action.path
      val name = msg.action.name
-     val actionid = FullyQualifiedEntityName(namespace, name).toDocId.asDocInfo(msg.revision)
+     val actionid = FullyQualifiedEntityName(namespace, name).toDocId
      val subject = msg.user.subject
      logging.debug(this, s"handling prewarm message: ${actionid.id} $subject ${msg.activationId}")
-     WhiskAction
-       .get(entityStore, actionid.id, actionid.rev, fromCache = actionid.rev != DocRevision.empty)
+     WhiskAction.get(entityStore, actionid)
        .flatMap(action => {
          action.toExecutableWhiskAction match {
            case Some(executable) =>

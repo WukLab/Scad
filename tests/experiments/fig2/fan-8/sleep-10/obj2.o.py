@@ -5,5 +5,5 @@
 import time
 
 def main(params, action):
-    time.sleep(.1)
+    time.sleep(.01)
     return {"index": "1"}

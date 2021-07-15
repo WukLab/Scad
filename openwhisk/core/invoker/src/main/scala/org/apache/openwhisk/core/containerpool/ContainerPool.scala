@@ -31,6 +31,8 @@ import cats.implicits._
 import org.apache.openwhisk.core.ConfigKeys
 import pureconfig.loadConfigOrThrow
 
+import java.util.concurrent.atomic.LongAdder
+
 sealed trait WorkerState
 case object Busy extends WorkerState
 case object Free extends WorkerState
@@ -472,6 +474,8 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       }
   }
 
+  var totalPrewarms: LongAdder = new LongAdder()
+
   /**
    * Takes a prewarm container out of the prewarmed pool
    * iff a container with a matching kind and memory is found.
@@ -480,10 +484,12 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
    * @return the container iff found
    */
   def takePrewarmContainer(action: ExecutableWhiskAction): Option[(ActorRef, ContainerData)] = {
+    totalPrewarms.increment()
+    logging.debug(this, s"total taken prewarms: ${totalPrewarms.sum()}")
     val kind = action.exec.kind
     val resources = action.limits.resources.limits
     val now = Deadline.now
-    prewarmedPool.toSeq
+    val x = prewarmedPool.toSeq
       .sortBy(_._2.expires.getOrElse(now))
       .find {
         case (_, PreWarmedData(_, `kind`, `resources`, _, _)) => true
@@ -504,6 +510,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
           prewarmContainer(action.exec, resources, ttl)
           (ref, data)
       }
+    x
   }
 
   /** Removes a container and updates state accordingly. */
@@ -580,7 +587,7 @@ object ContainerPool {
   protected[containerpool] def schedule[A](action: ExecutableWhiskAction,
                                            invocationNamespace: EntityName,
                                            idles: Map[A, ContainerData]): Option[(A, ContainerData)] = {
-    idles
+    val x = idles
       .find {
         case (_, c @ WarmedData(_, `invocationNamespace`, `action`, _, _, _)) if c.hasCapacity() => true
         case _                                                                                   => false
@@ -597,6 +604,7 @@ object ContainerPool {
           case _                                                                                  => false
         }
       }
+    x
   }
 
   /**
