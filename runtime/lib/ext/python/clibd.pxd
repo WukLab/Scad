@@ -22,6 +22,9 @@ cdef extern from "libd.h":
     int libd_action_config_transport(libd_action* action, char* name, char* durl);
     libd_transport* libd_action_get_transport(libd_action* action, char* name);
 
+    # transport
+    int libd_transport_query(libd_transport * transport);
+
     # plugin
     int libd_plugin_invoke(libd_action * action,
                     const char * name, int cmd, void * args);

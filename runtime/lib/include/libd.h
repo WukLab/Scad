@@ -109,6 +109,8 @@ struct libd_t {
 // void * libd_transport_modify (struct libd_transport, int target, void ** args);
 // State machine
 
+int libd_transport_query     (struct libd_transport * trans); 
+
 int libd_transport_init      (struct libd_transport * trans); 
 int libd_transport_connect   (struct libd_transport * trans);
 int libd_transport_recover   (struct libd_transport * trans); // error -> init

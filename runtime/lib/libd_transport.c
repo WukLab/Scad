@@ -58,6 +58,10 @@ int libd_transport_recover   (struct libd_transport * trans) {
     return -ENOSYS;
 }
 
+int libd_transport_query     (struct libd_transport * trans) {
+    return trans->tstate->state;
+}
+
 int libd_transport_terminate (struct libd_transport * trans) {
     if ((trans->_impl->terminate(trans)) < 0)
         return 0;
