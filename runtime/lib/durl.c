@@ -4,6 +4,7 @@
 #include <errno.h>
 
 #include "libd.h"
+#include "libd_transport.h"
 #include "map.h"
 
 static int parse_string(char **curp, char **dstp, char sep) {

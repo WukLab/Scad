@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "libd.h"
+#include "libd_transport.h"
 
 #define BUFFER_SIZE      (1024 * 64)
 #define BUFFER_THRESHOLD (1024 * 2)

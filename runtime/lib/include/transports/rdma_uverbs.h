@@ -2,6 +2,7 @@
 #define _RDMA_UVERBS_H
 
 #include "libd.h"
+#include "libd_transport.h"
 #include <infiniband/verbs.h>
 
 #define RDMA_PROTOCOL_IB (0)

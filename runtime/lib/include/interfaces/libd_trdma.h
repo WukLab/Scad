@@ -3,6 +3,10 @@
 
 #include "libd.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
 // RDMA, only read and write
 struct libd_trdma {
     struct libd_t trans;
@@ -15,6 +19,10 @@ struct libd_trdma {
 void * libd_trdma_reg   (struct libd_transport * trans, size_t size, void * buf);
 int libd_trdma_read  (struct libd_transport * trans, size_t size, uint64_t addr, void * buf);
 int libd_trdma_write (struct libd_transport * trans, size_t size, uint64_t addr, void * buf);
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
 
 #endif
 
