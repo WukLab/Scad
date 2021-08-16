@@ -1,0 +1,9 @@
+rules:
+  - fix: {{remoteArray}}[...]
+    id: replace-array-index
+    languages:
+      - python
+    message: >-
+        Replace Remote Array Reference with Remote Array Library
+    pattern: {{array}}[...]
+    severity: WARNING
