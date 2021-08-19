@@ -3,6 +3,7 @@
 #include "libd.h"
 #include "libd_transport.h"
 #include "interfaces/libd_trdma.h"
+#include "stdatomic.h"
 
 #define operation_start(ret,trans,cur) \
     operation(ret,trans,cur); \
@@ -39,6 +40,55 @@ int libd_trdma_read  (struct libd_transport * trans, size_t size, uint64_t addr,
     }
 
     trans->tstate->counters.rx_bytes += size;
+    success();
+    return ret;
+}
+
+int libd_trdma_read_async (struct libd_transport * trans, size_t size, uint64_t addr, void * buf) {
+    int ret;
+
+    operation_start(ret, trans, LIBD_TRANS_STATE_READY);
+    
+    unsigned int id = atomic_fetch_add(&trans->id_head, 1)
+    ret = transport_handler(libd_trdma, trans, read_async)(trans, size, addr, buf, id);
+    if (ret != 0) {
+        abort();
+        return ret;
+    }
+
+    trans->tstate->counters.rx_bytes += size;
+    success();
+    return ret;
+}
+
+int libd_trdma_write_async (struct libd_transport * trans, size_t size, uint64_t addr, void * buf) {
+    int ret;
+
+    operation_start(ret, trans, LIBD_TRANS_STATE_READY);
+    
+    unsigned int id = atomic_fetch_add(&trans->id_head, 1)
+    ret = transport_handler(libd_trdma, trans, read_async)(trans, size, addr, buf, id);
+    if (ret != 0) {
+        abort();
+        return ret;
+    }
+    
+    trans->tstate->counters.tx_bytes += size;
+    success();
+    return ret;
+}
+
+int libd_trdma_poll (int id) {
+    int ret;
+
+    operation_start(ret, trans, LIBD_TRANS_STATE_READY);
+    
+    ret = transport_handler(libd_trdma, trans, poll)(id);
+    if (ret != 0) {
+        abort();
+        return ret;
+    }
+    
     success();
     return ret;
 }

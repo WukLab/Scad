@@ -12,6 +12,8 @@
 #include "interfaces/libd_trdma.h"
 #include "transports/rdma_uverbs.h"
 
+#define LIBD_TRDMA_UVERBS_MAX_POLL_SIZE (16)
+
 // create a static protected domain that shares among all buffers
 static struct ibv_pd      *_pd      = NULL;
 static struct ibv_context *_context = NULL;
@@ -61,7 +63,7 @@ static int client_exchange_info(struct rdma_conn *conn, const char * url) {
 
 // TODO: async requests
 static inline int _request(struct rdma_conn * conn, size_t size, int opcode,
-                uint64_t local_addr, uint64_t remote_addr) {
+                uint64_t local_addr, uint64_t remote_addr, int sync) {
     int ret;
     struct ibv_wc wc;
     int bytes;
@@ -87,7 +89,9 @@ static inline int _request(struct rdma_conn * conn, size_t size, int opcode,
 
     // Send and poll
 	ibv_post_send(conn->qp, &wr, &badwr);
-	while ((bytes = ibv_poll_cq(conn->cq, 1, &wc)) == 0) ;
+
+    if (sync) 
+        while ((bytes = ibv_poll_cq(conn->cq, 1, &wc)) == 0) ;
 	return 0;
 }
 
@@ -200,18 +204,47 @@ static int _read(struct libd_transport *trans,
                 size_t size, uint64_t addr, void * buf) {
     get_local_state(rstate,trans,struct uverbs_rdma_state);
     return _request(&rstate->conn, size, IBV_WR_RDMA_READ,
-                    (uint64_t)buf, addr);
+                    (uint64_t)buf, addr, 1);
 }
 
 static int _write(struct libd_transport *trans,
                   size_t size, uint64_t addr, void * buf) {
     get_local_state(rstate,trans,struct uverbs_rdma_state);
     return _request(&rstate->conn, size, IBV_WR_RDMA_WRITE,
-                    (uint64_t)buf, addr);
+                    (uint64_t)buf, addr, 1);
 }
 
-static int _not_implemented_async_write() {
-    return -1;
+static int _async_write() {
+    get_local_state(rstate,trans,struct uverbs_rdma_state);
+    return _request(&rstate->conn, size, IBV_WR_RDMA_READ,
+                    (uint64_t)buf, addr, 0);
+}
+static int _async_read() {
+    get_local_state(rstate,trans,struct uverbs_rdma_state);
+    return _request(&rstate->conn, size, IBV_WR_RDMA_READ,
+                    (uint64_t)buf, addr, 0);
+}
+static int _async_poll(struct libd_transport * trans, int id) {
+    get_local_state(rstate,trans,struct uverbs_rdma_state);
+    // TODO: uint overroll
+    struct ibv_wc wc[LIBD_TRDMA_UVERBS_MAX_POLL_SIZE];
+    if (id < rstate->id_tail) {
+        return 0;
+    }
+
+    for (;;) {
+        unsigned poll_size = rstate->id_head - rstate->id_tail;
+        unsigned id = 0;
+        unsigned size = 0;
+        poll_size = poll_size > LIBD_TRDMA_UVERBS_MAX_POLL_SIZE ?
+                    poll_size : LIBD_TRDMA_UVERBS_MAX_POLL_SIZE;
+        size = ibv_poll_cq(conn->cq, poll_size, &wc[0]);
+        // we assume the requests is in seq
+        // TODO: check inc but fail?
+        atomic_fetch_add(&rstate->id_tail, size);
+        if (id < rstate->id_tail)
+            return 0;
+    }
 }
 
 // export struct
@@ -224,6 +257,9 @@ struct libd_trdma rdma_uverbs = {
 
     .reg = _reg,
     .read = _read,
-    .write = _write
+    .write = _write,
+    .write_async = _write_async,
+    .read_async = _read_async,
+    .poll_async = _poll_async
 };
 
