@@ -26,24 +26,7 @@
                 "attached": {
                     "attachmentName": "codefile",
                     "attachmentType": "text/plain"
-                },
-                "stemCells": [
-                    {
-                        "initialCount": 2,
-                        "resources": {
-                            "cpu": 1.0,
-                            "mem": "256MB",
-                            "storage": "256MB"
-                        },
-                        "reactive": {
-                            "minCount": 1,
-                            "maxCount": 4,
-                            "ttl": "2 minutes",
-                            "threshold": 1,
-                            "increment": 1
-                        }
-                    }
-                ]
+                }
             },
             {
                 "kind": "nodejs:12",

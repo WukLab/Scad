@@ -58,3 +58,6 @@ invoker_container_network_name: poros
 container_network: poros
 cli_tag: "latest"
 db_host: wuklab-02.ucsd.edu
+dependency_prewarm: "true"
+container_pool_prewarm_expirationCheckInterval: 5 seconds
+containerProxy_timeouts_idleContainer: 20 seconds

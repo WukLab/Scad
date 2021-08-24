@@ -387,7 +387,9 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
     case AdjustPrewarmedContainer =>
       adjustPrewarmedContainer(false, true)
+      logging.debug(this, s"freePool (${freePool.size}) ${freePool.values}, busyPool(${busyPool.size}): ${busyPool.values}, prewarmed (${prewarmedPool.size}): ${prewarmedPool.values}")
     case warm: PrewarmContainer =>
+      logging.debug(this, s"prewarming container ${warm.action.name} with TTL: ${warm.msg.ttlMs}ms")
       prewarmContainer(warm.action.exec, warm.msg.resources, Some(FiniteDuration(warm.msg.ttlMs, MILLISECONDS)))
   }
 
@@ -663,24 +665,24 @@ object ContainerPool {
     val expireds = prewarmConfig
       .flatMap { config =>
         val kind = config.exec.kind
-        val memory = config.resources
         config.reactive
           .map { c =>
+            val exps = prewarmedPool.toSeq.map(f => f._2.isExpired())
             val expiredPrewarmedContainer = prewarmedPool.toSeq
               .filter { warmInfo =>
                 warmInfo match {
-                  case (_, p @ PreWarmedData(_, `kind`, `memory`, _, _)) if p.isExpired() => true
+                  case (_, p @ PreWarmedData(_, `kind`, _, _, _)) if p.isExpired() => true
                   case _                                                                  => false
                 }
               }
               .sortBy(_._2.expires.getOrElse(now))
 
             // emit expired container counter metric with memory + kind
-            MetricEmitter.emitCounterMetric(LoggingMarkers.CONTAINER_POOL_PREWARM_EXPIRED(memory.toString, kind))
+            MetricEmitter.emitCounterMetric(LoggingMarkers.CONTAINER_POOL_PREWARM_EXPIRED(null, kind))
             if (expiredPrewarmedContainer.nonEmpty) {
               logging.info(
                 this,
-                s"[kind: ${kind} resources: ${memory.toString}] ${expiredPrewarmedContainer.size} expired prewarmed containers")
+                s"[kind: ${kind}] ${expiredPrewarmedContainer.size} expired prewarmed containers")
             }
             expiredPrewarmedContainer.map(e => (e._1, e._2.expires.getOrElse(now)))
           }

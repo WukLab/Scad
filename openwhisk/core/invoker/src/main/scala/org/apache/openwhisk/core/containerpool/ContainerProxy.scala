@@ -312,7 +312,7 @@ class ContainerProxy(factory: (TransactionId,
         poolConfig.cpuShare(job.resources),
         None)
         .map(container =>
-          PreWarmCompleted(PreWarmedData(container, job.exec.kind, job.resources, expires = job.ttl.map(_.fromNow))))
+          PreWarmCompleted(PreWarmedData(container, job.exec.kind, job.resources, expires = job.ttl.map(_.fromNow).orElse(Some(poolConfig.prewarmExpirationCheckInterval.fromNow) ))))
         .pipeTo(self)
 
       goto(Starting)
@@ -348,7 +348,7 @@ class ContainerProxy(factory: (TransactionId,
             // the container is ready to accept an activation; register it as PreWarmed; this
             // normalizes the life cycle for containers and their cleanup when activations fail
             self ! PreWarmCompleted(
-              PreWarmedData(container, job.action.exec.kind, job.action.limits.resources.limits, 1, expires = None))
+              PreWarmedData(container, job.action.exec.kind, job.action.limits.resources.limits, 1, expires = Some(poolConfig.prewarmExpirationCheckInterval.fromNow)))
 
           case Failure(t) =>
             // the container did not come up cleanly, so disambiguate the failure mode and then cleanup

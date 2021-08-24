@@ -7,13 +7,14 @@ import org.apache.openwhisk.common.TransactionId.childOf
 import org.apache.openwhisk.common.tracing.WhiskTracerProvider
 import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.connector.{ActivationMessage, DependencyInvocationMessage, Message, MessageProducer, ParallelismInfo, PartialPrewarmConfig, RunningActivation}
-import org.apache.openwhisk.core.containerpool.RuntimeResources
+import org.apache.openwhisk.core.containerpool.{ContainerProxyTimeoutConfig, RuntimeResources}
 import org.apache.openwhisk.core.entity.{ActivationId, ActivationResponse, ExecutableWhiskAction, ExecutableWhiskActionMetaData, FullyQualifiedEntityName, Identity, InvokerInstanceId, RackSchedInstanceId, WhiskAction, WhiskActionMetaData, WhiskActionRelationship, WhiskActivation}
 import org.apache.openwhisk.core.entity.types.{AuthStore, EntityStore}
 import org.apache.openwhisk.core.scheduler.FinishActivation
 import pureconfig.loadConfigOrThrow
 import spray.json.{DefaultJsonProtocol, RootJsonFormat}
 import spray.json._
+import pureconfig.generic.auto._
 
 import java.time.Instant
 import scala.collection.mutable
@@ -31,6 +32,8 @@ class DepInvoker(invokerInstance: InvokerInstanceId, schedId: RackSchedInstanceI
   private val schedTopic: String = schedId.topic
   protected val controllerPrewarmConfig: Boolean =
     loadConfigOrThrow[Boolean](ConfigKeys.controllerDepPrewarm)
+
+  val timeouts: ContainerProxyTimeoutConfig = loadConfigOrThrow[ContainerProxyTimeoutConfig](ConfigKeys.containerProxyTimeouts)
 
   protected val useRdma: Boolean = loadConfigOrThrow[Boolean](ConfigKeys.useRdma)
 
@@ -170,12 +173,12 @@ class DepInvoker(invokerInstance: InvokerInstanceId, schedId: RackSchedInstanceI
                 parallelismIdx = parallelismIndex,
               )
               transid.mark(this, LoggingMarkers.INVOKER_DEP_SCHED)
-              publishToTopBalancer(message)
+              DepInvoker.publishToTopBalancer(message, msgProducer, schedTopic)
                 .onComplete({
                   case Success(_) =>
                     // once published, prewarm next objects in the DAG...
                     if (controllerPrewarmConfig) {
-                      prewarmNextLevelDeps(message, obj)
+                      DepInvoker.prewarmNextLevelDeps(message, obj, entityStore, msgProducer, schedTopic, timeouts.idleContainer)
                     }
                     // logging.debug(this, s"published dep activation for ${obj.name} with ${message.activationId} to ${schedTopic}")
                   case Failure(exception) =>
@@ -188,30 +191,35 @@ class DepInvoker(invokerInstance: InvokerInstanceId, schedId: RackSchedInstanceI
     }
   }
 
-  private def publishToTopBalancer(activationMessage: ActivationMessage): Future[RecordMetadata] = {
+
+
+
+}
+
+object DepInvoker {
+  val ACTION_TIMEOUT: FiniteDuration = Duration(30, SECONDS)
+
+  def publishToTopBalancer(activationMessage: ActivationMessage, msgProducer: MessageProducer, schedTopic: String)(implicit logging: Logging): Future[RecordMetadata] = {
     logging.debug(this, s"dep invoker scheduling action: ${activationMessage.activationId}")
     msgProducer.send(schedTopic, activationMessage)
   }
 
-  private def prewarmNextLevelDeps(activationMessage: ActivationMessage, obj: ExecutableWhiskActionMetaData)(implicit transid: TransactionId): Future[Unit] = {
+  def prewarmNextLevelDeps(activationMessage: ActivationMessage, obj: ExecutableWhiskActionMetaData, entityStore: EntityStore,
+                           msgProducer: MessageProducer, schedTopic: String, prewarmTimeout: FiniteDuration)(implicit transid: TransactionId, logging: Logging, ec: ExecutionContext): Future[Unit] = {
     Future.successful(obj.relationships.map(relationships => {
       relationships.dependents.map(ref => {
         WhiskActionMetaData.get(entityStore, ref.getDocId()) flatMap { nextObj =>
           Future.successful(nextObj.toExecutableWhiskAction map { nextAction: ExecutableWhiskActionMetaData =>
-            val ppc = Some(PartialPrewarmConfig(1000, nextObj.limits.resources.limits))
+            val ppc = Some(PartialPrewarmConfig(prewarmTimeout.toMillis, nextObj.limits.resources.limits))
             implicit val tid: TransactionId = childOf(activationMessage.transid)
             val newMsg = activationMessage.copy(action = nextObj.fullyQualifiedName(false), transid = tid,
               prewarmOnly = ppc, waitForContent = None, sendResultToInvoker = None)
-            publishToTopBalancer(newMsg)
+            publishToTopBalancer(newMsg, msgProducer, schedTopic)
           })
         }
       })
     }))
   }
-}
-
-object DepInvoker {
-  val ACTION_TIMEOUT: FiniteDuration = Duration(30, SECONDS)
 }
 
 case class DepResultMessage(activationId: ActivationId, nextActivationId: ActivationId, whiskActivation: WhiskActivation, siblings: Option[Seq[RunningActivation]]) extends Message {

@@ -246,9 +246,11 @@ class RackSimpleBalancer(config: WhiskConfig,
         case _ => activationFeed ! MessageFeed.Processed
       }.map { activation =>
       implicit val transid: TransactionId = activation.transid
+      val fin = transid.started(this, LoggingMarkers.RACKSCHED_SCHED_BEGIN)
       WhiskActionMetaData.resolveActionAndMergeParameters(entityStore, activation.action, activation.appActivationId) onComplete {
         case Success(metadata) =>
           publish(metadata.toExecutableWhiskAction.get, activation)
+            .onComplete(_ => transid.finished(this, fin, "finished scheduling"))
         case Failure(exception) =>
           logging.error(this, s"Failed to publish rack activation: $exception")
       }
@@ -268,7 +270,6 @@ class RackSimpleBalancer(config: WhiskConfig,
   /** 1. Publish a message to the rackLoadBalancer */
   override def publish(action: ExecutableWhiskActionMetaData, msg: ActivationMessage)(
     implicit transid: TransactionId): Future[Future[Either[ActivationId, WhiskActivation]]] = {
-    transid.mark(this, LoggingMarkers.RACKSCHED_SCHED_BEGIN)
     val isBlackboxInvocation = action.exec.pull
     val actionType = if (!isBlackboxInvocation) "managed" else "blackbox"
     val (invokersToUse, stepSizes) =
@@ -668,7 +669,6 @@ class RackSimpleBalancer(config: WhiskConfig,
     if (prevActivationId.isEmpty) {
       producer.send(topic, sentMsg).andThen {
         case Success(status) =>
-          transid.mark(this, LoggingMarkers.RACKSCHED_SCHED_END)
           transid.finished(
             this,
             start,
