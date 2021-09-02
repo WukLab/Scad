@@ -22,7 +22,7 @@ import scala.concurrent.duration.{Duration, FiniteDuration, SECONDS}
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
-class DepInvoker(invokerInstance: InvokerInstanceId, schedId: RackSchedInstanceId, msgProducer: MessageProducer)(
+class DepInvoker(invokerInstance: InvokerInstanceId, schedId: RackSchedInstanceId, msgProducer: MessageProducer, prewarmDeadlineCache: PrewarmDeadlineCache)(
   implicit val ex: ExecutionContext,
   implicit val actorSystem: ActorSystem,
   implicit val entityStore: EntityStore,
@@ -178,9 +178,9 @@ class DepInvoker(invokerInstance: InvokerInstanceId, schedId: RackSchedInstanceI
                   case Success(_) =>
                     // once published, prewarm next objects in the DAG...
                     if (controllerPrewarmConfig) {
-                      DepInvoker.prewarmNextLevelDeps(message, obj, entityStore, msgProducer, schedTopic, timeouts.idleContainer)
+                      DepInvoker.prewarmNextLevelDeps(message, obj, entityStore, msgProducer, schedTopic,
+                        timeouts.idleContainer, prewarmDeadlineCache)
                     }
-                    // logging.debug(this, s"published dep activation for ${obj.name} with ${message.activationId} to ${schedTopic}")
                   case Failure(exception) =>
                     logging.warn(this, s"Failed to publish to topbalancer: ${exception}")
                 })
@@ -205,12 +205,14 @@ object DepInvoker {
   }
 
   def prewarmNextLevelDeps(activationMessage: ActivationMessage, obj: ExecutableWhiskActionMetaData, entityStore: EntityStore,
-                           msgProducer: MessageProducer, schedTopic: String, prewarmTimeout: FiniteDuration)(implicit transid: TransactionId, logging: Logging, ec: ExecutionContext): Future[Unit] = {
+                           msgProducer: MessageProducer, schedTopic: String, prewarmTimeout: FiniteDuration,
+                           prewarmDeadlineCache: PrewarmDeadlineCache)(implicit transid: TransactionId, logging: Logging, ec: ExecutionContext): Future[Unit] = {
     Future.successful(obj.relationships.map(relationships => {
       relationships.dependents.map(ref => {
         WhiskActionMetaData.get(entityStore, ref.getDocId()) flatMap { nextObj =>
           Future.successful(nextObj.toExecutableWhiskAction map { nextAction: ExecutableWhiskActionMetaData =>
-            val ppc = Some(PartialPrewarmConfig(prewarmTimeout.toMillis, nextObj.limits.resources.limits))
+            val ppc = Some(PartialPrewarmConfig(prewarmTimeout.toMillis, nextObj.limits.resources.limits,
+              prewarmDeadlineCache.getTimeMs(obj.fullyQualifiedName(false).asString)))
             implicit val tid: TransactionId = childOf(activationMessage.transid)
             val newMsg = activationMessage.copy(action = nextObj.fullyQualifiedName(false), transid = tid,
               prewarmOnly = ppc, waitForContent = None, sendResultToInvoker = None)

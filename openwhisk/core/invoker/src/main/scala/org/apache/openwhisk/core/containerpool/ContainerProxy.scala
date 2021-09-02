@@ -54,7 +54,7 @@ import org.apache.openwhisk.core.entity.ExecManifest.ImageName
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size._
 import org.apache.openwhisk.core.invoker.Invoker.LogsCollector
-import org.apache.openwhisk.core.invoker.ResultActivation
+import org.apache.openwhisk.core.invoker.{PrewarmDeadlineCache, ResultActivation, RunFinishedMessage}
 import org.apache.openwhisk.core.scheduler.FinishActivation
 import org.apache.openwhisk.http.Messages
 
@@ -277,6 +277,7 @@ class ContainerProxy(factory: (TransactionId,
                      unusedTimeout: FiniteDuration,
                      pauseGrace: FiniteDuration,
                      msgProducer: MessageProducer,
+                     prewarmDeadlineCache: ActorRef,
                      testTcp: Option[ActorRef],
                      resultWaiter: Option[ActorRef],
                     )
@@ -919,7 +920,7 @@ class ContainerProxy(factory: (TransactionId,
             reschedule)(job.msg.transid)
           .map {
             case (runInterval, response) =>
-              logging.debug(this, s"RUN RESPONSE $response")
+              prewarmDeadlineCache ! RunFinishedMessage(job.action.fullyQualifiedName(false).asString, runInterval)
               val initRunInterval = initInterval
                 .map(i => Interval(runInterval.start.minusMillis(i.duration.toMillis), runInterval.end))
                 .getOrElse(runInterval)
@@ -1087,6 +1088,7 @@ object ContainerProxy {
             unusedTimeout: FiniteDuration = timeouts.idleContainer,
             pauseGrace: FiniteDuration = timeouts.pauseGrace,
             msgProducer: MessageProducer,
+            prewarmDeadlineCache: ActorRef = PrewarmDeadlineCache().self,
             tcp: Option[ActorRef] = None,
             resultWaiter: Option[ActorRef] = None,
            ) =
@@ -1103,6 +1105,7 @@ object ContainerProxy {
         unusedTimeout,
         pauseGrace,
         msgProducer,
+        prewarmDeadlineCache,
         tcp,
         resultWaiter,
       ))

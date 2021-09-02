@@ -576,9 +576,30 @@ object RunningActivation extends DefaultJsonProtocol with DocumentFactory[Runnin
     "needSignal")
 }
 
-case class PartialPrewarmConfig(ttlMs: Long, resources: RuntimeResources)
+/**
+ * A prewarm message sent to invokers
+ *
+ * The `prevElemRuntimeMs` argument can be used to intitute a policy which prevents prewarmed containers from starting
+ * until a specific deadline in order to conserve resource usage and potentially allow the invoker to handle
+ * shorter-lived actions, but still provide warm-container like performance to later ones in the execution flow
+ *
+ * The simplest way to compute how long to wait before starting a container is somewhat straightforward, but more
+ * advanced methods could potentially be applied to increase resource usage efficiency
+ *
+ * Basic time to wait formula `(prevElemRuntimeMs - {estimated msg latency} - {expected cold start time} - epsilon`
+ *
+ * - estimated msg latency is the amount of system latency incurred since the message was generated (generally before an
+ * element execution)
+ * - expected cold start time is the amount of time expected to create a cold container for this activation
+ * - epsilon is an additional, recommended configurable parameter to fine-tune the delay
+ *
+ * @param ttlMs the TTL before this container should be destroyed once created
+ * @param resources the resources the prewarmed container should consume
+ * @param prevElemRuntimeMs the average execution time of the element which executes *before* this one.
+ */
+case class PartialPrewarmConfig(ttlMs: Long, resources: RuntimeResources, prevElemRuntimeMs: Long)
 
 object PartialPrewarmConfig extends DefaultJsonProtocol {
-  implicit val serdes: RootJsonFormat[PartialPrewarmConfig] = jsonFormat2(PartialPrewarmConfig.apply)
+  implicit val serdes: RootJsonFormat[PartialPrewarmConfig] = jsonFormat3(PartialPrewarmConfig.apply)
 }
 
