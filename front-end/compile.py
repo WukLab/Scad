@@ -11,7 +11,6 @@ def loadModule(prefix, name, args = None):
     else:
         return constructor(*args)
 
-
 PREPROCESSORS = [inline]
 IDENTIFIERS = {
     "initial": [],
@@ -27,6 +26,26 @@ generators = {
         'default': [ MetaCodeGen() ],
     }
 }
+
+# source: an `Code` object
+def applySplit(tree):
+    trees = []
+    for c in elementCompilers:
+        s, t = c(tree)
+        if s:
+            trees.append(t)
+    return trees
+        
+# TODO: add search optimizations
+def splitLogic(source):
+    finiishedTrees = []
+    trees = [ SplitTree.leaf(source) ]
+
+    while len(trees):
+        finishedTrees += trees
+        trees = [t for ret in applySplit(tree) for tree in trees]
+
+    return finishedTrees
 
 optimizer = None
 

@@ -6,12 +6,19 @@ class ElementStats:
         self.memory = None
         self.cpu = None
         self.storage = None
-        self.profiling = None
+
+    @staticmethod
+    def empty(self):
+        return ElementStats()
+
+    def __iadd__(self, other):
+        self.executionTime += other.executionTime
+        self.memory += other.memory
+        self.cpu += other.cpu
+        self.storage += other.storage
         
 class ElementContext:
     def __init__(self):
-        self.loc = loc
-        self.range = sourceRange
         self.parents = []
         self.dependents = []
 
