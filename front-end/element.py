@@ -1,11 +1,18 @@
 from abc import ABC
 
 class ElementStats:
-    def __init__(self):
-        self.executionTime = None
-        self.memory = None
-        self.cpu = None
-        self.storage = None
+    def __init__(self, executionTime = 0,
+            memory = 0, cpu = 0, storage = 0,
+            netRx = 0, netTx = 0):
+        self.executionTime = executionTime
+        self.memory = memory
+        self.cpu = cpu
+        self.storage = storage
+        self.netRx = netRx
+        self.netTx = netTx
+
+    def toJSON(self):
+        return json.dumps(self.__dict__)
 
     @staticmethod
     def empty(self):
@@ -22,9 +29,11 @@ class ElementContext:
         self.parents = []
         self.dependents = []
 
+# elements. all elements must be associated with code object
 class Element(ABC):
-    def __init__(self):
-        self.data = {}
+    def __init__(self, name, code):
+        self.name = name
+        self.code = code
 
 
 class LogicalElement(Element):
@@ -50,6 +59,7 @@ class PhysicalElement(Element):
                 raise RuntimeError("Cannot merge virtual elements")
         return ls[0].range[0], ls[-1].range[1]
 
-    def generate(self, code):
-        self.code = code
+    def generate(self, destDir):
+        meta = self.generateMeta()
+        self.code.dumpWithMeta(destDir, self.name, meta)
     

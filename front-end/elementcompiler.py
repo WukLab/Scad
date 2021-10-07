@@ -1,9 +1,14 @@
+from stage import Stage
+
 class ElementResourceHint:
     def __init__(self):
         pass
 
-class ElementCompiler(ABC):
+class ElementCompiler(Stage):
     def __init__(self):
+        pass
+
+    def pipe(self):
         pass
 
     # split an element, 
@@ -15,6 +20,12 @@ class ElementCompiler(ABC):
     @abstractmethod
     def merge(self, elements):
         pass
+
+    # common help methods:
+    @abstractmethod
+    def canSplit(self, element):
+        pass
+    
 
 class ElementCompiler(MatchEngine):
     def __init__(self, regex, matched):

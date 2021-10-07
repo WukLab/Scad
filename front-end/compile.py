@@ -1,68 +1,33 @@
 from abc import ABC
-from inliner import inline
+from importlib import import_module
 
 import logging
+
+from pathlib import Path
+
 
 def loadModule(prefix, name, args = None):
     mod = import_module(f'.{name.lower()}', prefix)
     constructor = getattr(mod, name)
+    # if no args is provided, return the constructor it self
     if args is None:
         return constructor
     else:
         return constructor(*args)
 
-PREPROCESSORS = [inline]
-IDENTIFIERS = {
-    "initial": [],
-    "load": []
-}
-MAX_IDENFICATION_LOOP = 4
-generators = {
-    'compute': {
-        'production': [ MetaCodeGen(), MainCodeGen(), LoadStoreCodeGen() ],
-        'profile': [ MetaCodeGen(), MainCodeGen(), ProfileCodeGen() ]
-    },
-    'memory': {
-        'default': [ MetaCodeGen() ],
-    }
-}
+# stage function: SplitTree -> SplitTree
+stages = ['preprocess', 'split', 'optimize']
 
-# source: an `Code` object
-def applySplit(tree):
-    trees = []
-    for c in elementCompilers:
-        s, t = c(tree)
-        if s:
-            trees.append(t)
-    return trees
-        
-# TODO: add search optimizations
-def splitLogic(source):
-    finiishedTrees = []
-    trees = [ SplitTree.leaf(source) ]
+# load moduels for a single cata
+def loadModules(predix, name, args):
+    pass
+    
 
-    while len(trees):
-        finishedTrees += trees
-        trees = [t for ret in applySplit(tree) for tree in trees]
-
-    return finishedTrees
-
-optimizer = None
-
-def preprocess(source):
-    s = source
-    for p in preprocessors:
-        s = p(s)
-    return s
-
-def mergeLogical(source):
-    return source
-
-def identify(source, matchEngines, logicals = []):
-    for engine in matchEngines:
-        l = engine.match(source)
-        logicals.identify(l)
-    return logicals
+def loadRootFromSource(sourceFile, name = None):
+    if name is None:
+        name = Path(sourceFile).stem
+    # TODO: dispatch Code object
+    return SplitTree.root(name, PythonCode())
 
 def codeDump(outputPath, physicals):
     for p in physicals:
@@ -76,51 +41,57 @@ if __name__ == '__main__':
 
     import argparse
     parser = argparse.ArgumentParser(description='Launch Frontend Compiler')
-    parser.add_argument('-s', '--source-code', type=str, required=True,
-                        help='launch full flow on source code')
-    # module selection
-    parser.add_argument('--mpreprocess', type=str, nargs='+',
+    parser.add_argument('--m-pre', type=str, nargs='+',
                         help='select modules for preprocess')
-    parser.add_argument('--mcodegen', type=str, nargs='+',
-                        help='select modules for codegen')
-    parser.add_argument('--midentification', type=str, nargs='+',
+    parser.add_argument('--m-id', type=str, nargs='+',
                         help='select modules for logical identification')
-    parser.add_argument('--moptimization', type=str, nargs='+',
+    parser.add_argument('--m-opt', type=str, nargs='+',
                         help='select modules for dag optimization')
 
-    parser.add_argument('-i', '--initial', type=bool, action='store_true',
+    parser.add_argument('-i', '--input', type=str, required=True,
                         help='run from initial idenfication')
-    parser.add_argument('objectfile', type=str,
+    # optional read from json
+    group = parser.add_argument_group('optimization')
+    group.add_argument('-o', '--optimize', type=str, nargs='?',
+                        help='start from optimization split file')
+    group.add_argument('-s', '--stats', type=str, nargs='?',
+                        help='start from optimization file')
+    parser.add_argument('objectfile', type=str, required=True,
                         help='object file')
 
+    # other optional
     parser.add_argument("-v", "--verbose", help="increase output verbosity",
                         action="store_true")
+
     args = parser.parse_args()
 
     if args.verbose:
         logging.basicConfig(level = logging.INFO)
-    
-    processed = preprocess(source)
 
-    # identification loop
-    logicals = []
-    identifiers = IDENTIFIERS['initial'] if args.inital else IDENTIFIERS['initial'] 
-    loop_count = 0
-    while True:
+    # load modules
+    modules = loadModules()
+
+    # if not optimization process
+    trees = None
+    if not args.optimize:
+        trees = [loadRootFromSource(args.input)]
+        # pre process
+        trees = stageSeq(trees, modules['pre'])
+        # id process
+        trees = stageProd(trees, modules['id'])
+    else
+        trees = resume(args.inptu)
+
+    if trees is None:
+        raise RuntimeError('Cannot Load Source')
+
+    # optimize
+    trees = stageSeq(trees, modules['opt'])
+
+    # allow multiple output
+    # TODO: move IO to dump
+    for t in trees:
+        t.generate()
+        t.checkpoint()
         
-        logicals = identify(source, identifiers)
-
-        success, physicals = optimizer.optimize(logicals)
-        if success:
-            # dispatch codegen
-            for physical in physicals:
-                generators = [generatorMap[r] for r in generatorMap if re.match(r, physical.metas)]
-                codeGen(physical, generators)
-            # write the output files
-            codeDump(args.output, physicals)
-            break
-
-        loop_count += 1
-        if loop_count > MAX_IDENFICATION_LOOP:
-            exit(1)
 

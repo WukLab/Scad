@@ -1,7 +1,13 @@
 from elements import *
 
 class Optimizer:
-    pass
+    def __init__(self, ir, stat = None):
+        self.ir = ir
+        self.stat = stat
+
+    @abstractmethod
+    def optimize(self):
+        pass
 
 class IdOptimizer(Optimizer):
     def optimize(self, logicals):
