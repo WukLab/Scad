@@ -67,6 +67,7 @@ int qp_stm_init_to_rtr(struct rdma_conn *conn);
 int qp_stm_rtr_to_rts(struct rdma_conn *conn);
 
 int extract_info(struct rdma_conn *conn, void **buf);
+int extract_info_inplace(struct rdma_conn *conn, void *buf, size_t size);
 
 #endif
 

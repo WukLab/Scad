@@ -17,7 +17,7 @@ TARGETS    := libd.so
 
 LD       := gcc
 INCLUDES := -I./include
-LIBS     := -lnanomsg -lcurl -lpthread -libverbs
+LIBS     := -lnanomsg -lcurl -lpthread -libverbs -lrt
 CFLAGS   := -fPIC -O2 -g -std=c11 -Wall $(INCLUDES) # -DDEBUG
 LD_FLAGS := $(LD_FLAGS) $(if $(USE_RDMA),-fuse-ld=lld,)
 
