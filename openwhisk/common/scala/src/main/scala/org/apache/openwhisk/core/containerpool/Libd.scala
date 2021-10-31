@@ -61,14 +61,13 @@ object LibdAPIs {
 
     // This function should select a port for listening, currently is empty
     def getDefaultTransport(action : WhiskActionLike, useRdma: Boolean) : Option[Seq[String]] =
-      action.runtimeType
+      action.porusParams.runtimeType
         .flatMap {
           case "memory" =>
             // TODO: change those to parameters
             val name = "memory"
             val impl = if (useRdma) "rdma_uverbs_server" else "rdma_tcp_server"
             val port = 2333
-//             val size = action.limits.resources.limits.mem.toBytes
             val size = 64 * 1024 * 1024
             Some(Seq(s"${name};${impl};url,tcp://*:${port};size,${size};"))
           case _        => None

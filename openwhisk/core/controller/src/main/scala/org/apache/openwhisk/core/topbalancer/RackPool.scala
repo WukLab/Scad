@@ -21,23 +21,8 @@ import org.apache.openwhisk.core.connector.MessageProducer
 import org.apache.openwhisk.core.connector.MessagingProvider
 import org.apache.openwhisk.core.connector.PingRackMessage
 import org.apache.openwhisk.core.database.NoDocumentException
-import org.apache.openwhisk.core.entity.ActionLimits
+import org.apache.openwhisk.core.entity.{ActionLimits, BasicAuthenticationAuthKey, CodeExecAsString, ControllerInstanceId, DocRevision, EntityName, ExecManifest, Identity, Namespace, PorusParams, RackSchedInstanceId, ResourceLimit, Secret, Subject, TopSchedInstanceId, UUID, WhiskAction}
 import org.apache.openwhisk.core.entity.ActivationId.ActivationIdGenerator
-import org.apache.openwhisk.core.entity.BasicAuthenticationAuthKey
-import org.apache.openwhisk.core.entity.CodeExecAsString
-import org.apache.openwhisk.core.entity.ControllerInstanceId
-import org.apache.openwhisk.core.entity.DocRevision
-import org.apache.openwhisk.core.entity.EntityName
-import org.apache.openwhisk.core.entity.ExecManifest
-import org.apache.openwhisk.core.entity.Identity
-import org.apache.openwhisk.core.entity.Namespace
-import org.apache.openwhisk.core.entity.RackSchedInstanceId
-import org.apache.openwhisk.core.entity.ResourceLimit
-import org.apache.openwhisk.core.entity.Secret
-import org.apache.openwhisk.core.entity.Subject
-import org.apache.openwhisk.core.entity.TopSchedInstanceId
-import org.apache.openwhisk.core.entity.UUID
-import org.apache.openwhisk.core.entity.WhiskAction
 import org.apache.openwhisk.core.entity.types.EntityStore
 import org.apache.openwhisk.core.loadBalancer.GetStatus
 import org.apache.openwhisk.core.loadBalancer.InvocationFinishedMessage
@@ -254,6 +239,7 @@ object RackPool {
         namespace = healthActionIdentity.namespace.name.toPath,
         name = EntityName(s"rackHealthTestAction${i.asString}"),
         exec = CodeExecAsString(manifest, """function main(params) { return params; }""", None),
+        porusParams = PorusParams(),
         limits = ActionLimits(resources = ResourceLimit(ResourceLimit.MIN_RESOURCES)))
     }
 }

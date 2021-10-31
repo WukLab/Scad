@@ -91,7 +91,7 @@ class AttachmentCompatibilityTests
     val namespace = EntityPath("attachment-compat-test1")
     val exec = javaDefault("ZHViZWU=", Some("hello"))
     val doc =
-      WhiskAction(namespace, EntityName("attachment_unique"), exec)
+      WhiskAction(namespace, EntityName("attachment_unique"), exec, PorusParams())
 
     createAction(doc)
 
@@ -104,7 +104,7 @@ class AttachmentCompatibilityTests
     val namespace = EntityPath("attachment-compat-test2")
     val exec = javaDefault("ZHViZWU=", Some("hello"))
     val doc =
-      WhiskAction(namespace, EntityName("attachment_unique"), exec)
+      WhiskAction(namespace, EntityName("attachment_unique"), exec, PorusParams())
 
     createAction(doc)
 

@@ -78,7 +78,7 @@ class ContainerProxyTests
   val resourceLimit = RuntimeResources(4.0, 256.MB, 128.MB)
 
   val invocationNamespace = EntityName("invocationSpace")
-  val action = ExecutableWhiskAction(EntityPath("actionSpace"), EntityName("actionName"), exec)
+  val action = ExecutableWhiskAction(EntityPath("actionSpace"), EntityName("actionName"), exec, PorusParams())
 
   val concurrencyEnabled = Option(WhiskProperties.getProperty("whisk.action.concurrency", "false")).exists(_.toBoolean)
   val testConcurrencyLimit = if (concurrencyEnabled) ConcurrencyLimit(2) else ConcurrencyLimit(1)
@@ -86,6 +86,7 @@ class ContainerProxyTests
     EntityPath("actionSpace"),
     EntityName("actionName"),
     exec,
+    PorusParams(),
     limits = ActionLimits(concurrency = testConcurrencyLimit))
 
   val msgProducer: MessageProducer = new LeanProducer(mutable.Map.empty);
@@ -2037,7 +2038,7 @@ class ContainerProxyTests
 
     val keyFalsyAnnotation = Parameters(Annotations.ProvideApiKeyAnnotationName, JsFalse)
     val actionWithFalsyKeyAnnotation =
-      ExecutableWhiskAction(EntityPath("actionSpace"), EntityName("actionName"), exec, annotations = keyFalsyAnnotation)
+      ExecutableWhiskAction(EntityPath("actionSpace"), EntityName("actionName"), exec, PorusParams(), annotations = keyFalsyAnnotation)
 
     machine ! Run(actionWithFalsyKeyAnnotation, message)
     expectMsg(Transition(machine, Started, Running))

@@ -556,7 +556,8 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
       case _ => content.parameters getOrElse Parameters()
     }
 
-    val relationships = content.relationships.map { r =>
+    val porusParams = content.porusParams.getOrElse(PorusParamsPut())
+    val relationships = porusParams.relationships.map { r =>
       val corun = r.corunning.map(x => WhiskEntityReference(objNames(x)))
       val deps = r.dependents.map(x => WhiskEntityReference(objNames(x)))
       val parents = r.parents.map(x => WhiskEntityReference(objNames(x)))
@@ -567,15 +568,12 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
       entityName.path,
       entityName.name,
       exec,
+      PorusParams(runtimeType = porusParams.runtimeType, parallelism = porusParams.parallelism, relationships = relationships, parentFunc = parentFunc),
       parameters,
       limits,
       content.version getOrElse SemVer(),
       content.publish getOrElse false,
-      WhiskActionsApi.amendAnnotations(content.annotations getOrElse Parameters(), exec),
-      relationships = relationships,
-      runtimeType = content.runtimeType,
-      parallelism = content.parallelism,
-      parentFunc = parentFunc)
+      WhiskActionsApi.amendAnnotations(content.annotations getOrElse Parameters(), exec))
   }
 
   /** For a sequence action, gather referenced entities and authorize access. */
@@ -777,10 +775,20 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
       .map(_ ++ content.annotations)
       .getOrElse(action.annotations ++ content.annotations)
 
+
+    val porusParams = content.porusParams.flatMap({ params =>
+      Some(PorusParams(
+        params.runtimeType,
+        action.porusParams.relationships,
+        params.parallelism,
+      ))
+    }).getOrElse(PorusParams())
+
     WhiskAction(
       action.namespace,
       action.name,
       exec,
+      porusParams,
       parameters,
       limits,
       content.version getOrElse action.version.upPatch,

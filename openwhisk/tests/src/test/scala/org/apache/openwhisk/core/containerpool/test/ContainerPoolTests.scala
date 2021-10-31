@@ -93,12 +93,13 @@ class ContainerPoolTests
 
   val invocationNamespace = EntityName("invocationSpace")
   val differentInvocationNamespace = EntityName("invocationSpace2")
-  val action = ExecutableWhiskAction(EntityPath("actionSpace"), EntityName("actionName"), exec)
+  val action = ExecutableWhiskAction(EntityPath("actionSpace"), EntityName("actionName"), exec, PorusParams())
   val concurrencyEnabled = Option(WhiskProperties.getProperty("whisk.action.concurrency")).exists(_.toBoolean)
   val concurrentAction = ExecutableWhiskAction(
     EntityPath("actionSpace"),
     EntityName("actionName"),
     exec,
+    PorusParams(),
     limits = ActionLimits(concurrency = ConcurrencyLimit(if (concurrencyEnabled) 3 else 1)))
   val differentAction = action.copy(name = EntityName("actionName2"))
   val largeAction =
@@ -878,6 +879,7 @@ class ContainerPoolTests
       EntityPath("actionSpace"),
       EntityName("actionName"),
       exec,
+      PorusParams(),
       limits = ActionLimits(resources = ResourceLimit(RuntimeResources(16.0, memoryLimit, 1024.MB))))
     val run = createRunMessage(action, invocationNamespace)
     // 2 cold start happened
@@ -967,7 +969,7 @@ class ContainerPoolObjectTests extends FlatSpec with Matchers with MockFactory {
 
   /** Helper to create a new action from String representations */
   def createAction(namespace: String = "actionNS", name: String = "actionName", limits: ActionLimits = ActionLimits()) =
-    ExecutableWhiskAction(EntityPath(namespace), EntityName(name), actionExec, limits = limits)
+    ExecutableWhiskAction(EntityPath(namespace), EntityName(name), actionExec, PorusParams(), limits = limits)
 
   /** Helper to create WarmedData with sensible defaults */
   def warmedData(action: ExecutableWhiskAction = createAction(),

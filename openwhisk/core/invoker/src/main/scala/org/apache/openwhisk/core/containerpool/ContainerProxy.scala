@@ -924,7 +924,7 @@ class ContainerProxy(factory: (TransactionId,
                 .map(i => Interval(runInterval.start.minusMillis(i.duration.toMillis), runInterval.end))
                 .getOrElse(runInterval)
               job.msg.appActivationId map { appId =>
-                job.action.relationships map { rel =>
+                job.action.porusParams.relationships map { rel =>
                   if (rel.dependents.isEmpty) {
                     msgProducer.send("topsched", FinishActivation(appId, response, ActivationLogs(), SemVer(), Parameters()), 8)
                   }

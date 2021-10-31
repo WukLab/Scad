@@ -221,7 +221,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
             // We also log this into the run message
             val defaultAddresses = LibdAPIs.Transport.getDefaultTransport(r.action, useRdma)
             val fetchedAddresses = for {
-              runtime <- r.action.runtimeType
+              runtime <- r.action.porusParams.runtimeType
               if LibdAPIs.Transport.needWait(runtime)
               seq <- r.msg.siblings
             } yield seq.toSet.groupBy(LibdAPIs.Transport.getName).flatMap {
@@ -251,7 +251,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
             // Post run actions
             for {
-              runtime <- r.action.runtimeType
+              runtime <- r.action.porusParams.runtimeType
               if LibdAPIs.Transport.needSignal(runtime)
               seq <- r.msg.siblings
             } yield seq.map { ra =>

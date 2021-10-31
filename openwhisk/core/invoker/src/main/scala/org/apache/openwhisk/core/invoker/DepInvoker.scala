@@ -67,15 +67,15 @@ class DepInvoker(invokerInstance: InvokerInstanceId, topSchedInstanceId: TopSche
         // if the object has no dependencies, it is the end of the function
         // encapsulate the dependency invocation message to function invocation message handler.
         //        logging.debug(this, s"dependency msg with identity: ${identity}")
-        whiskObject.parentFunc map { pf =>
+        whiskObject.porusParams.parentFunc map { pf =>
           //          logging.debug(this, s"dependency msg with whiskObjectParentFunc: ${pf}")
-          whiskObject.relationships map { rel =>
+          whiskObject.porusParams.relationships map { rel =>
             if (rel.dependents.nonEmpty) {
 
               val actions = rel.dependents.map(dep => WhiskActionMetaData.get(entityStore, dep.getDocId()))
               // Each action in the dependents map is expected to have the same parallelism argument. We just take
               // the value from the first dependent and apply it to all of the objects.
-              actions.head.flatMap(f => Future.successful(f.parallelism.getOrElse(1))) map { parallelism =>
+              actions.head.flatMap(f => Future.successful(f.porusParams.parallelism.getOrElse(1))) map { parallelism =>
                 for (i <- 0 until parallelism) {
                   implicit val id: Identity = identity
                   // it's implicitly expected the ordering of `rel.dependents` and `actions` is kept the same (since
@@ -118,7 +118,7 @@ class DepInvoker(invokerInstance: InvokerInstanceId, topSchedInstanceId: TopSche
 
             var sibs = siblingSet - newActivation
 
-            obj.relationships map { objRel =>
+            obj.porusParams.relationships map { objRel =>
               msg.corunning map { prevObjCorunning =>
                 val corunNames = objRel.corunning.map(_.toString()).toSet
                 // corunning objects which are part of the corunning set for this object *and* came from the
@@ -130,7 +130,7 @@ class DepInvoker(invokerInstance: InvokerInstanceId, topSchedInstanceId: TopSche
                 sibs = sibs ++ corunsToInclude
               }
             }
-            val msgsToWait: Future[Int] = obj.relationships match {
+            val msgsToWait: Future[Int] = obj.porusParams.relationships match {
               // In this case, we have relationships, but may not or may not have parents. With no parents, msgsToWait=0 (or None)
               // if we have parents then we need to do two things
               // for each parent that is a "compute" element (runtimeType), add them all together. Then, for each parent
@@ -142,8 +142,8 @@ class DepInvoker(invokerInstance: InvokerInstanceId, topSchedInstanceId: TopSche
                     WhiskAction.get(entityStore, parent.toFQEN().toDocId)
                   }
                 ) flatMap { x =>
-                  val computeObjs = x.filter(a => a.runtimeType.isDefined && a.runtimeType.get.equals("compute"))
-                  val computeParallelism = computeObjs.map(o => o.parallelism.getOrElse(1)).max
+                  val computeObjs = x.filter(a => a.porusParams.runtimeType.isDefined && a.porusParams.runtimeType.get.equals("compute"))
+                  val computeParallelism = computeObjs.map(o => o.porusParams.parallelism.getOrElse(1)).max
                   Future.successful(computeObjs.length * computeParallelism)
                 }
               case None => Future.successful(0)
@@ -195,7 +195,7 @@ class DepInvoker(invokerInstance: InvokerInstanceId, topSchedInstanceId: TopSche
   }
 
   private def prewarmNextLevelDeps(activationMessage: ActivationMessage, obj: ExecutableWhiskActionMetaData)(implicit transid: TransactionId): Future[Unit] = {
-    Future.successful(obj.relationships.map(relationships => {
+    Future.successful(obj.porusParams.relationships.map(relationships => {
       relationships.dependents.map(ref => {
         WhiskActionMetaData.get(entityStore, ref.getDocId()) flatMap { nextObj =>
           Future.successful(nextObj.toExecutableWhiskAction map { nextAction: ExecutableWhiskActionMetaData =>
@@ -289,7 +289,7 @@ case class ResultWait()(implicit val logging: Logging, implicit val producer: Me
       logging.warn(this, s"got two activation messages for same id: ${act.activation.activationId}")
     }
     // update number of parents in case it hasn't been updated yet
-    parents = act.action.relationships match {
+    parents = act.action.porusParams.relationships match {
       case Some(value) =>
         value.dependents.length
       case None => parents

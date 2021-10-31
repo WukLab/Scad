@@ -273,6 +273,7 @@ object InvokerPool {
         namespace = healthActionIdentity.namespace.name.toPath,
         name = EntityName(s"invokerHealthTestAction${i.asString}"),
         exec = CodeExecAsString(manifest, """function main(params, action) { return params; }""", None),
+        porusParams = PorusParams(),
         limits = ActionLimits(resources = ResourceLimit(ResourceLimit.MIN_RESOURCES)))
     }
 }

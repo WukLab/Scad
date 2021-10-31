@@ -129,7 +129,7 @@ trait ArtifactStoreBehaviorBase
   private val exec = BlackBoxExec(ExecManifest.ImageName("image"), None, None, native = false, binary = false)
 
   protected def newAction(ns: EntityPath): WhiskAction = {
-    WhiskAction(ns, aname(), exec)
+    WhiskAction(ns, aname(), exec, PorusParams())
   }
 
   protected def newActivation(ns: String, actionName: String, start: Long): WhiskActivation = {

@@ -291,7 +291,7 @@ protected trait ControllerTestCommon
     if (installDB) {
       // create bogus wsk actions
       val wskActions = componentNames.toSet[String] map { c =>
-        WhiskAction(ns, EntityName(c), jsDefault("??"))
+        WhiskAction(ns, EntityName(c), jsDefault("??"), PorusParams())
       }
       // add them to the db
       wskActions.foreach {
@@ -303,7 +303,7 @@ protected trait ControllerTestCommon
       stringToFullyQualifiedName(s"/$ns/$c")
     }
     // create wsk action for the sequence
-    WhiskAction(ns, EntityName(sequenceName), sequence(components))
+    WhiskAction(ns, EntityName(sequenceName), sequence(components), PorusParams())
   }
 }
 

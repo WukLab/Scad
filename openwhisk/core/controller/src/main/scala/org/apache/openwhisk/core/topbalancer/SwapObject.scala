@@ -5,7 +5,7 @@ import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.database.NoDocumentException
 import org.apache.openwhisk.core.entity.size.SizeInt
 import org.apache.openwhisk.core.entity.types.EntityStore
-import org.apache.openwhisk.core.entity.{ActionLimits, ActivationId, BasicAuthenticationAuthKey, ByteSize, CodeExecAsString, EntityName, ExecManifest, Identity, InvokerInstanceId, Namespace, ResourceLimit, Secret, Subject, UUID, WhiskAction}
+import org.apache.openwhisk.core.entity.{ActionLimits, ActivationId, BasicAuthenticationAuthKey, ByteSize, CodeExecAsString, EntityName, ExecManifest, Identity, InvokerInstanceId, Namespace, PorusParams, ResourceLimit, Secret, Subject, UUID, WhiskAction}
 import spray.json.{DefaultJsonProtocol, RootJsonFormat}
 
 import scala.concurrent.duration.DurationInt
@@ -38,6 +38,7 @@ object SwapObject extends DefaultJsonProtocol {
         namespace = swapObjectIdentity.namespace.name.toPath,
         name = EntityName(s"swapAction"),
         exec = CodeExecAsString(manifest, """def main(_, action):\n    t = action.get_transport('memory', 'rdma_server')\n    t.serve()""", None),
+        porusParams = PorusParams(),
         limits = ActionLimits(resources = ResourceLimit(RuntimeResources(1.0, memory, 512.MB))))
     }
 
