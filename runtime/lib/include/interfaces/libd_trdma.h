@@ -17,7 +17,7 @@ struct libd_trdma {
     int (*write)(struct libd_transport *, size_t, uint64_t, void *);
     int (*write_async)(struct libd_transport *, size_t, uint64_t, void *, int);
     int (*read_async)(struct libd_transport *, size_t, uint64_t, void *, int);
-    int (*reg)(int);
+    int (*poll)(int);
 };
 
 // transport APIs, user will call these transport APIs

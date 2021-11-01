@@ -85,15 +85,12 @@ static int _write(struct libd_transport *trans,
 
 // Async calls unimplemented
 static int _async_write() {
-    get_local_state(rstate,trans,struct local_rdma_state);
     return -1;
 }
 static int _async_read() {
-    get_local_state(rstate,trans,struct local_rdma_state);
     return -1;
 }
 static int _async_poll(struct libd_transport * trans, int id) {
-    get_local_state(rstate,trans,struct local_rdma_state);
     return -1;
 }
 
@@ -108,8 +105,5 @@ struct libd_trdma rdma_shared = {
     .reg = _reg,
     .read = _read,
     .write = _write,
-    .write_async = _write_async,
-    .read_async = _read_async,
-    .poll_async = _poll_async
 };
 

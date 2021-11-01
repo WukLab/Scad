@@ -50,8 +50,8 @@ void conn_setup(struct rdma_conn * conn, struct rdma_conn * old) {
     conn->gid  = GID;
     conn->port = PORT;
     conn->cq   = ibv_create_cq(_context, CQ_SIZE, NULL, NULL, 0);
-    conn->num_mr = NULL
-        conn->mr     = NULL
+    conn->num_mr = 0;
+    conn->mr     = NULL;
 
     if (old != NULL) {
         conn->num_mr = old->num_mr;

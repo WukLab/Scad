@@ -45,11 +45,12 @@ int libd_trdma_read  (struct libd_transport * trans, size_t size, uint64_t addr,
 }
 
 int libd_trdma_read_async (struct libd_transport * trans, size_t size, uint64_t addr, void * buf) {
+#ifdef ENABLE_ASYNC
     int ret;
 
     operation_start(ret, trans, LIBD_TRANS_STATE_READY);
     
-    unsigned int id = atomic_fetch_add(&trans->id_head, 1)
+    unsigned int id = atomic_fetch_add(&trans->id_head, 1);
     ret = transport_handler(libd_trdma, trans, read_async)(trans, size, addr, buf, id);
     if (ret != 0) {
         abort();
@@ -59,14 +60,18 @@ int libd_trdma_read_async (struct libd_transport * trans, size_t size, uint64_t 
     trans->tstate->counters.rx_bytes += size;
     success();
     return ret;
+#else
+    return -EINVAL;
+#endif /* ENABLE_ASYNC */
 }
 
 int libd_trdma_write_async (struct libd_transport * trans, size_t size, uint64_t addr, void * buf) {
+#ifdef ENABLE_ASYNC
     int ret;
 
     operation_start(ret, trans, LIBD_TRANS_STATE_READY);
     
-    unsigned int id = atomic_fetch_add(&trans->id_head, 1)
+    unsigned int id = atomic_fetch_add(&trans->id_head, 1);
     ret = transport_handler(libd_trdma, trans, read_async)(trans, size, addr, buf, id);
     if (ret != 0) {
         abort();
@@ -76,9 +81,13 @@ int libd_trdma_write_async (struct libd_transport * trans, size_t size, uint64_t
     trans->tstate->counters.tx_bytes += size;
     success();
     return ret;
+#else
+    return -EINVAL;
+#endif /* ENABLE_ASYNC */
 }
 
 int libd_trdma_poll (int id) {
+#ifdef ENABLE_ASYNC
     int ret;
 
     operation_start(ret, trans, LIBD_TRANS_STATE_READY);
@@ -91,6 +100,9 @@ int libd_trdma_poll (int id) {
     
     success();
     return ret;
+#else
+    return -EINVAL;
+#endif /* ENABLE_ASYNC */
 }
 
 void * libd_trdma_reg   (struct libd_transport * trans, size_t size, void * buf) {

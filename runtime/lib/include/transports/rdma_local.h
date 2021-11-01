@@ -6,6 +6,8 @@
 #include <infiniband/verbs.h>
 
 struct local_rdma_state {
+    struct libd_tstate tstate;
+
     // Those fields should be static
     void * mem;
     char * shm_id;

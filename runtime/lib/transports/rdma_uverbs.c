@@ -90,8 +90,9 @@ static inline int _request(struct rdma_conn * conn, size_t size, int opcode,
     // Send and poll
 	ibv_post_send(conn->qp, &wr, &badwr);
 
-    if (sync) 
+    if (sync) {
         while ((bytes = ibv_poll_cq(conn->cq, 1, &wc)) == 0) ;
+    }
 	return 0;
 }
 
@@ -214,6 +215,8 @@ static int _write(struct libd_transport *trans,
                     (uint64_t)buf, addr, 1);
 }
 
+#ifdef ENABLE_SYNC
+
 static int _async_write() {
     get_local_state(rstate,trans,struct uverbs_rdma_state);
     return _request(&rstate->conn, size, IBV_WR_RDMA_READ,
@@ -247,6 +250,8 @@ static int _async_poll(struct libd_transport * trans, int id) {
     }
 }
 
+#endif /* ENABLE_ASYNC */
+
 // export struct
 struct libd_trdma rdma_uverbs = {
     .trans = {
@@ -258,8 +263,10 @@ struct libd_trdma rdma_uverbs = {
     .reg = _reg,
     .read = _read,
     .write = _write,
-    .write_async = _write_async,
-    .read_async = _read_async,
-    .poll_async = _poll_async
+#ifdef ENABLE_SYNC
+    .write_async = _async_write,
+    .read_async = _async_read,
+    .poll = _async_poll
+#endif /* ENABLE_ASYNC */
 };
 

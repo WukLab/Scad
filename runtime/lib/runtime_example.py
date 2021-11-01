@@ -44,13 +44,15 @@ if __name__ == '__main__':
     # in real launch, this part will be handled by serverless system
     action = LibdAction(cv, activation_id)
 
-    transport_url = "{};rdma_uverbs;".format(transport_name);
+    # transport_url = "{};rdma_uverbs;".format(transport_name);
+    transport_url = "{};rdma_local;".format(transport_name);
     action.add_transport(transport_url)
 
     def delayed_config():
         time.sleep(5)
-        extra_url = "url,tcp://localhost:{};".format(
-            server_port)
+        # extra_url = "url,tcp://localhost:{};".format(
+        #     server_port)
+        extra_url = "size,{};".format(1024*1024*64)
         action.config_transport(transport_name, extra_url)
 
     config_thread = threading.Thread(
