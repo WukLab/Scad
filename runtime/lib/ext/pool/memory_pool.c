@@ -1,6 +1,8 @@
 #include <stdio.h>
+#include <errno.h>
 
 // domain socket
+#include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -61,9 +63,16 @@ void conn_setup(struct rdma_conn * conn, struct rdma_conn * old) {
 
 
 int main(int argc, char *argv[]) {
-    char * socketpath = argv[1];
-    int fd, bytes, info_bytes, cur_size;
+    char * socketpath;
+    int num_devices = 2;
+    char * device_name;
+
+    int ret;
+    int sfd, fd, bytes, cur_size;
     char buf[MPOOL_MSG_SIZE_LIMIT];
+
+    struct sockaddr_un remote;
+    socklen_t socklen;
 
     struct mp_select *mselect;
 
@@ -71,13 +80,25 @@ int main(int argc, char *argv[]) {
     struct mp_element *melement;
     struct rdma_conn *conn;
 
-    if ((fd = socket_setup(socketpath)) < 0)
+    socketpath = argc > 1 ? argv[1] : "/tmp/memorypool.sock";
+    device_name = argc > 2 ? argv[2] : "mlx5_1";
+
+    if ((sfd = socket_setup(socketpath)) < 0)
+        return sfd;
+
+    if ((ret = listen(sfd, 1)) < 0)
+        return ret;
+
+    socklen = sizeof(remote);
+    if ((fd = accept(sfd, (struct sockaddr *)&remote, &socklen)) < 0) {
+        dprintf("accept");
         return fd;
+    }
+
+    dprintf("bind socket to fd %d", fd);
 
     // setup global RDMA connections
     // TODO: error checking
-    int num_devices;
-    char * device_name;
     _context = create_context(num_devices, device_name);
     _pd = ibv_alloc_pd(_context);
 
@@ -85,10 +106,13 @@ int main(int argc, char *argv[]) {
 
     // main serve loop
     for (;;) {
+        dprintf("serving socket requests");
         mselect = (struct mp_select *)buf;
         bytes = recv(fd, buf, sizeof(struct mp_select), 0);
-        if (bytes < 0)
+        if (bytes < 0) {
+            dprintf("recv %d error, %d %s", fd, bytes, strerror(errno));
             return -1;
+        }
 
         if (mselect->msg_size > 0) 
             bytes = recv(fd, buf + sizeof(struct mp_select),
@@ -106,31 +130,33 @@ int main(int argc, char *argv[]) {
                 melement = &g_array_index(elements,
                               struct mp_element, cur_size);
                 melement->conns =
-                    g_array_sized_new(FALSE, TRUE, struct rdma_conns,
+                    g_array_sized_new(FALSE, TRUE,
+                                      sizeof(struct rdma_conn),
                                       cur_size);
 
                 for (int i = 0; i < cur_size; i++) {
-                    conn = &g_array_index(elements->conns,
+                    conn = &g_array_index(melement->conns,
                                   struct rdma_conn, i);
 
                     // create or copy mr info
                     if (i == 0) {
                         conn_setup(conn, NULL);
-                        create_mr(conn, malloc->size, MR_ACCESS, NULL);
+                        create_mr(conn, mselect->size, MR_ACCESS, NULL);
                     } else
-                        conn_setup(conn, &g_array_index(elements->conns,
+                        conn_setup(conn, &g_array_index(melement->conns,
                                   struct rdma_conn, 0));
                         
                     
                     // assamble message and reply
+                    // extract mr info to message
                     mselect-> size =
-                        extract_info_inplace(conn, &mp_select->msg,
+                        extract_info_inplace(conn, &mselect->msg,
                                             MPOOL_DATA_SIZE_LIMIT);
                     mselect->status = MPOOL_STATUS_OK;
                     mselect->conn_id = i;
 
                     send(fd, buf,
-                        mselect->size + sizeof(struct mpool_select), 0);
+                        mselect->size + sizeof(struct mp_select), 0);
                 }
                 break;
             case MPOOL_FREE:
@@ -138,7 +164,7 @@ int main(int argc, char *argv[]) {
                               struct mp_element, mselect->id);
                 if (melement == NULL) {
                     mselect->status = MPOOL_STATUS_NEXIST;
-                    send(fd, buf, sizeof(struct mpool_select), 0);
+                    send(fd, buf, sizeof(struct mp_select), 0);
                     break;
                 }
 
@@ -148,22 +174,24 @@ int main(int argc, char *argv[]) {
                                       0);
                 if (conn != NULL) {
                     for (int i = 0; i < conn->num_mr; i++) {
-                        void * buf = rstate->conn->mr[i].addr;
-                        ibv_dereg_mr(rstate->conn->mr + i);
+                        void * buf = conn->mr[i].addr;
+                        ibv_dereg_mr(conn->mr + i);
                         free(buf);
                     }
                 }
 
                 // free memory inside conn
-                for (int i = 0; i < melement->conns->size; i++) {
+                for (int i = 0; i < melement->conns->len; i++) {
                     conn = &g_array_index(melement->conns,
                             struct rdma_conn, i);
-                    ibv_destroy_qp(conn->qp);
-                    ibv_destroy_cq(conn->cq);
+                    if (conn->qp)
+                        ibv_destroy_qp(conn->qp);
+                    if (conn->cq)
+                        ibv_destroy_cq(conn->cq);
                 }
 
                 // free garray
-                g_array_free(melement->conn, TRUE);
+                g_array_free(melement->conns, TRUE);
                 // but do not free melement, may change the index
                 break;
 
@@ -184,7 +212,7 @@ int main(int argc, char *argv[]) {
                 }
                 conn = &g_array_index(melement->conns, struct rdma_conn,
                                       mselect->conn_id);
-                conn->peerinfo = mselect->msg;
+                conn->peerinfo = (struct conn_info *)mselect->msg;
 
                 // post send msg
                 qp_stm_reset_to_init(conn);
@@ -193,7 +221,7 @@ int main(int argc, char *argv[]) {
                 // reply msg
                 // we can safely change the code, since peerinfo is useless
                 mselect->status = MPOOL_STATUS_OK;
-                send(fd, buf, sizeof(struct mpool_select), 0);
+                send(fd, buf, sizeof(struct mp_select), 0);
                 break;
             case MPOOL_CLOSE:
                 goto cleanup;
