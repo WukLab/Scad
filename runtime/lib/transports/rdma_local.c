@@ -19,7 +19,7 @@ static int _init(struct libd_transport *trans) {
     dprintf("init local memory with size %d", rstate->size);
     ret = rstate->mem = malloc(rstate->size);
 
-    return ret;
+    return (ret == NULL) ? -ENOMEM : 0;
 }
 
 static int _connect(struct libd_transport *trans) {

@@ -52,7 +52,7 @@ if __name__ == '__main__':
         time.sleep(5)
         # extra_url = "url,tcp://localhost:{};".format(
         #     server_port)
-        extra_url = "size,{};".format(1024*1024*64)
+        extra_url = "size,{};".format(67108864)
         action.config_transport(transport_name, extra_url)
 
     config_thread = threading.Thread(
