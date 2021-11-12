@@ -31,6 +31,8 @@ import cats.implicits._
 import org.apache.openwhisk.core.ConfigKeys
 import pureconfig.loadConfigOrThrow
 
+import scala.concurrent.ExecutionContextExecutor
+
 sealed trait WorkerState
 case object Busy extends WorkerState
 case object Free extends WorkerState
@@ -74,7 +76,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
   private val useRdma: Boolean = loadConfigOrThrow[Boolean](ConfigKeys.useRdma)
 
-  implicit val ec = context.dispatcher
+  implicit val ec: ExecutionContextExecutor = context.dispatcher
 
   var freePool = immutable.Map.empty[ActorRef, ContainerData]
   var busyPool = immutable.Map.empty[ActorRef, ContainerData]
@@ -83,21 +85,21 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   // If all memory slots are occupied and if there is currently no container to be removed, than the actions will be
   // buffered here to keep order of computation.
   // Otherwise actions with small memory-limits could block actions with large memory limits.
-  var runBuffer = immutable.Queue.empty[Run]
+  var runBuffer: immutable.Queue[Run] = immutable.Queue.empty[Run]
   // Track the resent buffer head - so that we don't resend buffer head multiple times
   var resent: Option[Run] = None
-  val logMessageInterval = 10.seconds
+  val logMessageInterval: FiniteDuration = 10.seconds
   //periodically emit metrics (don't need to do this for each message!)
   context.system.scheduler.schedule(30.seconds, 10.seconds, self, EmitMetrics)
 
   // Key is ColdStartKey, value is the number of cold Start in minute
   var coldStartCount = immutable.Map.empty[ColdStartKey, Int]
 
-  adjustPrewarmedContainer(true, false)
+  adjustPrewarmedContainer(init = true, scheduled = false)
 
   // check periodically, adjust prewarmed container(delete if unused for some time and create some increment containers)
   // add some random amount to this schedule to avoid a herd of container removal + creation
-  val interval = poolConfig.prewarmExpirationCheckInterval + poolConfig.prewarmExpirationCheckIntervalVariance
+  val interval: FiniteDuration = poolConfig.prewarmExpirationCheckInterval + poolConfig.prewarmExpirationCheckIntervalVariance
     .map(v =>
       Random
         .nextInt(v.toSeconds.toInt))
@@ -276,7 +278,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
             // this can also happen if createContainer fails to start a new container, or
             // if a job is rescheduled but the container it was allocated to has not yet destroyed itself
             // (and a new container would over commit the pool)
-            val isErrorLogged = r.retryLogDeadline.map(_.isOverdue).getOrElse(true)
+            val isErrorLogged = r.retryLogDeadline.forall(_.isOverdue)
             val retryLogDeadline = if (isErrorLogged) {
               logging.warn(
                 this,
@@ -317,7 +319,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
         freePool = freePool + (sender() -> newData)
         if (busyPool.contains(sender())) {
           busyPool = busyPool - sender()
-          if (newData.action.limits.concurrency.maxConcurrent > 1) {
+          if (newData.maxConcurrent > 1) {
             logging.info(
               this,
               s"concurrent container ${newData.container} is no longer busy with ${newData.activeActivationCount} activations")
@@ -577,26 +579,34 @@ object ContainerPool {
    * @param idles a map of idle containers, awaiting work
    * @return a container if one found
    */
-  protected[containerpool] def schedule[A](action: ExecutableWhiskAction,
+  protected[containerpool] def
+  schedule[A](action: ExecutableWhiskAction,
                                            invocationNamespace: EntityName,
                                            idles: Map[A, ContainerData]): Option[(A, ContainerData)] = {
-    idles
-      .find {
-        case (_, c @ WarmedData(_, `invocationNamespace`, `action`, _, _, _)) if c.hasCapacity() => true
-        case _                                                                                   => false
+    idles.find {
+      case (_, c@WarmedData(_, `invocationNamespace`, inits, _, _, _)) if c.hasCapacity() && inits.contains(action) => true
+      case _ => false
+    } orElse {
+      idles.find {
+        case (_, c@WarmingData(_, `invocationNamespace`, inits, _, _)) if c.hasCapacity() && inits.contains(action) => true
+        case _ => false
       }
-      .orElse {
-        idles.find {
-          case (_, c @ WarmingData(_, `invocationNamespace`, `action`, _, _)) if c.hasCapacity() => true
-          case _                                                                                 => false
-        }
+    } orElse {
+      idles.find {
+        case (_, c@WarmingColdData(`invocationNamespace`, inits, _, _)) if c.hasCapacity() && inits.contains(action) => true
+        case _ => false
       }
-      .orElse {
-        idles.find {
-          case (_, c @ WarmingColdData(`invocationNamespace`, `action`, _, _)) if c.hasCapacity() => true
-          case _                                                                                  => false
-        }
+    } orElse {
+      idles.find {
+//        case (_, c@WarmedData(_, `invocationNamespace`, _, _, _, _)) if c.hasCapacity() => true
+        case _ => false
       }
+    } orElse {
+      idles.find {
+//        case (_, c@WarmingData(_, `invocationNamespace`, _, _, _)) if c.hasCapacity() => true
+        case _ => false
+      }
+    }
   }
 
   /**

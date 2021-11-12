@@ -70,6 +70,12 @@ object LibdAPIs {
             val port = 2333
             val size = 64 * 1024 * 1024
             Some(Seq(s"${name};${impl};url,tcp://*:${port};size,${size};"))
+          case "compute" =>
+            if (action.porusParams.withMemory.getOrElse(false)) {
+              Some(Seq(s"memory;rdma_local;url,RDMA_LOCAL;size,${action.limits.resources.limits.mem.toBytes};"))
+            } else {
+              None
+            }
           case _        => None
         }
 

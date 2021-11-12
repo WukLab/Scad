@@ -99,6 +99,7 @@ def gen_obj(meta, source):
                 'parents': meta.get('parents', [])
             },
             'runtimeType': meta['type'],
+            'withMemory': meta['withMemory'],
         },
         'version': "0.0.1"
     }

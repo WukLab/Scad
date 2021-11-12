@@ -7,6 +7,7 @@
 #include "libd_transport.h"
 #include "interfaces/libd_trdma.h"
 #include "transports/rdma_local.h"
+#include "errno.h"
 
 // TODO: change the order of init.
 // interface implementations

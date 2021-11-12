@@ -3,7 +3,6 @@
 
 #include "libd.h"
 #include "libd_transport.h"
-#include <infiniband/verbs.h>
 
 struct local_rdma_state {
     struct libd_tstate tstate;
