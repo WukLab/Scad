@@ -8,22 +8,25 @@ import io.netty.handler.codec.serialization.{ClassResolvers, ObjectDecoder, Obje
 
 import scala.collection.mutable
 
+abstract class ProxyAddress(val instance: String, val element: String, val parallelism: Int, val port: Int = 0) {
+  def masked = ProxyAddressMasked(instance,element,parallelism,port)
+
+}
 
 // defines the proxy network address
-case class ProxyAddress(instance: String, element: String, parallelism: Int, port: Int = 0) {
+case class ProxyAddressStandard(override val instance: String, override val element: String, override val parallelism: Int, override val port: Int = 0) extends ProxyAddress(instance, element, parallelism, port) {
   def port(port: Int) = copy(port = port)
   def of(element: String, parallelism: Int) = copy(element = element, parallelism = parallelism)
   def of(parallelism : Int) = copy(parallelism = parallelism)
-  def masked = new ProxyAddressMasked(instance,element,parallelism,port)
 }
 
 case class ProxyMessage(src: ProxyAddress, dst: ProxyAddressMasked, message: Array[Byte])
 
 case class ProxyAddressMasked(
-                            override val instance: String,
-                            override val element: String,
-                            override val parallelism: Int,
-                            override val port: Int = 0,
+                               override val instance: String,
+                               override val element: String,
+                               override val parallelism: Int,
+                               override val port: Int = 0,
                             mask : Vector[Boolean] = Vector.fill(4)(true)
                            ) extends ProxyAddress(instance, element, parallelism, port) {
   def maskMatch(other: ProxyAddress) = {
@@ -37,6 +40,9 @@ case class ProxyAddressMasked(
     // not (not pred && mask) => pred or not mask
     (pred, mask).zipped.forall(_ || !_)
   }
+  def port(port: Int) = copy(port = port)
+  def of(element: String, parallelism: Int) = copy(element = element, parallelism = parallelism)
+  def of(parallelism : Int) = copy(parallelism = parallelism)
 
 }
 

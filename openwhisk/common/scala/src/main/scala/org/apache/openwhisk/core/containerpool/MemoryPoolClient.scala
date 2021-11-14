@@ -2,10 +2,9 @@ package org.apache.openwhisk.core.containerpool
 
 
 import java.util
-
 import io.netty.bootstrap.Bootstrap
 import io.netty.buffer.ByteBuf
-import io.netty.channel.{ChannelHandlerContext, ChannelInitializer, SimpleChannelInboundHandler}
+import io.netty.channel.{ChannelFuture, ChannelHandlerContext, ChannelInitializer, SimpleChannelInboundHandler}
 import io.netty.channel.epoll.{EpollDomainSocketChannel, EpollEventLoopGroup}
 import io.netty.channel.unix.{DomainSocketAddress, UnixChannel}
 import io.netty.handler.codec.{ByteToMessageDecoder, MessageToByteEncoder}
@@ -72,7 +71,7 @@ class MemoryPoolClientHandler(client: MemoryPoolClient) extends ChannelInitializ
 }
 
 // Handler for
-class MemoryPoolClient()(ch: UnixChannel) extends ProxyClient[(Int, Int)] {
+class MemoryPoolClient(ch: UnixChannel) extends ProxyClient[(Int, Int)] {
 
   // for async operations
   type Direction = Boolean
@@ -100,11 +99,11 @@ class MemoryPoolClient()(ch: UnixChannel) extends ProxyClient[(Int, Int)] {
   }
   def free() = ???
   def extend() = ???
-  def open(rKey: RKey, element: String, connId : Int = -1) = {
-    // just error if not exist
-    val id = elementMap.get(element).get
-    open(rKey, id, connId)
-  }
+//  def open(rKey: RKey, element: String, connId : Int = -1) = {
+//    // just error if not exist
+//    val id = elementMap.get(element).get
+////    open(rKey, id, connId)
+//  }
   def open(rKey: RKey, elementId: Int, connId : Int = -1) = {
     // just error if not exist
     val req = MPSelectMsg(op_code = MPOpCode.OPEN, status = rKey.length,
@@ -117,7 +116,7 @@ class MemoryPoolClient()(ch: UnixChannel) extends ProxyClient[(Int, Int)] {
     override def channelRead0(ctx: ChannelHandlerContext, msg: MPSelectMsg): Unit = msg.op_code match {
       case MPOpCode.ALLOC =>
         // get Local key, add to proxy network; if match, send again
-        msg.msg.foreach { proxyReceive((msg.id, msg.conn_id), _) }
+//        msg.msg.foreach { proxyReceive(msg._, (msg.id, msg.conn_id)) }
       case MPOpCode.OPEN  =>
         // get remote key, remove the entry from proxy
       case _              =>
@@ -129,7 +128,7 @@ class MemoryPoolClient()(ch: UnixChannel) extends ProxyClient[(Int, Int)] {
 
   }
 
-//  override val proxy = _
+  override val proxy: ProxyNode = ???
 }
 
 class MemoryPoolEndPoint(socketFile : String, client: MemoryPoolClient) {
@@ -140,7 +139,7 @@ class MemoryPoolEndPoint(socketFile : String, client: MemoryPoolClient) {
     .channel(classOf[EpollDomainSocketChannel])
     .handler(new MemoryPoolClientHandler(client))
 
-  val launch = bs
+  val launch: ChannelFuture = bs
     .connect(new DomainSocketAddress(socketFile))
     .channel()
     .closeFuture()
