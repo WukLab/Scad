@@ -129,7 +129,7 @@ class MemoryPoolClient()(ch: UnixChannel) extends ProxyClient[(Int, Int)] {
 
   }
 
-  override val proxy = _
+//  override val proxy = _
 }
 
 class MemoryPoolEndPoint(socketFile : String, client: MemoryPoolClient) {
