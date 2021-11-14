@@ -2077,7 +2077,7 @@ class ContainerProxyTests
     val warmingData = WarmingData(
       pwData.container,
       message.user.namespace.name,
-      action,
+      Set(action),
       Instant.now.minusSeconds(timeDiffSeconds),
       initialCount)
     val nextWarmingData = warmingData.nextRun(Run(action, message))
@@ -2089,7 +2089,7 @@ class ContainerProxyTests
 
     //WarmingColdData
     val warmingColdData =
-      WarmingColdData(message.user.namespace.name, action, Instant.now.minusSeconds(timeDiffSeconds), initialCount)
+      WarmingColdData(message.user.namespace.name, Set(action), Instant.now.minusSeconds(timeDiffSeconds), initialCount)
     val nextWarmingColdData = warmingColdData.nextRun(Run(action, message))
     nextWarmingColdData should matchPattern {
       case WarmingColdData(message.user.namespace.name, action, _, newCount) =>
@@ -2100,7 +2100,7 @@ class ContainerProxyTests
     val warmedData = WarmedData(
       pwData.container,
       message.user.namespace.name,
-      action,
+      Set(action),
       Instant.now.minusSeconds(timeDiffSeconds),
       initialCount)
     val nextWarmedData = warmedData.nextRun(Run(action, message))

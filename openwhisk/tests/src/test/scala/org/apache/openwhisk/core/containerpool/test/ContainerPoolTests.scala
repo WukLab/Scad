@@ -122,7 +122,7 @@ class ContainerPoolTests
 
   /** Helper to create WarmedData */
   def warmedData(run: Run, lastUsed: Instant = Instant.now) = {
-    WarmedData(stub[MockableContainer], run.msg.user.namespace.name, run.action, lastUsed)
+    WarmedData(stub[MockableContainer], run.msg.user.namespace.name, Set(run.action), lastUsed)
   }
 
   /** Creates a sequence of containers and a factory returning this sequence. */
@@ -976,21 +976,21 @@ class ContainerPoolObjectTests extends FlatSpec with Matchers with MockFactory {
                  namespace: String = standardNamespace.asString,
                  lastUsed: Instant = Instant.now,
                  active: Int = 0) =
-    WarmedData(stub[MockableContainer], EntityName(namespace), action, lastUsed, active)
+    WarmedData(stub[MockableContainer], EntityName(namespace), Set(action), lastUsed, active)
 
   /** Helper to create WarmingData with sensible defaults */
   def warmingData(action: ExecutableWhiskAction = createAction(),
                   namespace: String = standardNamespace.asString,
                   lastUsed: Instant = Instant.now,
                   active: Int = 0) =
-    WarmingData(stub[MockableContainer], EntityName(namespace), action, lastUsed, active)
+    WarmingData(stub[MockableContainer], EntityName(namespace), Set(action), lastUsed, active)
 
   /** Helper to create WarmingData with sensible defaults */
   def warmingColdData(action: ExecutableWhiskAction = createAction(),
                       namespace: String = standardNamespace.asString,
                       lastUsed: Instant = Instant.now,
                       active: Int = 0) =
-    WarmingColdData(EntityName(namespace), action, lastUsed, active)
+    WarmingColdData(EntityName(namespace), Set(action), lastUsed, active)
 
   /** Helper to create PreWarmedData with sensible defaults */
   def preWarmedData(kind: String = "anyKind", expires: Option[Deadline] = None) =
@@ -1010,14 +1010,14 @@ class ContainerPoolObjectTests extends FlatSpec with Matchers with MockFactory {
     val pool = Map('name -> data)
 
     // copy to make sure, referencial equality doesn't suffice
-    ContainerPool.schedule(data.action.copy(), data.invocationNamespace, pool) shouldBe Some('name, data)
+    ContainerPool.schedule(data.actions.toSeq.head, data.invocationNamespace, pool) shouldBe Some('name, data)
   }
 
   it should "reuse an applicable warm container from idle pool with several applicable containers" in {
     val data = warmedData()
     val pool = Map('first -> data, 'second -> data)
 
-    ContainerPool.schedule(data.action.copy(), data.invocationNamespace, pool) should (be(Some('first, data)) or be(
+    ContainerPool.schedule(data.actions.toSeq.head, data.invocationNamespace, pool) should (be(Some('first, data)) or be(
       Some('second, data)))
   }
 
@@ -1025,7 +1025,7 @@ class ContainerPoolObjectTests extends FlatSpec with Matchers with MockFactory {
     val matchingData = warmedData()
     val pool = Map('none -> noData(), 'pre -> preWarmedData(), 'warm -> matchingData)
 
-    ContainerPool.schedule(matchingData.action.copy(), matchingData.invocationNamespace, pool) shouldBe Some(
+    ContainerPool.schedule(matchingData.actions.toSeq.head, matchingData.invocationNamespace, pool) shouldBe Some(
       'warm,
       matchingData)
   }
@@ -1035,7 +1035,7 @@ class ContainerPoolObjectTests extends FlatSpec with Matchers with MockFactory {
     // data is **not** in the pool!
     val pool = Map('none -> noData(), 'pre -> preWarmedData())
 
-    ContainerPool.schedule(data.action.copy(), data.invocationNamespace, pool) shouldBe None
+    ContainerPool.schedule(data.actions.toSeq.head, data.invocationNamespace, pool) shouldBe None
   }
 
   it should "not reuse a warm container with different invocation namespace" in {
@@ -1044,24 +1044,24 @@ class ContainerPoolObjectTests extends FlatSpec with Matchers with MockFactory {
     val differentNamespace = EntityName(data.invocationNamespace.asString + "butDifferent")
 
     data.invocationNamespace should not be differentNamespace
-    ContainerPool.schedule(data.action.copy(), differentNamespace, pool) shouldBe None
+    ContainerPool.schedule(data.actions.toSeq.head, differentNamespace, pool) shouldBe None
   }
 
   it should "not reuse a warm container with different action name" in {
     val data = warmedData()
-    val differentAction = data.action.copy(name = EntityName(data.action.name.asString + "butDifferent"))
+    val differentAction = data.actions.toSeq.head.copy(name = EntityName(data.actions.toSeq.head.name.asString + "butDifferent"))
     val pool = Map('warm -> data)
 
-    data.action.name should not be differentAction.name
+    data.actions.toSeq.head.name should not be differentAction.name
     ContainerPool.schedule(differentAction, data.invocationNamespace, pool) shouldBe None
   }
 
   it should "not reuse a warm container with different action version" in {
     val data = warmedData()
-    val differentAction = data.action.copy(version = data.action.version.upMajor)
+    val differentAction = data.actions.toSeq.head.copy(version = data.actions.toSeq.head.version.upMajor)
     val pool = Map('warm -> data)
 
-    data.action.version should not be differentAction.version
+    data.actions.toSeq.head.version should not be differentAction.version
     ContainerPool.schedule(differentAction, data.invocationNamespace, pool) shouldBe None
   }
 
@@ -1073,14 +1073,14 @@ class ContainerPoolObjectTests extends FlatSpec with Matchers with MockFactory {
       active = maxConcurrent,
       action = createAction(limits = ActionLimits(concurrency = ConcurrencyLimit(maxConcurrent))))
     val pool = Map('warm -> data)
-    ContainerPool.schedule(data.action, data.invocationNamespace, pool) shouldBe None
+    ContainerPool.schedule(data.actions.toSeq.head, data.invocationNamespace, pool) shouldBe None
 
     val data2 = warmedData(
       active = maxConcurrent - 1,
       action = createAction(limits = ActionLimits(concurrency = ConcurrencyLimit(maxConcurrent))))
     val pool2 = Map('warm -> data2)
 
-    ContainerPool.schedule(data2.action, data2.invocationNamespace, pool2) shouldBe Some('warm, data2)
+    ContainerPool.schedule(data2.actions.toSeq.head, data2.invocationNamespace, pool2) shouldBe Some('warm, data2)
 
   }
 
@@ -1091,12 +1091,12 @@ class ContainerPoolObjectTests extends FlatSpec with Matchers with MockFactory {
     val action = createAction(limits = ActionLimits(concurrency = ConcurrencyLimit(maxConcurrent)))
     val data = warmingData(active = maxConcurrent - 1, action = action)
     val pool = Map('warming -> data)
-    ContainerPool.schedule(data.action, data.invocationNamespace, pool) shouldBe Some('warming, data)
+    ContainerPool.schedule(data.actions.toSeq.head, data.invocationNamespace, pool) shouldBe Some('warming, data)
 
     val data2 = warmedData(active = maxConcurrent - 1, action = action)
     val pool2 = pool ++ Map('warm -> data2)
 
-    ContainerPool.schedule(data2.action, data2.invocationNamespace, pool2) shouldBe Some('warm, data2)
+    ContainerPool.schedule(data2.actions.toSeq.head, data2.invocationNamespace, pool2) shouldBe Some('warm, data2)
   }
 
   it should "prefer warm to warming when active activation count < maxconcurrent" in {
@@ -1107,7 +1107,7 @@ class ContainerPoolObjectTests extends FlatSpec with Matchers with MockFactory {
     val data = warmingColdData(active = maxConcurrent - 1, action = action)
     val data2 = warmedData(active = maxConcurrent - 1, action = action)
     val pool = Map('warming -> data, 'warm -> data2)
-    ContainerPool.schedule(data.action, data.invocationNamespace, pool) shouldBe Some('warm, data2)
+    ContainerPool.schedule(data.actions.toSeq.head, data.invocationNamespace, pool) shouldBe Some('warm, data2)
   }
 
   it should "use a warmingCold when active activation count < maxconcurrent" in {
@@ -1117,13 +1117,13 @@ class ContainerPoolObjectTests extends FlatSpec with Matchers with MockFactory {
     val action = createAction(limits = ActionLimits(concurrency = ConcurrencyLimit(maxConcurrent)))
     val data = warmingColdData(active = maxConcurrent - 1, action = action)
     val pool = Map('warmingCold -> data)
-    ContainerPool.schedule(data.action, data.invocationNamespace, pool) shouldBe Some('warmingCold, data)
+    ContainerPool.schedule(data.actions.toSeq.head, data.invocationNamespace, pool) shouldBe Some('warmingCold, data)
 
     //after scheduling, the pool will update with new data to set active = maxConcurrent
     val data2 = warmingColdData(active = maxConcurrent, action = action)
     val pool2 = Map('warmingCold -> data2)
 
-    ContainerPool.schedule(data2.action, data2.invocationNamespace, pool2) shouldBe None
+    ContainerPool.schedule(data2.actions.toSeq.head, data2.invocationNamespace, pool2) shouldBe None
   }
 
   it should "prefer warm to warmingCold when active activation count < maxconcurrent" in {
@@ -1134,7 +1134,7 @@ class ContainerPoolObjectTests extends FlatSpec with Matchers with MockFactory {
     val data = warmingColdData(active = maxConcurrent - 1, action = action)
     val data2 = warmedData(active = maxConcurrent - 1, action = action)
     val pool = Map('warmingCold -> data, 'warm -> data2)
-    ContainerPool.schedule(data.action, data.invocationNamespace, pool) shouldBe Some('warm, data2)
+    ContainerPool.schedule(data.actions.toSeq.head, data.invocationNamespace, pool) shouldBe Some('warm, data2)
   }
 
   it should "prefer warming to warmingCold when active activation count < maxconcurrent" in {
@@ -1145,7 +1145,7 @@ class ContainerPoolObjectTests extends FlatSpec with Matchers with MockFactory {
     val data = warmingColdData(active = maxConcurrent - 1, action = action)
     val data2 = warmingData(active = maxConcurrent - 1, action = action)
     val pool = Map('warmingCold -> data, 'warming -> data2)
-    ContainerPool.schedule(data.action, data.invocationNamespace, pool) shouldBe Some('warming, data2)
+    ContainerPool.schedule(data.actions.toSeq.head, data.invocationNamespace, pool) shouldBe Some('warming, data2)
   }
 
   behavior of "ContainerPool remove()"
