@@ -19,7 +19,7 @@ type LibdMessage struct {
 // write command into fifo
 func (ap *ActionProxy) fifoWrite(msg LibdMessage) error {
 	// TODO: insert operations to call libd functions from fifo
-	if ap.fifoFile == nil {
+	if ap.fifoInFile == nil {
 		return fmt.Errorf("Broken Fifo")
 	}
 
@@ -32,8 +32,30 @@ func (ap *ActionProxy) fifoWrite(msg LibdMessage) error {
 	binary.LittleEndian.PutUint32(msgSize, uint32(len(jsonMsg)))
 
 	fullMsg := append(msgSize, jsonMsg...)
-	ap.fifoFile.Write(fullMsg)
+	ap.fifoInFile.Write(fullMsg)
 	return nil
+}
+
+func (ap *ActionProxy) fifoRead() (msg []byte, err error) {
+	if ap.fifoOutFile == nil {
+		return nil, fmt.Errorf("Broken Fifo")
+	}
+
+	msgSize := make([]byte, 4)
+	bytes, err := ap.fifoOutFile.Read(msgSize)
+	if err != nil || bytes != 4 {
+		return nil, fmt.Errorf("Read Message Size Error")
+	}
+
+	msgSizeInt := binary.LittleEndian.Uint64(msgSize)
+	msg = make([]byte, msgSizeInt)
+
+	bytes, err = ap.fifoOutFile.Read(msg)
+	if err != nil || bytes != int(msgSizeInt) {
+		return nil, fmt.Errorf("Read Message Size Error")
+	}
+
+	return msg, nil
 }
 
 func (ap *ActionProxy) handleLibdRequest(w http.ResponseWriter, r *http.Request) {
@@ -60,14 +82,16 @@ func (ap *ActionProxy) handleLibdRequest(w http.ResponseWriter, r *http.Request)
 			params := []string{serverURL}
 
 			ap.fifoWrite(LibdMessage{Cmd: "ACTADD", Params: params, Body: bodyStr})
+			msg, _ := ap.fifoRead()
 
-			sendOK(w)
+			sendReply(w, msg)
 			return
 		} else if len(fields) == 3 && fields[2] == "transport" && r.Method == "POST" {
 			// app.post('/action/:aid/transport', addTransport);
 			ap.fifoWrite(LibdMessage{Cmd: "TRANSADD", Body: bodyStr})
+			msg, _ := ap.fifoRead()
 
-			sendOK(w)
+			sendReply(w, msg)
 			return
 		} else if len(fields) == 4 && fields[2] == "transport" {
 			if r.Method == "PUT" {
@@ -79,8 +103,10 @@ func (ap *ActionProxy) handleLibdRequest(w http.ResponseWriter, r *http.Request)
 					Body:   bodyStr,
 					Params: []string{fields[1], fields[3]},
 				})
+				msg, _ := ap.fifoRead()
 
-				sendOK(w)
+				sendReply(w, msg)
+
 				return
 			} else if r.Method == "GET" {
 				// app.get ('/action/:aid/transport/:tname', platformFactory.wrapEndpoint(service.configTransport));

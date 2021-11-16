@@ -12,58 +12,13 @@
 #include "interfaces/libd_trdma.h"
 #include "transports/rdma_uverbs.h"
 
-#define LIBD_TRDMA_UVERBS_MAX_POLL_SIZE (16)
-
 // create a static protected domain that shares among all buffers
 static struct ibv_pd      *_pd      = NULL;
 static struct ibv_context *_context = NULL;
 
-// Network
-static void fatal(const char *func)
-{
-        fprintf(stderr, "%s: %s\n", func, nn_strerror(nn_errno()));
-        exit(1);
-}
-
-static int client_exchange_info(struct rdma_conn *conn, const char * url) {
-    int sock, rv;
-    int send_size, bytes;
-    void *info, *peerinfo = NULL;
-
-    // init nanomsg socket
-    dprintf("connecting to server %s...", url);
-    if ((sock = nn_socket(AF_SP, NN_REQ)) < 0) {
-        fatal("nn_socket");
-    }
-
-    if ((rv = nn_connect(sock, url)) < 0) {
-        fatal("nn_connect");
-    }
-
-    send_size = extract_info(conn, &info);
-    dprintf("try to send size %d", send_size);
-    if ((bytes = nn_send(sock, info, send_size, 0)) < 0) {
-        fatal("nn_send");
-    }
-    free(info);
-
-    if ((bytes = nn_recv(sock, &peerinfo, NN_MSG, 0)) < 0) {
-        fatal("nn_recv");
-    }
-
-    conn->peerinfo = malloc(bytes);
-    memcpy(conn->peerinfo, peerinfo, bytes);
-    dprintf("received mr, with bytes %d, num %d", bytes, conn->peerinfo->num_mr);
-
-    // TODO: free msg
-    nn_freemsg(peerinfo);
-
-    return nn_shutdown(sock, 0);
-}
-
 // TODO: async requests
 static inline int _request(struct rdma_conn * conn, size_t size, int opcode,
-                uint64_t local_addr, uint64_t remote_addr, int sync) {
+                uint64_t local_addr, uint64_t remote_addr) {
     int ret;
     struct ibv_wc wc;
     int bytes;
@@ -89,10 +44,7 @@ static inline int _request(struct rdma_conn * conn, size_t size, int opcode,
 
     // Send and poll
 	ibv_post_send(conn->qp, &wr, &badwr);
-
-    if (sync) {
-        while ((bytes = ibv_poll_cq(conn->cq, 1, &wc)) == 0) ;
-    }
+	while ((bytes = ibv_poll_cq(conn->cq, 1, &wc)) == 0) ;
 	return 0;
 }
 
@@ -104,6 +56,9 @@ static int _init(struct libd_transport *trans) {
     init_config_set(num_devices, 2);
     init_config_set(device_name, "mlx5_1");
     init_config_set(cq_size, 16);
+
+    // reset the message, so wont send it
+    rstate->tstate->msg_size = 0;
 
     // init the RDMA connection
     if (!trans->initd) {
@@ -130,27 +85,40 @@ static int _init(struct libd_transport *trans) {
             return -1;
         }
 
+        // XXX: We've put it here after init, why?
+        rstate->conn.cq = ibv_create_cq(
+            rstate->conn.context, rstate->cq_size, NULL, NULL, 0);
+
+        create_qp(&rstate->conn);
+        dprintf("Finish RDMA configuration..");
+
+        // throw out bytes
+        void * info;
+        int bytes = extract_info(conn, &info);
+        log_bytes(info, n);
+        // base 64 encoding
+        int msg_bytes;
+        char * msg = g_base64_encode(info, bytes, &msg_bytes);
+        rstate->tstate->msg = msg;
+        rstate->tstate->msg_size = msg_bytes;
+
         trans->initd = 1;
-        // throw out bytes, maybe use a function called libd_function_get?
     }
 
     // Create QP
-    init_config_require(url, id);
+    init_config_require(peerinfo, id);
 
-    rstate->conn.cq = ibv_create_cq(
-        rstate->conn.context, rstate->cq_size, NULL, NULL, 0);
-
-    create_qp(&rstate->conn);
-    dprintf("Finish RDMA configuration..");
+    // decode the string
+    void * info = g_base64_decode(rstate->peerinfo, &bytes);
+    rstate->conn.peerinfo = malloc(bytes);
+    memcpy(rstate->conn.peerinfo, info, bytes);
+    g_free(info);
 
     return 0;
 }
 
 static int _connect(struct libd_transport *trans) {
     get_local_state(rstate,trans,struct uverbs_rdma_state);
-
-    // Exchange with server
-    client_exchange_info(&rstate->conn, rstate->url);
 
     // moving the stats of QP
     qp_stm_reset_to_init (&rstate->conn);
@@ -206,52 +174,19 @@ static int _read(struct libd_transport *trans,
                 size_t size, uint64_t addr, void * buf) {
     get_local_state(rstate,trans,struct uverbs_rdma_state);
     return _request(&rstate->conn, size, IBV_WR_RDMA_READ,
-                    (uint64_t)buf, addr, 1);
+                    (uint64_t)buf, addr);
 }
 
 static int _write(struct libd_transport *trans,
                   size_t size, uint64_t addr, void * buf) {
     get_local_state(rstate,trans,struct uverbs_rdma_state);
     return _request(&rstate->conn, size, IBV_WR_RDMA_WRITE,
-                    (uint64_t)buf, addr, 1);
+                    (uint64_t)buf, addr);
 }
 
-#ifdef ENABLE_SYNC
-
-static int _async_write() {
-    get_local_state(rstate,trans,struct uverbs_rdma_state);
-    return _request(&rstate->conn, size, IBV_WR_RDMA_READ,
-                    (uint64_t)buf, addr, 0);
+static int _not_implemented_async_write() {
+    return -1;
 }
-static int _async_read() {
-    get_local_state(rstate,trans,struct uverbs_rdma_state);
-    return _request(&rstate->conn, size, IBV_WR_RDMA_READ,
-                    (uint64_t)buf, addr, 0);
-}
-static int _async_poll(struct libd_transport * trans, int id) {
-    get_local_state(rstate,trans,struct uverbs_rdma_state);
-    // TODO: uint overroll
-    struct ibv_wc wc[LIBD_TRDMA_UVERBS_MAX_POLL_SIZE];
-    if (id < rstate->id_tail) {
-        return 0;
-    }
-
-    for (;;) {
-        unsigned poll_size = rstate->id_head - rstate->id_tail;
-        unsigned id = 0;
-        unsigned size = 0;
-        poll_size = poll_size > LIBD_TRDMA_UVERBS_MAX_POLL_SIZE ?
-                    poll_size : LIBD_TRDMA_UVERBS_MAX_POLL_SIZE;
-        size = ibv_poll_cq(conn->cq, poll_size, &wc[0]);
-        // we assume the requests is in seq
-        // TODO: check inc but fail?
-        atomic_fetch_add(&rstate->id_tail, size);
-        if (id < rstate->id_tail)
-            return 0;
-    }
-}
-
-#endif /* ENABLE_ASYNC */
 
 // export struct
 struct libd_trdma rdma_uverbs = {
@@ -263,11 +198,6 @@ struct libd_trdma rdma_uverbs = {
 
     .reg = _reg,
     .read = _read,
-    .write = _write,
-#ifdef ENABLE_SYNC
-    .write_async = _async_write,
-    .read_async = _async_read,
-    .poll = _async_poll
-#endif /* ENABLE_ASYNC */
+    .write = _write
 };
 

@@ -86,6 +86,12 @@ cdef class LibdTransport:
         # TODO: spin here if we cannot get a transport
         if self._c_trans is NULL:
             raise MemoryError()
+    # TODO: check this
+    def get_msg(self):
+        cdef int size
+        msg = clibd.libd_transport_get_message(&size).decode('ascii')
+        return size, msg
+        
     # we do not need to have __dealloc__ for all transports, clib will handle this
 
 cdef class LibdTransportRDMAServer(LibdTransport):

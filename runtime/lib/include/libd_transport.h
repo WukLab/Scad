@@ -16,6 +16,9 @@ struct libd_tstate {
 
     char *name, *impl;
     atomic_int state;
+
+    char * msg;
+    int msg_size;
 };
 
 // utils

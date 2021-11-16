@@ -51,6 +51,16 @@ func sendOK(w http.ResponseWriter) {
 	}
 }
 
+func sendReply(w http.ResponseWriter, reply []byte) {
+	// answer json reply
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(reply)))
+	w.Write(reply)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 func (ap *ActionProxy) initHandler(w http.ResponseWriter, r *http.Request) {
 
 	// you can do muliple initializations when debugging

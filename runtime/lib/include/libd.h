@@ -109,6 +109,8 @@ int libd_transport_connect   (struct libd_transport * trans);
 int libd_transport_recover   (struct libd_transport * trans); // error -> init
 int libd_transport_terminate (struct libd_transport * trans); // any -> terminate
 
+char * libd_transport_get_message(struct libd_transport * trans, int * msg_size);
+
 #define transport_handler(IMPL,t,HNDL) (((struct IMPL *)((t)->_impl))->HNDL)
 
 /* Action */

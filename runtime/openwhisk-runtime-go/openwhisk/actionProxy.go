@@ -53,7 +53,8 @@ type ActionProxy struct {
 	errFile *os.File
 
 	// Fifo file
-	fifoFile *os.File
+	fifoInFile  *os.File
+	fifoOutFile *os.File
 
 	// environment
 	env map[string]string
@@ -70,6 +71,7 @@ func NewActionProxy(baseDir string, compiler string, outFile *os.File, errFile *
 		nil,
 		outFile,
 		errFile,
+		nil,
 		nil,
 		map[string]string{},
 	}
@@ -157,8 +159,10 @@ func (ap *ActionProxy) StartLatestAction() error {
 		// TODO: check this
 		Debug("cannot create fifo file")
 	}
-	// TODO: why this open is strange?
-	ap.fifoFile, err = os.OpenFile(fifoFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0777)
+	// TODO: why this open use all permissions?
+	ap.fifoInFile, err = os.OpenFile(fifoFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0777)
+	ap.fifoOutFile, err = os.OpenFile(fifoFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0777)
+
 	if err != nil {
 		// TODO: check this
 		Debug("Cannot open FIFO file")
@@ -182,8 +186,11 @@ cleanup:
 	// and leaving the current executor running
 	if !Debugging {
 		// cleanup fifo file
-		if ap.fifoFile != nil {
-			ap.fifoFile.Close()
+		if ap.fifoInFile != nil {
+			ap.fifoInFile.Close()
+		}
+		if ap.fifoOutFile != nil {
+			ap.fifoOutFile.Close()
 		}
 
 		exeDir := fmt.Sprintf("./action/%d/", highestDir)

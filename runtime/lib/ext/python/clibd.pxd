@@ -13,6 +13,8 @@ cdef extern from "libd.h":
     # int libd_transport_connect   (libd_transport* trans);
     # int libd_transport_recover   (libd_transport* trans);
     # int libd_transport_terminate (libd_transport* trans);
+    # XXX: transport interface for messaging
+    char * libd_transport_get_message(libd_transport* trans, int *size);
 
     # Actions interfaces
     libd_action * libd_action_init(char* aid, int argc, char ** argv);

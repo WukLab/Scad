@@ -71,6 +71,8 @@ func (ap *ActionProxy) runHandler(w http.ResponseWriter, r *http.Request) {
 	body = bytes.Replace(body, []byte("\n"), []byte(""), -1)
 
 	// execute the action
+	// We do not insert messages in run command. Just use other APIs (e.g. addAction. So it can get reply)
+	// one transport can only hold one message at a give time
 	response, err := ap.theExecutor.Interact(body)
 
 	// check for early termination

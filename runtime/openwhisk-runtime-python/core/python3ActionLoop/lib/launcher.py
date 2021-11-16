@@ -47,6 +47,7 @@ class LibdRuntime:
         self.stash_msgs = {}
         self.server_url = os.getenv('__OW_INVOKER_API_URL', 'localhost')
         self.cv = threading.Condition()
+        self.fifo = fifoOut
     def stash(self,aid,func,*args):
         print("stash request", aid, func, args, file=stderr)
         stderr.flush()
@@ -58,10 +59,13 @@ class LibdRuntime:
             for func,args in self.stash_msgs[aid]:
                 func(self, *args)
             del self.stash_msgs[aid]
+
+    # all those functions will write a message
     def create_action(self, aid):
         args = {"post_url":'http://172.17.0.1:2400'}
         action = LibdAction(self.cv, aid, **args)
         self.actions[aid] = action
+
         return action
     def get_action(self, aid):
         return self.actions[aid]
@@ -71,16 +75,21 @@ class LibdRuntime:
         del self.actions[name]
 
 # Params: a list of strings. Body: the body of http request
+# TODO: add return value
 def _act_add        (runtime, params, body):
     runtime.create_action(params['activation_id'])
 def _trans_add      (runtime, params, body):
     runtime.get_action(params[0]).add_transport(**body)
+    # TODO: msg back here
+    message(action, params[1], ???)
 def _trans_config   (runtime, params, body):
     debug('try to config', params, body)
     if params[0] in runtime.actions:
         action = runtime.get_action(params[0])
         action.config_transport(params[1], body['durl'])
         debug('finish config', params, body)
+        # TODO: msg back here
+        message(action, params[1], ???)
     else:
         runtime.stash(params[0], _trans_config, params, body)
 
@@ -91,15 +100,16 @@ cmd_funcs = {
     'TRANSCONF' : _trans_config
 }
 
-def handle_message(fifoName, runtime):
+# Open FIFOs
+
+def handle_message(fifoIn, runtime):
     try:
-        fifo = os.open(fifoName, os.O_RDONLY)
         while True:
             stderr.write('Listen on fifo file ' + fifoName + '\n')
             stderr.flush()
             # parse message from FIFO
-            size = struct.unpack("<I", os.read(fifo, 4))[0]
-            content = os.read(fifo, size).decode('ascii')
+            size = struct.unpack("<I", os.read(fifoIn, 4))[0]
+            content = os.read(fifoIn, size).decode('ascii')
             msg = json.loads(content)
             body = json.loads(msg.get('body', "{}"))
             params = msg.get('params', [])
@@ -110,11 +120,33 @@ def handle_message(fifoName, runtime):
         stderr.flush()
 
 # start libd monitor thread, this will keep up for one initd function
-FIFO_FILE = os.path.join(
+FIFO_IN_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
-    "../fifo")
+    "../fifoIn")
+FIFO_OUT_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "../fifoIn")
+
+fifoIn  = os.open(inFifo, os.O_RDONLY)
+fifoOut = os.open(outFifo, os.O_WRONLY)
+
+#TODO: check this!
+# Write mesage to Json
+# transport: LibdTransport
+def message(action, transport_name, check_msg = True):
+    trans = action.get_transport(transport_name)
+    message = {'ok': True}
+    if check_msg:
+        size, msg = transport.get_msg()
+        if size > 0:
+            message += {'message': msg}
+    msg_json = json.dumps(message)
+    os.write(self.fifo, struct.pack("<I", len(msg_json)))
+    os.write(self.fifo, msg_json.encode('ascii'))
+    debug('send message', message)
+
 _runtime = LibdRuntime()
-threading.Thread(target=handle_message, args=(FIFO_FILE, _runtime)).start()
+threading.Thread(target=handle_message, args=(fifoIn, _runtime)).start()
 ####################
 # END   libd runtime
 ####################
@@ -169,7 +201,11 @@ while True:
   if action != None and transports != None:
     for trans in transports:
       action.add_transport(trans)
+      # XXX: we do not message here
+      # we do not expect to get parameters here
+      # message(action, trans, ???)
     _runtime.unstash(aid)
+    # TODO: stasjed messages? we'd expect no stashed messages
 
   res = {}
   # Here the funciton is in the same thread

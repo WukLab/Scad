@@ -70,3 +70,8 @@ int libd_transport_terminate (struct libd_transport * trans) {
     return 0;
 }
 
+char * libd_transport_get_message (struct libd_transport * trans, int * msg_size) {
+    *msg_size = trans->tstate->msg_size;
+    return trans->tstate->msg;
+}
+
