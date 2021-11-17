@@ -74,22 +74,47 @@ class LibdRuntime:
         action.terminate()
         del self.actions[name]
 
+
+# start libd monitor thread, this will keep up for one initd function
+FIFO_IN_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "../fifoIn")
+FIFO_OUT_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "../fifoIn")
+
+fifoIn  = os.open(inFifo, os.O_RDONLY)
+fifoOut = os.open(outFifo, os.O_WRONLY)
+
+_runtime = LibdRuntime()
+threading.Thread(target=handle_message, args=(fifoIn, _runtime)).start()
+
 # Params: a list of strings. Body: the body of http request
-# TODO: add return value
+# TODO: consider adding lock here
+def _act_msgs       (runtime, params, body = None):
+    msgs = {}
+    action = runtime.get_action (params[0])
+    for t in action.raw_transports:
+        size, msg = t.get_msg()
+        if size > 0:
+            msgs[t.name] = msg
+    rep = json.dumps({'ok': True, 'messages': msgs})
+    debug('collect messages', rep)
+    os.write(fifoOut, struct.pack("<I", len(rep)))
+    os.write(fifoOut, msg_json.encode('ascii'))
+    debug('send message', message)
 def _act_add        (runtime, params, body):
     runtime.create_action(params['activation_id'])
 def _trans_add      (runtime, params, body):
     runtime.get_action(params[0]).add_transport(**body)
-    # TODO: msg back here
-    message(action, params[1], ???)
+    _act_msgs(runtime, params)
 def _trans_config   (runtime, params, body):
     debug('try to config', params, body)
     if params[0] in runtime.actions:
         action = runtime.get_action(params[0])
         action.config_transport(params[1], body['durl'])
         debug('finish config', params, body)
-        # TODO: msg back here
-        message(action, params[1], ???)
+        _act_msgs(runtime, params)
     else:
         runtime.stash(params[0], _trans_config, params, body)
 
@@ -97,7 +122,8 @@ cmd_funcs = {
     # create action
     'ACTADD'    : _act_add,
     'TRANSADD'  : _trans_add,
-    'TRANSCONF' : _trans_config
+    'TRANSCONF' : _trans_config,
+    'ACTMSGS' : _act_msgs
 }
 
 # Open FIFOs
@@ -118,35 +144,6 @@ def handle_message(fifoIn, runtime):
     finally:
         print('Error happens in FIFO thread', file=stderr)
         stderr.flush()
-
-# start libd monitor thread, this will keep up for one initd function
-FIFO_IN_FILE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "../fifoIn")
-FIFO_OUT_FILE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "../fifoIn")
-
-fifoIn  = os.open(inFifo, os.O_RDONLY)
-fifoOut = os.open(outFifo, os.O_WRONLY)
-
-#TODO: check this!
-# Write mesage to Json
-# transport: LibdTransport
-def message(action, transport_name, check_msg = True):
-    trans = action.get_transport(transport_name)
-    message = {'ok': True}
-    if check_msg:
-        size, msg = transport.get_msg()
-        if size > 0:
-            message += {'message': msg}
-    msg_json = json.dumps(message)
-    os.write(self.fifo, struct.pack("<I", len(msg_json)))
-    os.write(self.fifo, msg_json.encode('ascii'))
-    debug('send message', message)
-
-_runtime = LibdRuntime()
-threading.Thread(target=handle_message, args=(fifoIn, _runtime)).start()
 ####################
 # END   libd runtime
 ####################

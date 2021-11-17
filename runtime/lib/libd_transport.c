@@ -72,6 +72,8 @@ int libd_transport_terminate (struct libd_transport * trans) {
 
 char * libd_transport_get_message (struct libd_transport * trans, int * msg_size) {
     *msg_size = trans->tstate->msg_size;
+    // clear after read
+    trans->tstate->msg_size = 0;
     return trans->tstate->msg;
 }
 

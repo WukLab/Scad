@@ -57,9 +57,6 @@ static int _init(struct libd_transport *trans) {
     init_config_set(device_name, "mlx5_1");
     init_config_set(cq_size, 16);
 
-    // reset the message, so wont send it
-    rstate->tstate->msg_size = 0;
-
     // init the RDMA connection
     if (!trans->initd) {
         memset(&rstate->conn, 0, sizeof(struct rdma_conn));

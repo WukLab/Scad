@@ -86,6 +86,13 @@ func (ap *ActionProxy) handleLibdRequest(w http.ResponseWriter, r *http.Request)
 
 			sendReply(w, msg)
 			return
+		} else if len(fields) == 3 && fields[2] == "messages" {
+			// app.post('/action/:aid/messages', addAction);
+			ap.fifoWrite(LibdMessage{Cmd: "ACTMSGS", Params: []string{fields[1]}})
+			msg, _ := ap.fifoRead()
+
+			sendReply(w, msg)
+			return
 		} else if len(fields) == 3 && fields[2] == "transport" && r.Method == "POST" {
 			// app.post('/action/:aid/transport', addTransport);
 			ap.fifoWrite(LibdMessage{Cmd: "TRANSADD", Body: bodyStr})

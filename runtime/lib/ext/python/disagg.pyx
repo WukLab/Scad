@@ -35,6 +35,7 @@ cdef class LibdAction:
     # Python init part, I assume they have same objects
     def __init__(self, *args, **kwargs):
         self.transports = {}
+        self.raw_transports = {}
 
     # make sure action structure is freed.
     def __dealloc__(self):
@@ -53,7 +54,14 @@ cdef class LibdAction:
     def add_transport(self, durl):
         # TODO: add ttype here
         c_durl = durl.encode('ascii')
-        return clibd.libd_action_add_transport(self._c_action, c_durl)
+        # TODO: add a get_transport call here to cache the trans
+        name = durl.split(';')[0]
+        ret = clibd.libd_action_add_transport(self._c_action, c_durl)
+        if ret >= 0:
+            # cache the 
+            self.raw_transports[name] = LibdTransport(self, name)
+        return ret
+
 
     def config_transport(self, name, durl):
         ret = clibd.libd_action_config_transport(
@@ -68,7 +76,7 @@ cdef class LibdAction:
             # delay construct of object by function wrap
             trans = {
                 'rdma':        partial(LibdTransportRDMA,       self),
-                'rdma_server': partial(LibdTransportRDMAServer, self)
+                'rdma_server': partial(LibdTransportRDMAServer, self),
             }[ttype](name)
             self.transports[name] = trans
         # raise exception if name is not found
@@ -86,10 +94,16 @@ cdef class LibdTransport:
         # TODO: spin here if we cannot get a transport
         if self._c_trans is NULL:
             raise MemoryError()
+    def __init__(self, action, name, *argv):
+        self.name = name
+
     # TODO: check this
+    cdef int size
     def get_msg(self):
-        cdef int size
-        msg = clibd.libd_transport_get_message(&size).decode('ascii')
+        if self._c_trans is NULL:
+            raise MemoryError()
+        msg = <bytes>clibd.libd_transport_get_message(
+                      self._c_trans, &size)
         return size, msg
         
     # we do not need to have __dealloc__ for all transports, clib will handle this
