@@ -84,12 +84,12 @@ class SequenceApiTests extends ControllerTestCommon with WhiskActionsApi {
     implicit val tid = transid()
     val seqName = EntityName(s"${aname()}_toomanyactions")
     // put the component action in the entity store so it's found
-    val component = WhiskAction(namespace, aname(), jsDefault("??"))
+    val component = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     put(entityStore, component)
     // create exec sequence that will violate max length
     val limit = whiskConfig.actionSequenceLimit.toInt + 1 // one more than allowed
     val components = for (i <- 1 to limit) yield stringToFullyQualifiedName(component.docid.asString)
-    val content = WhiskActionPut(Some(sequence(components.toVector)))
+    val content = WhiskActionPut(Some(sequence(components.toVector)), None)
 
     // create an action sequence
     Put(s"$collectionPath/${seqName.name}", content) ~> Route.seal(routes(creds)) ~> check {
@@ -102,7 +102,7 @@ class SequenceApiTests extends ControllerTestCommon with WhiskActionsApi {
     implicit val tid = transid()
     val seqName = s"${aname()}_no_component"
     // create exec sequence with no component
-    val content = WhiskActionPut(Some(sequence(Vector.empty)))
+    val content = WhiskActionPut(Some(sequence(Vector.empty)), None)
 
     // create an action sequence
     Put(s"$collectionPath/$seqName", content) ~> Route.seal(routes(creds)) ~> check {
@@ -118,7 +118,7 @@ class SequenceApiTests extends ControllerTestCommon with WhiskActionsApi {
     val components = Vector("a", "b")
     putSimpleSequenceInDB(seqName, namespace, components)
     // update sequence with no component
-    val updateContent = WhiskActionPut(Some(sequence(Vector.empty)))
+    val updateContent = WhiskActionPut(Some(sequence(Vector.empty)), None)
 
     // create an action sequence
     Put(s"$collectionPath/$seqName?overwrite=true", updateContent) ~> Route.seal(routes(creds)) ~> check {
@@ -133,7 +133,7 @@ class SequenceApiTests extends ControllerTestCommon with WhiskActionsApi {
     val bogus = s"${aname()}_bogus"
     val bogusAction = s"/$namespace/$bogus"
     val components = Vector(bogusAction).map(stringToFullyQualifiedName(_))
-    val content = WhiskActionPut(Some(sequence(components)))
+    val content = WhiskActionPut(Some(sequence(components)), None)
 
     // create an action sequence
     Put(s"$collectionPath/${seqName.name}", content) ~> Route.seal(routes(creds)) ~> check {
@@ -148,7 +148,7 @@ class SequenceApiTests extends ControllerTestCommon with WhiskActionsApi {
     val sSeq = makeSimpleSequence(seqName, namespace, Vector(seqName), false)
 
     // create an action sequence
-    val content = WhiskActionPut(Some(sSeq.exec))
+    val content = WhiskActionPut(Some(sSeq.exec), None)
     Put(s"$collectionPath/$seqName", content) ~> Route.seal(routes(creds)) ~> check {
       status should be(BadRequest)
       responseAs[ErrorResponse].error shouldBe Messages.sequenceIsCyclic
@@ -159,7 +159,7 @@ class SequenceApiTests extends ControllerTestCommon with WhiskActionsApi {
     implicit val tid = transid()
 
     // put the action in the entity store so it's found
-    val component = WhiskAction(namespace, aname(), jsDefault("??"))
+    val component = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     put(entityStore, component)
 
     val seqName = s"${aname()}_cyclic"
@@ -167,7 +167,7 @@ class SequenceApiTests extends ControllerTestCommon with WhiskActionsApi {
       makeSimpleSequence(seqName, namespace, Vector(component.name.asString, seqName, component.name.asString), false)
 
     // create an action sequence
-    val content = WhiskActionPut(Some(sSeq.exec))
+    val content = WhiskActionPut(Some(sSeq.exec), None)
     Put(s"$collectionPath/$seqName", content) ~> Route.seal(routes(creds)) ~> check {
       status should be(BadRequest)
       responseAs[ErrorResponse].error shouldBe Messages.sequenceIsCyclic
@@ -178,11 +178,11 @@ class SequenceApiTests extends ControllerTestCommon with WhiskActionsApi {
     implicit val tid = transid()
     val seqName = EntityName(s"${aname()}_cycle")
     // put the component action in the entity store so it's found
-    val component = WhiskAction(namespace, aname(), jsDefault("??"))
+    val component = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     put(entityStore, component)
     // create valid exec sequence initially
     val components = for (i <- 1 to 2) yield stringToFullyQualifiedName(component.docid.asString)
-    val content = WhiskActionPut(Some(sequence(components.toVector)))
+    val content = WhiskActionPut(Some(sequence(components.toVector)), None)
 
     // create a valid action sequence first
     Put(s"$collectionPath/${seqName.name}", content) ~> Route.seal(routes(creds)) ~> check {
@@ -192,7 +192,7 @@ class SequenceApiTests extends ControllerTestCommon with WhiskActionsApi {
     // now create exec sequence with a self-reference
     val seqNameWithNamespace = stringToFullyQualifiedName(s"/$namespace/${seqName.name}")
     val updatedSeq = components.updated(1, seqNameWithNamespace)
-    val updatedContent = WhiskActionPut(Some(sequence(updatedSeq.toVector)))
+    val updatedContent = WhiskActionPut(Some(sequence(updatedSeq.toVector)), None)
 
     // update the sequence
     Put(s"$collectionPath/${seqName.name}?overwrite=true", updatedContent) ~> Route.seal(routes(creds)) ~> check {
@@ -206,12 +206,12 @@ class SequenceApiTests extends ControllerTestCommon with WhiskActionsApi {
     implicit val tid = transid()
     val seqName = EntityName(s"${aname()}_normal")
     // put the component action in the entity store so it's found
-    val component = WhiskAction(namespace, aname(), jsDefault("??"))
+    val component = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     put(entityStore, component)
     // create valid exec sequence
     val limit = whiskConfig.actionSequenceLimit.toInt
     val components = for (i <- 1 to limit) yield stringToFullyQualifiedName(component.docid.asString)
-    val content = WhiskActionPut(Some(sequence(components.toVector)))
+    val content = WhiskActionPut(Some(sequence(components.toVector)), None)
 
     // create an action sequence
     Put(s"$collectionPath/${seqName.name}", content) ~> Route.seal(routes(creds)) ~> check {
@@ -237,12 +237,12 @@ class SequenceApiTests extends ControllerTestCommon with WhiskActionsApi {
     // put the action in the entity store so it exists
     val actionName = s"${aname()}_action"
     val namespaceWithPkg = s"/$namespace/$pkg"
-    val action = WhiskAction(EntityPath(namespaceWithPkg), EntityName(actionName), jsDefault("??"))
+    val action = WhiskAction(EntityPath(namespaceWithPkg), EntityName(actionName), jsDefault("??"), PorusParams())
     put(entityStore, action)
 
     // create sequence that refers to action with binding
     val components = Vector(s"/$defaultNamespace/$pkgWithBinding/$actionName").map(stringToFullyQualifiedName(_))
-    val content = WhiskActionPut(Some(sequence(components)))
+    val content = WhiskActionPut(Some(sequence(components)), None)
 
     // create an action sequence
     Put(s"$collectionPath/${seqName.name}", content) ~> Route.seal(routes(creds)) ~> check {
@@ -257,7 +257,7 @@ class SequenceApiTests extends ControllerTestCommon with WhiskActionsApi {
     val seqName = EntityName(s"${aname()}_cycle_binding")
 
     // put the action in the entity store so it's found
-    val component = WhiskAction(namespace, aname(), jsDefault("??"))
+    val component = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     put(entityStore, component)
     val components = for (i <- 1 to 2) yield stringToFullyQualifiedName(component.docid.asString)
 
@@ -268,7 +268,7 @@ class SequenceApiTests extends ControllerTestCommon with WhiskActionsApi {
 
     // create an action sequence
     val namespaceWithPkg = EntityPath(s"/$namespace/$pkg")
-    val content = WhiskActionPut(Some(sequence(components.toVector)))
+    val content = WhiskActionPut(Some(sequence(components.toVector)), None)
     Put(s"$collectionPath/$pkg/${seqName.name}", content) ~> Route.seal(routes(creds)) ~> check {
       status should be(OK)
     }
@@ -281,7 +281,7 @@ class SequenceApiTests extends ControllerTestCommon with WhiskActionsApi {
     // now update the sequence to refer to itself through the binding
     val seqNameWithBinding = stringToFullyQualifiedName(s"/$namespace/$pkgWithBinding/${seqName.name}")
     val updatedSeq = components.updated(1, seqNameWithBinding)
-    val updatedContent = WhiskActionPut(Some(sequence(updatedSeq.toVector)))
+    val updatedContent = WhiskActionPut(Some(sequence(updatedSeq.toVector)), None)
 
     // update the sequence
     Put(s"$collectionPath/$pkg/${seqName.name}?overwrite=true", updatedContent) ~> Route.seal(routes(creds)) ~> check {
@@ -341,7 +341,7 @@ class SequenceApiTests extends ControllerTestCommon with WhiskActionsApi {
     // create an action sequence s
     val sSeqName = s"${aname()}_s"
     val sSeq = makeSimpleSequence(sSeqName, namespace, Vector(xSeqName, xSeqName), false) // x is installed in the db already
-    val content = WhiskActionPut(Some(sSeq.exec))
+    val content = WhiskActionPut(Some(sSeq.exec), None)
 
     Console.withOut(stream) {
       Put(s"$collectionPath/$sSeqName", content) ~> Route.seal(routes(creds)) ~> check {
@@ -382,7 +382,7 @@ class SequenceApiTests extends ControllerTestCommon with WhiskActionsApi {
     val sAct = s"${aname()}_s"
     val sSeq = makeSimpleSequence(sAct, namespace, Vector(aAct, xAct, yAct), false) // a, x, y  in the db already
     // create an action sequence s
-    val content = WhiskActionPut(Some(sSeq.exec))
+    val content = WhiskActionPut(Some(sSeq.exec), None)
 
     stream.reset()
     Console.withOut(stream) {
@@ -394,7 +394,7 @@ class SequenceApiTests extends ControllerTestCommon with WhiskActionsApi {
 
     // update action z to point to s --- should be rejected
     val zUpdate = makeSimpleSequence(zAct, namespace, Vector(sAct), false) // s in the db already
-    val zUpdateContent = WhiskActionPut(Some(zUpdate.exec))
+    val zUpdateContent = WhiskActionPut(Some(zUpdate.exec), None)
     Put(s"$collectionPath/$zAct?overwrite=true", zUpdateContent) ~> Route.seal(routes(creds)) ~> check {
       status should be(BadRequest)
       responseAs[ErrorResponse].error shouldBe Messages.sequenceIsCyclic
@@ -402,7 +402,7 @@ class SequenceApiTests extends ControllerTestCommon with WhiskActionsApi {
 
     // update action s to point to a, s, b --- should be rejected
     val sUpdate = makeSimpleSequence(sAct, namespace, Vector(aAct, sAct, bAct), false) // s in the db already
-    val sUpdateContent = WhiskActionPut(Some(sUpdate.exec))
+    val sUpdateContent = WhiskActionPut(Some(sUpdate.exec), None)
     Put(s"$collectionPath/$sAct?overwrite=true", sUpdateContent) ~> Route.seal(routes(creds)) ~> check {
       status should be(BadRequest)
       responseAs[ErrorResponse].error shouldBe Messages.sequenceIsCyclic
@@ -410,7 +410,7 @@ class SequenceApiTests extends ControllerTestCommon with WhiskActionsApi {
 
     // update action z to point to y
     val zSeq = makeSimpleSequence(zAct, namespace, Vector(yAct), false) // y  in the db already
-    val updateContent = WhiskActionPut(Some(zSeq.exec))
+    val updateContent = WhiskActionPut(Some(zSeq.exec), None)
     stream.reset()
     Console.withOut(stream) {
       Put(s"$collectionPath/$zAct?overwrite=true", updateContent) ~> Route.seal(routes(creds)) ~> check {
@@ -420,7 +420,7 @@ class SequenceApiTests extends ControllerTestCommon with WhiskActionsApi {
     }
     // update sequence s to s -> a, x, y, a, b
     val newS = makeSimpleSequence(sAct, namespace, Vector(aAct, xAct, yAct, aAct, bAct), false) // a, x, y, b  in the db already
-    val newSContent = WhiskActionPut(Some(newS.exec))
+    val newSContent = WhiskActionPut(Some(newS.exec), None)
     stream.reset()
     Console.withOut(stream) {
       Put(s"${collectionPath}/$sAct?overwrite=true", newSContent) ~> Route.seal(routes(creds)) ~> check {

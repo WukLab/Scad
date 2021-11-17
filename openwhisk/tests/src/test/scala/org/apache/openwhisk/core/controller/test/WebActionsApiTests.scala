@@ -213,6 +213,7 @@ trait WebActionsApiBaseTests extends ControllerTestCommon with BeforeAndAfterEac
       namespace,
       name,
       jsDefault("??"),
+      PorusParams(),
       defaultActionParameters,
       annotations = {
         if (name.asString.startsWith("export_")) {

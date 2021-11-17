@@ -77,11 +77,11 @@ class DatastoreTests
     implicit val basename = EntityName("create action blackbox")
     val exec = bb("image")
     val actions = Seq(
-      WhiskAction(namespace, aname, exec),
-      WhiskAction(namespace, aname, exec, Parameters("x", "y")),
-      WhiskAction(namespace, aname, exec, Parameters("x", "y")),
-      WhiskAction(namespace, aname, exec, Parameters("x", "y") ++ Parameters("x", "y")),
-      WhiskAction(namespace, aname, exec, Parameters("x", "y") ++ Parameters("y", "x")))
+      WhiskAction(namespace, aname, exec, PorusParams()),
+      WhiskAction(namespace, aname, exec, PorusParams(), Parameters("x", "y")),
+      WhiskAction(namespace, aname, exec, PorusParams(), Parameters("x", "y")),
+      WhiskAction(namespace, aname, exec, PorusParams(), Parameters("x", "y") ++ Parameters("x", "y")),
+      WhiskAction(namespace, aname, exec, PorusParams(), Parameters("x", "y") ++ Parameters("y", "x")))
     val docs = actions.map { entity =>
       putGetCheck(datastore, entity, WhiskAction)
     }
@@ -92,11 +92,11 @@ class DatastoreTests
     implicit val basename = EntityName("create action js")
     val exec = jsDefault("code")
     val actions = Seq(
-      WhiskAction(namespace, aname, exec, Parameters()),
-      WhiskAction(namespace, aname, exec, Parameters("x", "y")),
-      WhiskAction(namespace, aname, exec, Parameters("x", "y")),
-      WhiskAction(namespace, aname, exec, Parameters("x", "y") ++ Parameters("x", "y")),
-      WhiskAction(namespace, aname, exec, Parameters("x", "y") ++ Parameters("y", "x")))
+      WhiskAction(namespace, aname, exec, PorusParams(), Parameters()),
+      WhiskAction(namespace, aname, exec, PorusParams(), Parameters("x", "y")),
+      WhiskAction(namespace, aname, exec, PorusParams(), Parameters("x", "y")),
+      WhiskAction(namespace, aname, exec, PorusParams(), Parameters("x", "y") ++ Parameters("x", "y")),
+      WhiskAction(namespace, aname, exec, PorusParams(), Parameters("x", "y") ++ Parameters("y", "x")))
     val docs = actions.map { entity =>
       putGetCheck(datastore, entity, WhiskAction)
     }
@@ -156,7 +156,7 @@ class DatastoreTests
   it should "reject action with null arguments" in {
     val name = EntityName("bad action")
     intercept[IllegalArgumentException] {
-      WhiskAction(namespace, name, bb("i"), Parameters(), null)
+      WhiskAction(namespace, name, bb("i"), PorusParams(), Parameters(), null)
     }
   }
 
@@ -196,10 +196,10 @@ class DatastoreTests
     implicit val tid = transid()
     implicit val basename = EntityName("update action")
     val exec = jsDefault("update")
-    val action = WhiskAction(namespace, aname, exec, Parameters(), ActionLimits())
+    val action = WhiskAction(namespace, aname, exec, PorusParams(), Parameters(), ActionLimits())
     val docinfo = putGetCheck(datastore, action, WhiskAction, false)._2.docinfo
     val revAction =
-      WhiskAction(namespace, action.name, exec, Parameters(), ActionLimits()).revision[WhiskAction](docinfo.rev)
+      WhiskAction(namespace, action.name, exec, PorusParams(), Parameters(), ActionLimits()).revision[WhiskAction](docinfo.rev)
     putGetCheck(datastore, revAction, WhiskAction)
   }
 
@@ -207,7 +207,7 @@ class DatastoreTests
     implicit val tid = transid()
     implicit val basename = EntityName("attachment action")
     val javaAction =
-      WhiskAction(namespace, aname, javaDefault("ZHViZWU=", Some("hello")), annotations = Parameters("exec", "java"))
+      WhiskAction(namespace, aname, javaDefault("ZHViZWU=", Some("hello")), PorusParams(), annotations = Parameters("exec", "java"))
     val docinfo = putGetCheck(datastore, javaAction, WhiskAction, false)._2.docinfo
 
     val proxy = spy(datastore)
@@ -254,7 +254,7 @@ class DatastoreTests
     implicit val tid = transid()
     implicit val basename = EntityName("create action twice")
     val exec = jsDefault("twice")
-    val action = WhiskAction(namespace, aname, exec)
+    val action = WhiskAction(namespace, aname, exec, PorusParams())
     putGetCheck(datastore, action, WhiskAction)
     intercept[DocumentConflictException] {
       putGetCheck(datastore, action, WhiskAction)
@@ -296,7 +296,7 @@ class DatastoreTests
     implicit val tid = transid()
     implicit val basename = EntityName("delete action twice")
     val exec = jsDefault("twice")
-    val action = WhiskAction(namespace, aname, exec)
+    val action = WhiskAction(namespace, aname, exec, PorusParams())
     val doc = putGetCheck(datastore, action, WhiskAction, false)._1
     assert(Await.result(WhiskAction.del(datastore, doc), dbOpTimeout))
     intercept[NoDocumentException] {

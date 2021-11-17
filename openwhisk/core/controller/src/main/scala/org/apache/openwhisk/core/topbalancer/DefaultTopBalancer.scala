@@ -226,7 +226,7 @@ class DefaultTopBalancer(config: WhiskConfig,
                           // waitForContent includes all previous nodes, but this activation msg is a parallelism copy,
                           // then one of the nodes from "waitForContent" is parallelized, so substract 1, and add the
                           // number of parallel copies
-                          val maxScheds = action.relationships match {
+                          val maxScheds = action.porusParams.relationships match {
                             case Some(value) =>
                               msg.parallelismIdx.max * value.parents.length
                             case None => msg.parallelismIdx.max

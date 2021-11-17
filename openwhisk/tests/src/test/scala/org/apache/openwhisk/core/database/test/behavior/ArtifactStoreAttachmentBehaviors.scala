@@ -19,7 +19,6 @@ package org.apache.openwhisk.core.database.test.behavior
 
 import java.io.ByteArrayOutputStream
 import java.util.Base64
-
 import akka.http.scaladsl.model.{ContentTypes, Uri}
 import akka.stream.IOResult
 import akka.stream.scaladsl.{Sink, StreamConverters}
@@ -28,7 +27,7 @@ import org.apache.openwhisk.common.TransactionId
 import org.apache.openwhisk.core.database.{AttachmentSupport, CacheChangeNotification, NoDocumentException}
 import org.apache.openwhisk.core.entity.Attachments.{Attached, Attachment, Inline}
 import org.apache.openwhisk.core.entity.test.ExecHelpers
-import org.apache.openwhisk.core.entity.{CodeExec, DocInfo, EntityName, WhiskAction}
+import org.apache.openwhisk.core.entity.{CodeExec, DocInfo, EntityName, PorusParams, WhiskAction}
 
 import scala.concurrent.duration.DurationInt
 
@@ -43,7 +42,7 @@ trait ArtifactStoreAttachmentBehaviors extends ArtifactStoreBehaviorBase with Ex
     implicit val tid: TransactionId = transid()
     val exec = javaDefault(nonInlinedCode(entityStore), Some("hello"))
     val javaAction =
-      WhiskAction(namespace, EntityName("attachment_unique"), exec)
+      WhiskAction(namespace, EntityName("attachment_unique"), exec, PorusParams())
 
     val i1 = WhiskAction.put(entityStore, javaAction, old = None).futureValue
     val action2 = entityStore.get[WhiskAction](i1, attachmentHandler).futureValue
@@ -70,7 +69,7 @@ trait ArtifactStoreAttachmentBehaviors extends ArtifactStoreBehaviorBase with Ex
     val code1 = nonInlinedCode(entityStore)
     val exec = javaDefault(code1, Some("hello"))
     val javaAction =
-      WhiskAction(namespace, EntityName("attachment_update_2"), exec)
+      WhiskAction(namespace, EntityName("attachment_update_2"), exec, PorusParams())
 
     val i1 = WhiskAction.put(entityStore, javaAction, old = None).futureValue
 
@@ -97,7 +96,7 @@ trait ArtifactStoreAttachmentBehaviors extends ArtifactStoreBehaviorBase with Ex
     val code1 = encodedRandomBytes(inlinedAttachmentSize(entityStore))
     val exec = javaDefault(code1, Some("hello"))
     val javaAction =
-      WhiskAction(namespace, EntityName("attachment_update_2"), exec)
+      WhiskAction(namespace, EntityName("attachment_update_2"), exec, PorusParams())
 
     val i1 = WhiskAction.put(entityStore, javaAction, old = None).futureValue
 
@@ -121,7 +120,7 @@ trait ArtifactStoreAttachmentBehaviors extends ArtifactStoreBehaviorBase with Ex
 
     val exec = javaDefault(base64, Some("hello"))
     val javaAction =
-      WhiskAction(namespace, EntityName("attachment_large"), exec)
+      WhiskAction(namespace, EntityName("attachment_large"), exec, PorusParams())
 
     //Have more patience as reading large attachments take time specially for remote
     //storage like Cosmos
@@ -149,7 +148,7 @@ trait ArtifactStoreAttachmentBehaviors extends ArtifactStoreBehaviorBase with Ex
     val base64 = encodedRandomBytes(attachmentSize)
 
     val exec = javaDefault(base64, Some("hello"))
-    val javaAction = WhiskAction(namespace, EntityName("attachment_inline"), exec)
+    val javaAction = WhiskAction(namespace, EntityName("attachment_inline"), exec, PorusParams())
 
     val i1 = WhiskAction.put(entityStore, javaAction, old = None).futureValue
     val action2 = entityStore.get[WhiskAction](i1, attachmentHandler).futureValue
@@ -194,7 +193,7 @@ trait ArtifactStoreAttachmentBehaviors extends ArtifactStoreBehaviorBase with Ex
 
     val exec = javaDefault(base64, Some("hello"))
     val javaAction =
-      WhiskAction(namespace, EntityName("attachment_unique"), exec)
+      WhiskAction(namespace, EntityName("attachment_unique"), exec, PorusParams())
 
     val i1 = WhiskAction.put(entityStore, javaAction, old = None).futureValue
     val action2 = entityStore.get[WhiskAction](i1, attachmentHandler).futureValue

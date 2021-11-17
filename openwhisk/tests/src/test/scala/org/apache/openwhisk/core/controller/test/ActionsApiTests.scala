@@ -84,7 +84,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
   it should "list actions by default namespace" in {
     implicit val tid = transid()
     val actions = (1 to 2).map { i =>
-      WhiskAction(namespace, aname(), jsDefault("??"), Parameters("x", "b"))
+      WhiskAction(namespace, aname(), jsDefault("??"), PorusParams(), Parameters("x", "b"))
     }.toList
     actions foreach {
       put(entityStore, _)
@@ -146,7 +146,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
   ignore should "list action by default namespace with full docs" in {
     implicit val tid = transid()
     val actions = (1 to 2).map { i =>
-      WhiskAction(namespace, aname(), jsDefault("??"), Parameters("x", "b"))
+      WhiskAction(namespace, aname(), jsDefault("??"), PorusParams(), Parameters("x", "b"))
     }.toList
     actions foreach {
       put(entityStore, _)
@@ -163,7 +163,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
   it should "list action with explicit namespace" in {
     implicit val tid = transid()
     val actions = (1 to 2).map { i =>
-      WhiskAction(namespace, aname(), jsDefault("??"), Parameters("x", "b"))
+      WhiskAction(namespace, aname(), jsDefault("??"), PorusParams(), Parameters("x", "b"))
     }.toList
     actions foreach {
       put(entityStore, _)
@@ -193,7 +193,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
   //// GET /actions/name
   it should "get action by name in default namespace" in {
     implicit val tid = transid()
-    val action = WhiskAction(namespace, aname(), jsDefault("??"), Parameters("x", "b"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams(), Parameters("x", "b"))
     put(entityStore, action)
 
     Get(s"$collectionPath/${action.name}") ~> Route.seal(routes(creds)) ~> check {
@@ -206,7 +206,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
   it should "get action with updated field" in {
     implicit val tid = transid()
 
-    val action = WhiskAction(namespace, aname(), jsDefault("??"), Parameters("x", "b"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams(), Parameters("x", "b"))
     put(entityStore, action)
 
     // `updated` field should be compared with a document in DB
@@ -228,7 +228,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
   it should "ignore updated field when updating action" in {
     implicit val tid = transid()
 
-    val action = WhiskAction(namespace, aname(), jsDefault(""))
+    val action = WhiskAction(namespace, aname(), jsDefault(""), PorusParams())
     val dummyUpdated = WhiskEntity.currentMillis().toEpochMilli
 
     val content = JsObject(
@@ -246,7 +246,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
     implicit val tid = transid()
 
     // BlackBox: binary: true, main: bbMain
-    val bbAction1 = WhiskAction(namespace, aname(), bb("bb", "RHViZWU=", Some("bbMain")))
+    val bbAction1 = WhiskAction(namespace, aname(), bb("bb", "RHViZWU=", Some("bbMain")), PorusParams())
     val bbAction1Content = Map("exec" -> Map(
       "kind" -> Exec.BLACKBOX,
       "code" -> "RHViZWU=",
@@ -255,54 +255,54 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
     val bbAction1ExecMetaData = blackBoxMetaData("bb", Some("bbMain"), true)
 
     // BlackBox: binary: false, main: bbMain
-    val bbAction2 = WhiskAction(namespace, aname(), bb("bb", "", Some("bbMain")))
+    val bbAction2 = WhiskAction(namespace, aname(), bb("bb", "", Some("bbMain")), PorusParams())
     val bbAction2Content =
       Map("exec" -> Map("kind" -> Exec.BLACKBOX, "code" -> "", "image" -> "bb", "main" -> "bbMain")).toJson.asJsObject
     val bbAction2ExecMetaData = blackBoxMetaData("bb", Some("bbMain"), false)
 
     // BlackBox: binary: true, no main
-    val bbAction3 = WhiskAction(namespace, aname(), bb("bb", "RHViZWU="))
+    val bbAction3 = WhiskAction(namespace, aname(), bb("bb", "RHViZWU="), PorusParams())
     val bbAction3Content =
       Map("exec" -> Map("kind" -> Exec.BLACKBOX, "code" -> "RHViZWU=", "image" -> "bb")).toJson.asJsObject
     val bbAction3ExecMetaData = blackBoxMetaData("bb", None, true)
 
     // BlackBox: binary: false, no main
-    val bbAction4 = WhiskAction(namespace, aname(), bb("bb", ""))
+    val bbAction4 = WhiskAction(namespace, aname(), bb("bb", ""), PorusParams())
     val bbAction4Content = Map("exec" -> Map("kind" -> Exec.BLACKBOX, "code" -> "", "image" -> "bb")).toJson.asJsObject
     val bbAction4ExecMetaData = blackBoxMetaData("bb", None, false)
 
     // Attachment: binary: true, main: javaMain
-    val javaAction1 = WhiskAction(namespace, aname(), javaDefault("RHViZWU=", Some("javaMain")))
+    val javaAction1 = WhiskAction(namespace, aname(), javaDefault("RHViZWU=", Some("javaMain")), PorusParams())
     val javaAction1Content =
       Map("exec" -> Map("kind" -> JAVA_DEFAULT, "code" -> "RHViZWU=", "main" -> "javaMain")).toJson.asJsObject
     val javaAction1ExecMetaData = javaMetaData(Some("javaMain"), true)
 
     // String: binary: true, main: jsMain
-    val jsAction1 = WhiskAction(namespace, aname(), jsDefault("RHViZWU=", Some("jsMain")))
+    val jsAction1 = WhiskAction(namespace, aname(), jsDefault("RHViZWU=", Some("jsMain")), PorusParams())
     val jsAction1Content =
       Map("exec" -> Map("kind" -> NODEJS10, "code" -> "RHViZWU=", "main" -> "jsMain")).toJson.asJsObject
     val jsAction1ExecMetaData = js10MetaData(Some("jsMain"), true)
 
     // String: binary: false, main: jsMain
-    val jsAction2 = WhiskAction(namespace, aname(), jsDefault("", Some("jsMain")))
+    val jsAction2 = WhiskAction(namespace, aname(), jsDefault("", Some("jsMain")), PorusParams())
     val jsAction2Content = Map("exec" -> Map("kind" -> NODEJS10, "code" -> "", "main" -> "jsMain")).toJson.asJsObject
     val jsAction2ExecMetaData = js10MetaData(Some("jsMain"), false)
 
     // String: binary: true, no main
-    val jsAction3 = WhiskAction(namespace, aname(), jsDefault("RHViZWU="))
+    val jsAction3 = WhiskAction(namespace, aname(), jsDefault("RHViZWU="), PorusParams())
     val jsAction3Content = Map("exec" -> Map("kind" -> NODEJS10, "code" -> "RHViZWU=")).toJson.asJsObject
     val jsAction3ExecMetaData = js10MetaData(None, true)
 
     // String: binary: false, no main
-    val jsAction4 = WhiskAction(namespace, aname(), jsDefault(""))
+    val jsAction4 = WhiskAction(namespace, aname(), jsDefault(""), PorusParams())
     val jsAction4Content = Map("exec" -> Map("kind" -> NODEJS10, "code" -> "")).toJson.asJsObject
     val jsAction4ExecMetaData = js10MetaData(None, false)
 
     // Sequence
-    val component = WhiskAction(namespace, aname(), jsDefault("??"))
+    val component = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     put(entityStore, component)
     val components = Vector(s"/$namespace/${component.name}").map(stringToFullyQualifiedName(_))
-    val seqAction = WhiskAction(namespace, aname(), sequence(components), seqParameters(components))
+    val seqAction = WhiskAction(namespace, aname(), sequence(components), PorusParams(), seqParameters(components))
     val seqActionContent = JsObject(
       "exec" -> JsObject("kind" -> "sequence".toJson, "components" -> JsArray(s"/$namespace/${component.name}".toJson)))
     val seqActionExecMetaData = sequenceMetaData(components)
@@ -329,6 +329,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
           action.namespace,
           action.name,
           action.exec,
+          PorusParams(),
           action.parameters,
           action.limits,
           action.version,
@@ -339,6 +340,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
           action.namespace,
           action.name,
           execMetaData,
+          action.porusParams,
           action.parameters,
           action.limits,
           action.version,
@@ -420,7 +422,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
   //// DEL /actions/name
   it should "delete action by name" in {
     implicit val tid = transid()
-    val action = WhiskAction(namespace, aname(), jsDefault("??"), Parameters("x", "b"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams(), Parameters("x", "b"))
     put(entityStore, action)
 
     // it should "reject delete action by name not owned by subject" in
@@ -503,7 +505,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
     implicit val tid = transid()
     val oldCode = "function main()"
     val code = "a" * (actionLimit.toBytes.toInt + 1)
-    val action = WhiskAction(namespace, aname(), jsDefault("??"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     val exec: Exec = jsDefault(code)
     val content = JsObject("exec" -> exec.toJson)
     put(entityStore, action)
@@ -562,7 +564,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
 
   it should "put should accept request with missing optional properties" in {
     implicit val tid = transid()
-    val action = WhiskAction(namespace, aname(), jsDefault(""))
+    val action = WhiskAction(namespace, aname(), jsDefault(""), PorusParams())
     // only a kind must be defined (code otherwise could be empty)
     val content = JsObject("exec" -> JsObject("code" -> "".toJson, "kind" -> action.exec.kind.toJson))
     Put(s"$collectionPath/${action.name}", content) ~> Route.seal(routes(creds)) ~> check {
@@ -575,6 +577,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
           action.namespace,
           action.name,
           action.exec,
+          action.porusParams,
           action.parameters,
           action.limits,
           action.version,
@@ -585,7 +588,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
 
   it should "put should accept blackbox exec with empty code property" in {
     implicit val tid = transid()
-    val action = WhiskAction(namespace, aname(), bb("bb"))
+    val action = WhiskAction(namespace, aname(), bb("bb"), PorusParams())
     val content = Map("exec" -> Map("kind" -> "blackbox", "code" -> "", "image" -> "bb")).toJson.asJsObject
     Put(s"$collectionPath/${action.name}", content) ~> Route.seal(routes(creds)) ~> check {
       deleteAction(action.docid)
@@ -597,6 +600,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
           action.namespace,
           action.name,
           action.exec,
+          action.porusParams,
           action.parameters,
           action.limits,
           action.version,
@@ -609,7 +613,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
 
   it should "put should accept blackbox exec with non-empty code property" in {
     implicit val tid = transid()
-    val action = WhiskAction(namespace, aname(), bb("bb", "cc"))
+    val action = WhiskAction(namespace, aname(), bb("bb", "cc"), PorusParams())
     val content = Map("exec" -> Map("kind" -> "blackbox", "code" -> "cc", "image" -> "bb")).toJson.asJsObject
     Put(s"$collectionPath/${action.name}", content) ~> Route.seal(routes(creds)) ~> check {
       deleteAction(action.docid)
@@ -621,6 +625,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
           action.namespace,
           action.name,
           action.exec,
+          action.porusParams,
           action.parameters,
           action.limits,
           action.version,
@@ -636,7 +641,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
   // this test is to ensure pre-existing actions can continue to to opt-out of new system annotations
   it should "preserve annotations on pre-existing actions" in {
     implicit val tid = transid()
-    val action = WhiskAction(namespace, aname(), jsDefault(""))
+    val action = WhiskAction(namespace, aname(), jsDefault(""), PorusParams())
     put(entityStore, action, false) // install the action into the database directly
 
     var content = JsObject("exec" -> JsObject("code" -> "".toJson, "kind" -> action.exec.kind.toJson))
@@ -650,6 +655,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
           action.namespace,
           action.name,
           action.exec,
+          action.porusParams,
           action.parameters,
           action.limits,
           action.version.upPatch,
@@ -669,6 +675,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
           action.namespace,
           action.name,
           action.exec,
+          action.porusParams,
           action.parameters,
           action.limits,
           action.version.upPatch.upPatch,
@@ -687,8 +694,8 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
   it should "reset parameters when changing sequence action to non sequence" in {
     implicit val tid = transid()
     val components = Vector("x/a", "x/b").map(stringToFullyQualifiedName(_))
-    val action = WhiskAction(namespace, aname(), sequence(components), seqParameters(components))
-    val content = WhiskActionPut(Some(jsDefault("")))
+    val action = WhiskAction(namespace, aname(), sequence(components), PorusParams(), seqParameters(components))
+    val content = WhiskActionPut(Some(jsDefault("")), None)
     put(entityStore, action, false)
 
     // create an action sequence
@@ -706,8 +713,8 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
   it should "preserve new parameters when changing sequence action to non sequence" in {
     implicit val tid = transid()
     val components = Vector("x/a", "x/b").map(stringToFullyQualifiedName(_))
-    val action = WhiskAction(namespace, aname(), sequence(components), seqParameters(components))
-    val content = WhiskActionPut(Some(jsDefault("")), parameters = Some(Parameters("a", "A")))
+    val action = WhiskAction(namespace, aname(), sequence(components), PorusParams(), seqParameters(components))
+    val content = WhiskActionPut(Some(jsDefault("")), None, parameters = Some(Parameters("a", "A")))
     put(entityStore, action, false)
 
     // create an action sequence
@@ -722,8 +729,8 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
 
   it should "put should accept request with parameters property" in {
     implicit val tid = transid()
-    val action = WhiskAction(namespace, aname(), jsDefault("??"), Parameters("x", "b"))
-    val content = WhiskActionPut(Some(action.exec), Some(action.parameters))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams(), Parameters("x", "b"))
+    val content = WhiskActionPut(Some(action.exec), Some(PorusParamsPut()), Some(action.parameters))
 
     // it should "reject put action in namespace not owned by subject" in
     val auser = WhiskAuthHelpers.newIdentity()
@@ -741,6 +748,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
           action.namespace,
           action.name,
           action.exec,
+          action.porusParams,
           action.parameters,
           action.limits,
           action.version,
@@ -751,8 +759,8 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
 
   it should "put should reject request with parameters property as jsobject" in {
     implicit val tid = transid()
-    val action = WhiskAction(namespace, aname(), jsDefault("??"), Parameters("x", "b"))
-    val content = WhiskActionPut(Some(action.exec), Some(action.parameters))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams(), Parameters("x", "b"))
+    val content = WhiskActionPut(Some(action.exec), Some(PorusParamsPut()), Some(action.parameters))
     val params = """{ "parameters": { "a": "b" } }""".parseJson.asJsObject
     val json = JsObject(WhiskActionPut.serdes.write(content).asJsObject.fields ++ params.fields)
     Put(s"$collectionPath/${action.name}", json) ~> Route.seal(routes(creds)) ~> check {
@@ -762,9 +770,10 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
 
   it should "put should accept request with limits property" in {
     implicit val tid = transid()
-    val action = WhiskAction(namespace, aname(), jsDefault("??"), Parameters("x", "b"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams(), Parameters("x", "b"))
     val content = WhiskActionPut(
       Some(action.exec),
+      Some(PorusParamsPut()),
       Some(action.parameters),
       Some(
         ActionLimitsOption(
@@ -782,6 +791,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
           action.namespace,
           action.name,
           action.exec,
+          action.porusParams,
           action.parameters,
           action.limits,
           action.version,
@@ -793,14 +803,15 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
   it should "put and then get an action from cache" in {
     implicit val tid = transid()
     val javaAction =
-      WhiskAction(namespace, aname(), javaDefault("ZHViZWU=", Some("hello")), annotations = Parameters("exec", "java"))
-    val nodeAction = WhiskAction(namespace, aname(), jsDefault("??"), Parameters("x", "b"))
+      WhiskAction(namespace, aname(), javaDefault("ZHViZWU=", Some("hello")),  PorusParams(), annotations = Parameters("exec", "java"))
+    val nodeAction = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams(), Parameters("x", "b"))
     val actions = Seq((javaAction, JAVA_DEFAULT), (nodeAction, NODEJS10))
 
     actions.foreach {
       case (action, kind) =>
         val content = WhiskActionPut(
           Some(action.exec),
+          Some(PorusParamsPut()),
           Some(action.parameters),
           Some(
             ActionLimitsOption(
@@ -819,6 +830,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
               action.namespace,
               action.name,
               action.exec,
+              action.porusParams,
               action.parameters,
               action.limits,
               action.version,
@@ -839,6 +851,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
               action.namespace,
               action.name,
               action.exec,
+              action.porusParams,
               action.parameters,
               action.limits,
               action.version,
@@ -858,6 +871,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
               action.namespace,
               action.name,
               action.exec,
+              action.porusParams,
               action.parameters,
               action.limits,
               action.version.upPatch,
@@ -879,6 +893,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
               action.namespace,
               action.name,
               action.exec,
+              action.porusParams,
               action.parameters,
               action.limits,
               action.version.upPatch,
@@ -894,26 +909,26 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
     val baseAction = WhiskActionPut.fromWhiskAction(
       WhiskAction(namespace, aname(),
         jsDefault(Base64.getEncoder.encodeToString(Array(0x7a)), Some("test")),
-        annotations = Parameters("exec", "javascript"),
-        runtimeType = Some("compute"))
+        PorusParams(runtimeType = Some("compute")),
+        annotations = Parameters("exec", "javascript"))
     )
     val baseAction2 = WhiskActionPut.fromWhiskAction(
       WhiskAction(namespace, aname(),
         jsDefault(Base64.getEncoder.encodeToString(Array(0x7a)), Some("test2")),
-        annotations = Parameters("exec", "javascript"),
-        runtimeType = Some("compute"))
+        PorusParams(runtimeType = Some("compute")),
+        annotations = Parameters("exec", "javascript"))
     )
     val baseAction3 = WhiskActionPut.fromWhiskAction(
       WhiskAction(namespace, aname(),
         jsDefault(Base64.getEncoder.encodeToString(Array(0x7a)), Some("test3")),
-        annotations = Parameters("exec", "javascript"),
-        runtimeType = Some("memory"))
+        PorusParams(runtimeType = Some("memory")),
+        annotations = Parameters("exec", "javascript"))
     )
     val baseAction4 = WhiskActionPut.fromWhiskAction(
       WhiskAction(namespace, aname(),
         jsDefault(Base64.getEncoder.encodeToString(Array(0x7a)), Some("test4")),
-        annotations = Parameters("exec", "javascript"),
-        runtimeType = Some("compute"))
+        PorusParams(runtimeType = Some("compute")),
+        annotations = Parameters("exec", "javascript"))
     )
     val obj = baseAction.withRelationshipsPut(WhiskActionRelationshipPut(Seq(baseAction2.name.get, baseAction3.name.get), Seq(), Seq()))
     val obj2 = baseAction2.withRelationshipsPut(WhiskActionRelationshipPut(Seq(baseAction4.name.get), Seq(baseAction.name.get), Seq(baseAction3.name.get)))
@@ -967,16 +982,18 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
         namespace,
         aname(),
         javaDefault(nonInlinedCode(entityStore), Some("hello")),
+        PorusParams(),
         annotations = Parameters("exec", "java"))
-    val nodeAction = WhiskAction(namespace, aname(), jsDefault(nonInlinedCode(entityStore)), Parameters("x", "b"))
-    val swiftAction = WhiskAction(namespace, aname(), swift(nonInlinedCode(entityStore)), Parameters("x", "b"))
-    val bbAction = WhiskAction(namespace, aname(), bb("bb", nonInlinedCode(entityStore), Some("bbMain")))
+    val nodeAction = WhiskAction(namespace, aname(), jsDefault(nonInlinedCode(entityStore)), PorusParams(), Parameters("x", "b"))
+    val swiftAction = WhiskAction(namespace, aname(), swift(nonInlinedCode(entityStore)), PorusParams(), Parameters("x", "b"))
+    val bbAction = WhiskAction(namespace, aname(), bb("bb", nonInlinedCode(entityStore), Some("bbMain")), PorusParams())
     val actions = Seq((javaAction, JAVA_DEFAULT), (nodeAction, NODEJS10), (swiftAction, SWIFT4), (bbAction, BLACKBOX))
 
     actions.foreach {
       case (action, kind) =>
         val content = WhiskActionPut(
           Some(action.exec),
+          Some(PorusParamsPut()),
           Some(action.parameters),
           Some(
             ActionLimitsOption(
@@ -1005,6 +1022,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
               action.namespace,
               action.name,
               action.exec,
+              action.porusParams,
               action.parameters,
               action.limits,
               action.version,
@@ -1026,6 +1044,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
               action.namespace,
               action.name,
               action.exec,
+              action.porusParams,
               action.parameters,
               action.limits,
               action.version,
@@ -1046,6 +1065,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
               action.namespace,
               action.name,
               action.exec,
+              action.porusParams,
               action.parameters,
               action.limits,
               action.version,
@@ -1065,9 +1085,12 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
         namespace,
         aname(),
         javaDefault(encodedRandomBytes(inlinedAttachmentSize(entityStore)), Some("hello")),
-        annotations = Parameters("exec", "java"))
+        PorusParams(),
+        annotations = Parameters("exec", "java"),
+      )
     val content = WhiskActionPut(
       Some(action.exec),
+      Some(PorusParamsPut()),
       Some(action.parameters),
       Some(
         ActionLimitsOption(
@@ -1091,6 +1114,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
           action.namespace,
           action.name,
           action.exec,
+          action.porusParams,
           action.parameters,
           action.limits,
           action.version,
@@ -1112,6 +1136,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
           action.namespace,
           action.name,
           action.exec,
+          action.porusParams,
           action.parameters,
           action.limits,
           action.version,
@@ -1133,6 +1158,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
           action.namespace,
           action.name,
           action.exec,
+          action.porusParams,
           action.parameters,
           action.limits,
           action.version,
@@ -1145,15 +1171,16 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
 
   it should "get an action with attachment that is not cached" in {
     implicit val tid = transid()
-    val nodeAction = WhiskAction(namespace, aname(), jsDefault(nonInlinedCode(entityStore)), Parameters("x", "b"))
-    val swiftAction = WhiskAction(namespace, aname(), swift(nonInlinedCode(entityStore)), Parameters("x", "b"))
-    val bbAction = WhiskAction(namespace, aname(), bb("bb", nonInlinedCode(entityStore), Some("bbMain")))
+    val nodeAction = WhiskAction(namespace, aname(), jsDefault(nonInlinedCode(entityStore)), PorusParams(), Parameters("x", "b"))
+    val swiftAction = WhiskAction(namespace, aname(), swift(nonInlinedCode(entityStore)), PorusParams(), Parameters("x", "b"))
+    val bbAction = WhiskAction(namespace, aname(), bb("bb", nonInlinedCode(entityStore), Some("bbMain")), PorusParams())
     val actions = Seq((nodeAction, NODEJS10), (swiftAction, SWIFT4), (bbAction, BLACKBOX))
 
     actions.foreach {
       case (action, kind) =>
         val content = WhiskActionPut(
           Some(action.exec),
+          Some(PorusParamsPut()),
           Some(action.parameters),
           Some(
             ActionLimitsOption(
@@ -1183,6 +1210,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
               action.namespace,
               action.name,
               action.exec,
+              action.porusParams,
               action.parameters,
               action.limits,
               action.version,
@@ -1197,11 +1225,12 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
 
   it should "concurrently get an action with attachment that is not cached" in {
     implicit val tid = transid()
-    val action = WhiskAction(namespace, aname(), jsDefault(nonInlinedCode(entityStore)), Parameters("x", "b"))
+    val action = WhiskAction(namespace, aname(), jsDefault(nonInlinedCode(entityStore)), PorusParams(), Parameters("x", "b"))
     val kind = NODEJS10
 
     val content = WhiskActionPut(
       Some(action.exec),
+      Some(PorusParamsPut()),
       Some(action.parameters),
       Some(
         ActionLimitsOption(
@@ -1227,6 +1256,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
       action.namespace,
       action.name,
       action.exec,
+      action.porusParams,
       action.parameters,
       action.limits,
       action.version,
@@ -1252,15 +1282,16 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
 
   it should "update an existing action with attachment that is not cached" in {
     implicit val tid = transid()
-    val nodeAction = WhiskAction(namespace, aname(), jsDefault(nonInlinedCode(entityStore)), Parameters("x", "b"))
-    val swiftAction = WhiskAction(namespace, aname(), swift(nonInlinedCode(entityStore)), Parameters("x", "b"))
-    val bbAction = WhiskAction(namespace, aname(), bb("bb", nonInlinedCode(entityStore), Some("bbMain")))
+    val nodeAction = WhiskAction(namespace, aname(), jsDefault(nonInlinedCode(entityStore)), PorusParams(), Parameters("x", "b"))
+    val swiftAction = WhiskAction(namespace, aname(), swift(nonInlinedCode(entityStore)), PorusParams(), Parameters("x", "b"))
+    val bbAction = WhiskAction(namespace, aname(), bb("bb", nonInlinedCode(entityStore), Some("bbMain")), PorusParams())
     val actions = Seq((nodeAction, NODEJS10), (swiftAction, SWIFT4), (bbAction, BLACKBOX))
 
     actions.foreach {
       case (action, kind) =>
         val content = WhiskActionPut(
           Some(action.exec),
+          Some(PorusParamsPut()),
           Some(action.parameters),
           Some(
             ActionLimitsOption(
@@ -1291,6 +1322,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
               action.namespace,
               action.name,
               action.exec,
+              action.porusParams,
               action.parameters,
               action.limits,
               action.version.upPatch,
@@ -1310,6 +1342,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
               action.namespace,
               action.name,
               action.exec,
+              action.porusParams,
               action.parameters,
               action.limits,
               action.version.upPatch,
@@ -1324,10 +1357,11 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
   it should "ensure old and new action schemas are supported" in {
     implicit val tid = transid()
     val code = nonInlinedCode(entityStore)
-    val actionOldSchema = WhiskAction(namespace, aname(), js10Old(code))
-    val actionNewSchema = WhiskAction(namespace, aname(), jsDefault(code))
+    val actionOldSchema = WhiskAction(namespace, aname(), js10Old(code), PorusParams())
+    val actionNewSchema = WhiskAction(namespace, aname(), jsDefault(code), PorusParams())
     val content = WhiskActionPut(
       Some(actionOldSchema.exec),
+      Some(actionOldSchema.porusParams.toPorusParamsPut()),
       Some(actionOldSchema.parameters),
       Some(
         ActionLimitsOption(
@@ -1358,6 +1392,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
           actionOldSchema.namespace,
           actionOldSchema.name,
           actionNewSchema.exec,
+          actionNewSchema.porusParams,
           actionOldSchema.parameters,
           actionOldSchema.limits,
           actionOldSchema.version.upPatch,
@@ -1383,6 +1418,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
           actionOldSchema.namespace,
           actionOldSchema.name,
           actionNewSchema.exec,
+          actionNewSchema.porusParams,
           actionOldSchema.parameters,
           actionOldSchema.limits,
           actionOldSchema.version.upPatch,
@@ -1393,8 +1429,8 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
 
   it should "reject put with conflict for pre-existing action" in {
     implicit val tid = transid()
-    val action = WhiskAction(namespace, aname(), jsDefault("??"), Parameters("x", "b"))
-    val content = WhiskActionPut(Some(action.exec))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams(), Parameters("x", "b"))
+    val content = WhiskActionPut(Some(action.exec), Some(PorusParamsPut()))
     put(entityStore, action)
     Put(s"$collectionPath/${action.name}", content) ~> Route.seal(routes(creds)) ~> check {
       status should be(Conflict)
@@ -1403,9 +1439,10 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
 
   it should "update action with a put" in {
     implicit val tid = transid()
-    val action = WhiskAction(namespace, aname(), jsDefault("??"), Parameters("x", "b"), ActionLimits())
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams(), Parameters("x", "b"), ActionLimits())
     val content = WhiskActionPut(
       Some(jsDefault("_")),
+      Some(PorusParamsPut()),
       Some(Parameters("x", "X")),
       Some(
         ActionLimitsOption(
@@ -1426,6 +1463,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
           action.namespace,
           action.name,
           content.exec.get,
+          action.porusParams,
           content.parameters.get,
           ActionLimits(
             content.limits.get.timeout.get,
@@ -1439,8 +1477,8 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
 
   it should "update action parameters with a put" in {
     implicit val tid = transid()
-    val action = WhiskAction(namespace, aname(), jsDefault("??"), Parameters("x", "b"))
-    val content = WhiskActionPut(parameters = Some(Parameters("x", "X")))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams(), Parameters("x", "b"))
+    val content = WhiskActionPut(None, Some(action.porusParams.toPorusParamsPut()), parameters = Some(Parameters("x", "X")))
     put(entityStore, action)
     Put(s"$collectionPath/${action.name}?overwrite=true", content) ~> Route.seal(routes(creds)) ~> check {
       deleteAction(action.docid)
@@ -1452,6 +1490,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
           action.namespace,
           action.name,
           action.exec,
+          action.porusParams,
           content.parameters.get,
           version = action.version.upPatch,
           annotations = action.annotations ++ systemAnnotations(NODEJS10, false)))
@@ -1461,7 +1500,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
   //// POST /actions/name
   it should "invoke an action with arguments, nonblocking" in {
     implicit val tid = transid()
-    val action = WhiskAction(namespace, aname(), jsDefault("??"), Parameters("x", "b"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams(), Parameters("x", "b"))
     val args = JsObject("xxx" -> "yyy".toJson)
     put(entityStore, action)
 
@@ -1490,7 +1529,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
   it should "invoke an action with init arguments" in {
     implicit val tid = transid()
     val action =
-      WhiskAction(namespace, aname(), jsDefault("??"), Parameters("E", "e", init = true) ++ Parameters("a", "A"))
+      WhiskAction(namespace, aname(), jsDefault("??"), PorusParams(), Parameters("E", "e", init = true) ++ Parameters("a", "A"))
     put(entityStore, action)
 
     loadBalancer.activationMessageChecker = Some { msg: ActivationMessage =>
@@ -1523,7 +1562,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
 
   it should "invoke an action, nonblocking" in {
     implicit val tid = transid()
-    val action = WhiskAction(namespace, aname(), jsDefault("??"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     put(entityStore, action)
     Post(s"$collectionPath/${action.name}") ~> Route.seal(routes(creds)) ~> check {
       status should be(Accepted)
@@ -1537,7 +1576,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
     implicit val tid = transid()
     val annotations = Parameters(Annotations.FinalParamsAnnotationName, JsTrue)
     val parameters = Parameters("a", "A") ++ Parameters("empty", JsNull)
-    val action = WhiskAction(namespace, aname(), jsDefault("??"), parameters = parameters, annotations = annotations)
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams(), parameters = parameters, annotations = annotations)
     put(entityStore, action)
     Seq((Parameters("a", "B"), BadRequest), (Parameters("empty", "C"), Accepted)).foreach {
       case (p, code) =>
@@ -1552,7 +1591,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
 
   it should "invoke a blocking action and retrieve result via active ack" in {
     implicit val tid = transid()
-    val action = WhiskAction(namespace, aname(), jsDefault("??"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     val activation = WhiskActivation(
       action.namespace,
       action.name,
@@ -1586,7 +1625,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
 
   it should "invoke a blocking action, waiting up to specified timeout and retrieve result via active ack" in {
     implicit val tid = transid()
-    val action = WhiskAction(namespace, aname(), jsDefault("??"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     val activation = WhiskActivation(
       action.namespace,
       action.name,
@@ -1634,7 +1673,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
 
   it should "ensure WhiskActionMetadata is used to invoke an action" in {
     implicit val tid = transid()
-    val action = WhiskAction(namespace, aname(), jsDefault("??"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     put(entityStore, action)
     Post(s"$collectionPath/${action.name}") ~> Route.seal(routes(creds)) ~> check {
       status should be(Accepted)
@@ -1674,7 +1713,7 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
     put(entityStore, entity)
 
     val components = Vector(stringToFullyQualifiedName(s"$namespace/${entity.name}"))
-    val content = WhiskActionPut(Some(sequence(components)))
+    val content = WhiskActionPut(Some(sequence(components)), Some(PorusParamsPut()))
 
     Put(s"$collectionPath/${aname()}", content) ~> Route.seal(routes(creds)) ~> check {
       status should be(InternalServerError)
@@ -1720,16 +1759,16 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
       val okManifest = ExecManifest.runtimesManifest.resolveDefaultRuntime(okKind).get
       val okExec = CodeExecAsAttachment(okManifest, Attachments.serdes[String].read(JsString("??")), None)
 
-      val action = WhiskAction(namespace, aname(), deprecatedExec)
-      val okUpdate = WhiskActionPut(Some(okExec))
-      val badUpdate = WhiskActionPut(Some(deprecatedExec))
+      val action = WhiskAction(namespace, aname(), deprecatedExec, PorusParams())
+      val okUpdate = WhiskActionPut(Some(okExec), Some(PorusParamsPut()))
+      val badUpdate = WhiskActionPut(Some(deprecatedExec), Some(PorusParamsPut()))
 
-      Put(s"$collectionPath/${action.name}", WhiskActionPut(Some(action.exec))) ~> Route.seal(routes(creds)) ~> check {
+      Put(s"$collectionPath/${action.name}", WhiskActionPut(Some(action.exec),  Some(PorusParamsPut()))) ~> Route.seal(routes(creds)) ~> check {
         status shouldBe BadRequest
         responseAs[ErrorResponse].error shouldBe Messages.runtimeDeprecated(action.exec)
       }
 
-      Put(s"$collectionPath/${action.name}?overwrite=true", WhiskActionPut(Some(action.exec))) ~> Route.seal(
+      Put(s"$collectionPath/${action.name}?overwrite=true", WhiskActionPut(Some(action.exec), Some(PorusParamsPut()))) ~> Route.seal(
         routes(creds)) ~> check {
         status shouldBe BadRequest
         responseAs[ErrorResponse].error shouldBe Messages.runtimeDeprecated(action.exec)
