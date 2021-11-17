@@ -5,51 +5,45 @@ import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.socket.nio.{NioServerSocketChannel, NioSocketChannel}
 import io.netty.channel.{Channel, ChannelHandlerContext, ChannelInitializer, SimpleChannelInboundHandler}
 import io.netty.handler.codec.serialization.{ClassResolvers, ObjectDecoder, ObjectEncoder}
+import org.apache.openwhisk.core.entity.ActivationId
 
 import scala.collection.mutable
 
-abstract class ProxyAddress(val instance: String, val element: String, val parallelism: Int, val port: Int = 0) {
-  def masked = ProxyAddressMasked(instance,element,parallelism,port)
-
+abstract class ProxyAddressBase {
+  val aid: ActivationId
+  val transport: String
+  val port: Int
 }
 
 // defines the proxy network address
-case class ProxyAddressStandard(override val instance: String, override val element: String, override val parallelism: Int, override val port: Int = 0) extends ProxyAddress(instance, element, parallelism, port) {
+case class ProxyAddress(aid: ActivationId, transport: String, port: Int = 0) extends ProxyAddressBase {
   def port(port: Int) = copy(port = port)
-  def of(element: String, parallelism: Int) = copy(element = element, parallelism = parallelism)
-  def of(parallelism : Int) = copy(parallelism = parallelism)
+  def masked = ProxyAddressMasked(aid, transport, port)
 }
 
-case class ProxyMessage(src: ProxyAddress, dst: ProxyAddressMasked, message: Array[Byte])
-
-case class ProxyAddressMasked(
-                               override val instance: String,
-                               override val element: String,
-                               override val parallelism: Int,
-                               override val port: Int = 0,
-                            mask : Vector[Boolean] = Vector.fill(4)(true)
-                           ) extends ProxyAddress(instance, element, parallelism, port) {
-  def maskMatch(other: ProxyAddress) = {
+case class ProxyAddressMasked(aid: ActivationId, transport: String, port: Int = 0,
+                              mask : Vector[Boolean] = Vector.fill(3)(true)) extends ProxyAddressBase {
+  def maskMatch(other: ProxyAddressBase) = {
     val pred = Vector(
-      instance == other.instance,
-      element == other.element,
-      parallelism == other.parallelism,
-      port == other.port
-    )
+      aid == other.aid,
+      transport == other.transport,
+      port == other.port)
 
     // not (not pred && mask) => pred or not mask
     (pred, mask).zipped.forall(_ || !_)
   }
-  def port(port: Int) = copy(port = port)
-  def of(element: String, parallelism: Int) = copy(element = element, parallelism = parallelism)
-  def of(parallelism : Int) = copy(parallelism = parallelism)
-
 }
+
+case class ProxyMessage(src: ProxyAddress, dst: ProxyAddressMasked, message: Serializable)
 
 trait ProxyClient[T] {
   val proxy: ProxyNode
   // interface for receiving
-  def proxyReceive(sender: ProxyAddress, message: Array[Byte], messageId: T)
+  def proxyReceive(sender: ProxyAddressBase, message: Serializable, messageId: T)
+  def postReply(addr: ProxyAddress, id: T, message: Serializable) =
+    proxy.postReply(addr, this, id, message)
+  def postRecv(addr: ProxyAddress, id: T) =
+    proxy.postRecv(addr, this, id)
 }
 
 class ProxyNode(serverPort: Int,
@@ -57,8 +51,7 @@ class ProxyNode(serverPort: Int,
                 defaultRoute : String,
                ) {
   // Function, Instance, Element, Parallelism
-  type ProxyNodeAddr = String
-  type Message = Array[Byte]
+  type Message = Serializable
 
   trait MessagePair { type Tag; val c: (ProxyClient[Tag], Tag, Option[Message]) }
 
@@ -95,19 +88,23 @@ class ProxyNode(serverPort: Int,
       override type Tag = T
       override val c = (client, id, Some(message))
     }
+
+    // doRecv will trigger callback
     doRecv(addr, mp)
       .foreach { case (a, m) => postSend(addr, a.masked, m) }
   }
 
   // return: if success recv, return value and sender address
-  def doRecv(addr: ProxyAddress, pair : MessagePair): Option[(ProxyAddress, Message)] =
-    inBox.find ( _._1.maskMatch(addr) )
-         .map(_._2)
+  def doRecv(addr: ProxyAddress, pair : MessagePair): Option[(ProxyAddress, Message)] = {
+    val (client, id, _) = pair.c
+    inBox.find(_._1.maskMatch(addr))
+         .map { case (_, p@(a, m)) => client.proxyReceive(a, m, id); p }
          .orElse {
            // post recv
            recvOutBox += addr -> pair
            None
          }
+  }
 
 
   def inBound(src: ProxyAddress, dest: ProxyAddressMasked, message: Message): Unit = {
@@ -138,7 +135,7 @@ class ProxyNode(serverPort: Int,
   // server channel for "close" function
   var serverChannel = Option.empty[Channel]
 
-  def route(dst: ProxyAddress)(msg: ProxyMessage): Unit = {
+  def route(dst: ProxyAddressBase)(msg: ProxyMessage): Unit = {
     routingTable
       .find { case (mask, _) => mask.maskMatch(dst) }
       .map(_._2)

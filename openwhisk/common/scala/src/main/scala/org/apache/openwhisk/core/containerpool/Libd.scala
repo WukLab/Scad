@@ -40,6 +40,12 @@ trait LibdAPIs[T <: Container] {
     callLibd(HttpMethods.PUT, body, resourcePath = s"action/${activationId.toString}/transport/${transportName}")
   }
 
+  def getMessages(activationId: ActivationId)
+                 (implicit transactionId: TransactionId = TransactionId.unknown) = {
+    val body = JsObject()
+    callLibd(HttpMethods.POST, body, resourcePath = s"action/${activationId.toString}/transport")
+  }
+
 }
 
 object LibdAPIs {

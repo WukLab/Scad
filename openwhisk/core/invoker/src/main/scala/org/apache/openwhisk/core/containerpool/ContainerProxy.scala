@@ -455,6 +455,7 @@ class ContainerProxy(factory: (TransactionId,
       stay()
 
     // Init was successful
+    // Try to "Pop Add Transport" here
     case Event(completed: InitCompleted, data : PreWarmedData) =>
       logging.debug(this, s"CALL 4")
       // Its safe to dump all user config to container
@@ -711,10 +712,39 @@ class ContainerProxy(factory: (TransactionId,
     case LibdTransportConfig(activationId, request, result) =>
       val address = request.address + result
       logging.debug(this, s"transport config: sending ${address} to ${container}")
-      if (request.create)
-        container.addTransport(activationId, address.toFullString)
-      else
-        container.configTransport(activationId, request.name, address.toConfigString)
+
+      val addressBook = new ActorProxyAddressBook(pool = )
+      config.request.operation match {
+        case TransportRequest.Create =>
+          container.addTransport(activationId, address.toFullString)
+        case TransportRequest.Config =>
+          container.configTransport(activationId, request.name, address.toConfigString)
+        case TransportRequest.GetMessage =>
+          // TODO: change the create parameter
+          container.getMessages(activationId).map {
+            _.foreach { resp =>
+              resp
+                .entity
+                .parseJson
+                .asJsObject
+                .fields
+                .get("messages")
+                .foreach {
+                  _.asInstanceOf[JsArray]
+                   .elements
+                   .foreach { transMsg =>
+                     val msg = transMsg.asJsObject
+                                       .convertTo[Map[String,String]]
+                     for {
+                       name <- msg.get("t")
+                       info <- msg.get("d")
+                     } yield addressBook.finishReply(self, request.toProxyAddress, TransportAddress.ProxyTransport(info))
+                   }
+                }
+            }
+          }
+          /* end case */
+      }
   }
 
   /** Process buffered items up to the capacity of action concurrency config */

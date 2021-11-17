@@ -221,6 +221,10 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
             activationMap = activationMap + (r.msg.activationId -> actor)
 
             // We also log this into the run message
+
+            // for proxy, we can still post wait here, but we need to carry the port number
+            // since if we got parallelism, we need to reply to the src (remember which remote proxy addr for local)
+            // it needs extra logic
             val defaultAddresses = LibdAPIs.Transport.getDefaultTransport(r.action, useRdma)
             val fetchedAddresses = for {
               runtime <- r.action.porusParams.runtimeType
@@ -247,28 +251,35 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                 case s                  => Some(s)
               }
 
+            if (poolConfig.xxx) {
+              // Send a GetMessage() request
+            }
+
             logging.debug(this, s"Get activation for ${r.msg.action} with id ${r.msg.activationId}: addresses ${transports}: run msg: $r")
             logging.debug(this, s"siblings ${r.msg.siblings} -> ${r.msg.siblings.map(_.map(_.objName))}")
             actor ! r.copy(corunningConfig = transports)
 
-            // Post run actions
-            for {
-              runtime <- r.action.porusParams.runtimeType
-              if LibdAPIs.Transport.needSignal(runtime)
-              seq <- r.msg.siblings
-            } yield seq.map { ra =>
-              // Here we post self's name
-              val name = r.action.name.name
-              val port = LibdAPIs.Transport.getPort(ra)
+            // Only run this when we use containers as memory pool
+            if (poolConfig.xxx) {
+              for {
+                runtime <- r.action.porusParams.runtimeType
+                if LibdAPIs.Transport.needSignal(runtime)
+                seq <- r.msg.siblings
+              } yield seq.map { ra =>
+                // Here we post self's name
+                val name = r.action.name.name
+                val port = LibdAPIs.Transport.getPort(ra)
 
-              container.map(_.addr.host) match {
-                case None =>
-                  addressBook.prepareSignal(actor,
-                      r.msg.activationId, name, TransportAddress(port.toString))
-                  logging.debug(this, s"signal prepared, ${actor}")
-                case Some(containerIp) =>
-                  addressBook.signalReady(r.msg.activationId, name,
-                  TransportAddress.TCPTransport(containerIp, port.toString))
+                // check if the container already exists
+                container.map(_.addr.host) match {
+                  case None =>
+                    addressBook.prepareSignal(actor,
+                        r.msg.activationId, name, TransportAddress(port.toString))
+                    logging.debug(this, s"signal prepared, ${actor}")
+                  case Some(containerIp) =>
+                    addressBook.signalReady(r.msg.activationId, name,
+                    TransportAddress.TCPTransport(containerIp, port.toString))
+                }
               }
             }
 
