@@ -6,6 +6,7 @@
 #include <nanomsg/nn.h>
 #include <nanomsg/reqrep.h>
 #include <infiniband/verbs.h>
+#include <glib.h>
 
 #include "libd.h"
 #include "libd_transport.h"
@@ -51,6 +52,10 @@ static inline int _request(struct rdma_conn * conn, size_t size, int opcode,
 // TODO: change the order of init.
 // interface implementations
 static int _init(struct libd_transport *trans) {
+    gsize bytes;
+    void * info;
+    char * msg;
+
     init_config_for(trans, struct uverbs_rdma_state);
     get_local_state(rstate,trans,struct uverbs_rdma_state);
     init_config_set(num_devices, 2);
@@ -90,14 +95,11 @@ static int _init(struct libd_transport *trans) {
         dprintf("Finish RDMA configuration..");
 
         // throw out bytes
-        void * info;
-        int bytes = extract_info(conn, &info);
-        log_bytes(info, n);
+        bytes = extract_info(&rstate->conn, &info);
         // base 64 encoding
-        int msg_bytes;
-        char * msg = g_base64_encode(info, bytes, &msg_bytes);
-        rstate->tstate->msg = msg;
-        rstate->tstate->msg_size = msg_bytes;
+        msg = g_base64_encode(info, bytes);
+        rstate->tstate.msg = msg;
+        rstate->tstate.msg_size = strlen(msg);
 
         trans->initd = 1;
     }
@@ -106,7 +108,7 @@ static int _init(struct libd_transport *trans) {
     init_config_require(peerinfo, id);
 
     // decode the string
-    void * info = g_base64_decode(rstate->peerinfo, &bytes);
+    info = g_base64_decode(rstate->peerinfo, &bytes);
     rstate->conn.peerinfo = malloc(bytes);
     memcpy(rstate->conn.peerinfo, info, bytes);
     g_free(info);
@@ -138,7 +140,6 @@ static int _terminate(struct libd_transport * trans) {
     // clean up RDMA
     // TODO: change this free
     for (int i = 0; i < rstate->conn.num_mr; i++) {
-        void * buf = rstate->conn.mr[i].addr;
         ibv_dereg_mr(rstate->conn.mr + i);
     }
     for (int i = 0; i < rstate->conn.num_buf; i++)
@@ -147,6 +148,10 @@ static int _terminate(struct libd_transport * trans) {
     // TODO: close qp and cq, instead of context
     ibv_destroy_qp(rstate->conn.qp);
     ibv_destroy_cq(rstate->conn.cq);
+
+    // clean up glib
+    if (rstate->tstate.msg != NULL)
+        g_free(rstate->tstate.msg);
 
     return 0;
 }
@@ -186,7 +191,7 @@ static int _not_implemented_async_write() {
 }
 
 // export struct
-struct libd_trdma rdma_uverbs = {
+struct libd_trdma rdma_uverbs_proxy = {
     .trans = {
         .init = _init,
         .terminate = _terminate,

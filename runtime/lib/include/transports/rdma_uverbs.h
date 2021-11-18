@@ -54,6 +54,7 @@ struct uverbs_rdma_state {
     int cq_size;
 
     size_t size;
+    const char * peerinfo;
 };
 
 // Functions for rdma_common.c

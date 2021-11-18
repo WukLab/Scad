@@ -2,6 +2,8 @@
 #include <errno.h>
 #include <stdatomic.h>
 
+#include <glib.h>
+
 #include "libd.h"
 #include "libd_transport.h"
 

@@ -12,15 +12,14 @@
 // TODO: change the order of init.
 // interface implementations
 static int _init(struct libd_transport *trans) {
-    int ret;
     init_config_for(trans, struct local_rdma_state);
     get_local_state(rstate,trans,struct local_rdma_state);
 
     init_config_require(size, config_to_ull);
     dprintf("init local memory with size %d", rstate->size);
-    ret = rstate->mem = malloc(rstate->size);
+    rstate->mem = malloc(rstate->size);
 
-    return (ret == NULL) ? -ENOMEM : 0;
+    return (rstate->mem == NULL) ? -ENOMEM : 0;
 }
 
 static int _connect(struct libd_transport *trans) {
@@ -28,7 +27,6 @@ static int _connect(struct libd_transport *trans) {
 }
 
 static int _terminate(struct libd_transport * trans) {
-    int ret;
     get_local_state(rstate,trans,struct local_rdma_state);
     dprintf("calling terminate with %d size", rstate->size);
 

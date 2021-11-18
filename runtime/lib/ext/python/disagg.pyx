@@ -52,9 +52,8 @@ cdef class LibdAction:
 
     # Member Functions
     def add_transport(self, durl):
-        # TODO: add ttype here
         c_durl = durl.encode('ascii')
-        # TODO: add a get_transport call here to cache the trans
+        # cache the trans
         name = durl.split(';')[0]
         ret = clibd.libd_action_add_transport(self._c_action, c_durl)
         if ret >= 0:
@@ -87,6 +86,7 @@ cdef class LibdAction:
 cdef class LibdTransport:
     cdef clibd.libd_transport * _c_trans
     cdef object action
+
     def __cinit__(self, LibdAction action, str name, *argv):
         self.action = action
         self._c_trans = clibd.libd_action_get_transport(
@@ -98,13 +98,13 @@ cdef class LibdTransport:
         self.name = name
 
     # TODO: check this
-    cdef int size
     def get_msg(self):
+        cdef int msg_size
         if self._c_trans is NULL:
             raise MemoryError()
         msg = <bytes>clibd.libd_transport_get_message(
-                      self._c_trans, &size)
-        return size, msg
+                      self._c_trans, &msg_size)
+        return msg_size, msg
         
     # we do not need to have __dealloc__ for all transports, clib will handle this
 
