@@ -202,11 +202,23 @@ class InvokerReactive(
     activationStore.storeAfterCheck(activation, isBlocking, None, context)(tid, notifier = None, logging)
   }
 
+  val proxyNode = new ProxyNode(23333, Map.empty, "local")
+  val useProxy : Boolean = false
+  val addressBook = useProxy match {
+    case true  => Some(new ActorProxyAddressBook(proxyNode))
+    case false => None
+  }
+
+
   /** Creates a ContainerProxy Actor when being called. */
   private val childFactory = (f: ActorRefFactory) =>
     f.actorOf(
       ContainerProxy
-        .props(containerFactory.createContainer, ack, store, collectLogs, instance, poolConfig, msgProducer = msgProducer, resultWaiter = Some(resultWaiter)))
+        .props(containerFactory.createContainer, ack, store, collectLogs, instance, poolConfig,
+          msgProducer = msgProducer,
+          resultWaiter = Some(resultWaiter),
+          addressBook = addressBook
+        ))
 
   val prewarmingConfigs: List[PrewarmingConfig] = {
     ExecManifest.runtimesManifest.stemcells.flatMap {

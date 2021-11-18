@@ -70,7 +70,8 @@ case class PrewarmContainer(action: ExecutableWhiskAction, msg: PartialPrewarmCo
 class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                     feed: ActorRef,
                     prewarmConfig: List[PrewarmingConfig] = List.empty,
-                    poolConfig: ContainerPoolConfig)(implicit val logging: Logging)
+                    poolConfig: ContainerPoolConfig,
+                   )(implicit val logging: Logging)
     extends Actor {
   import ContainerPool.resourceConsumptionOf
 
@@ -240,9 +241,12 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                   val impl = LibdAPIs.Transport.getImpl(ra, runtime)
                   val request = if (isPar) TransportRequest.configPar(name, par, impl, aid)
                                 else TransportRequest.config(name, impl, aid)
-                  addressBook
+
+                  if (poolConfig.useProxy) ""
+                  else addressBook
                     .postWait(ra.objActivation, request)
                     .toFullString
+
                 }
             }
             val transports =
@@ -251,8 +255,9 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                 case s                  => Some(s)
               }
 
-            if (poolConfig.xxx) {
+            if (poolConfig.useProxy) {
               // Send a GetMessage() request
+              actor ! TransportRequest.getMessage(r.msg.activationId)
             }
 
             logging.debug(this, s"Get activation for ${r.msg.action} with id ${r.msg.activationId}: addresses ${transports}: run msg: $r")
@@ -260,7 +265,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
             actor ! r.copy(corunningConfig = transports)
 
             // Only run this when we use containers as memory pool
-            if (poolConfig.xxx) {
+            if (!poolConfig.useProxy) {
               for {
                 runtime <- r.action.porusParams.runtimeType
                 if LibdAPIs.Transport.needSignal(runtime)
@@ -793,7 +798,8 @@ object ContainerPool {
   def props(factory: ActorRefFactory => ActorRef,
             poolConfig: ContainerPoolConfig,
             feed: ActorRef,
-            prewarmConfig: List[PrewarmingConfig] = List.empty)(implicit logging: Logging) =
+            prewarmConfig: List[PrewarmingConfig] = List.empty
+           )(implicit logging: Logging) =
     Props(new ContainerPool(factory, feed, prewarmConfig, poolConfig))
 }
 

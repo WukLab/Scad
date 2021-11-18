@@ -44,6 +44,8 @@ object TransportRequest {
   object Config extends TransportRequestOp
   object GetMessage extends TransportRequestOp
 
+  def getMessage(activationId: ActivationId): TransportRequest =
+    apply("", activationId, TransportAddress.empty, GetMessage)
   def config(name: String, impl: String, activationId : ActivationId): TransportRequest =
     apply(name, activationId, TransportAddress(s"$name;$impl;"), Config)
   def configPar(name: String,
@@ -60,7 +62,7 @@ abstract class AddressBook(implicit logging: Logging) {
 }
 
 // client for proxy nodes
-class ActorProxyAddressBook(pool: ContainerPool, override val proxy: ProxyNode)(implicit logging: Logging)
+class ActorProxyAddressBook(override val proxy: ProxyNode)(implicit logging: Logging)
   extends AddressBook with ProxyClient[(ActorRef, TransportRequest)] {
   val pendingRequests = mutable.Map.empty[ProxyAddress, ProxyAddress]
 
@@ -73,6 +75,7 @@ class ActorProxyAddressBook(pool: ContainerPool, override val proxy: ProxyNode)(
 
   def requestAddress(request: TransportRequest) = ProxyAddress(request.activationId, request.name)
 
+  // useless for a reply: reply do not need dest address
   def prepareReply(src: ProxyAddress, dst: ProxyAddress) =
     pendingRequests += src -> dst
   def finishReply(actor: ActorRef, src: ProxyAddress, info: TransportAddress) = {
@@ -134,6 +137,10 @@ class CorunningAddressBook(pool: ContainerPool)(implicit logging: Logging) exten
       .foreach { case (aid, name, addr) =>
         signalReady(aid, name, TransportAddress.TCPTransport(containerIp, addr.base)) }
     // For TCP only
+  }
+
+  def remove(activationId: ActivationId): Unit = {
+    addressBook.retain { case ((id, _), _) => id != activationId }
   }
 
 }

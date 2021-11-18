@@ -283,6 +283,7 @@ class ContainerProxy(factory: (TransactionId,
                      msgProducer: MessageProducer,
                      testTcp: Option[ActorRef],
                      resultWaiter: Option[ActorRef],
+                     addressBook: Option[ActorProxyAddressBook]
                     )
     extends FSM[ContainerState, ContainerData]
     with Stash {
@@ -713,7 +714,6 @@ class ContainerProxy(factory: (TransactionId,
       val address = request.address + result
       logging.debug(this, s"transport config: sending ${address} to ${container}")
 
-      val addressBook = new ActorProxyAddressBook(pool = )
       config.request.operation match {
         case TransportRequest.Create =>
           container.addTransport(activationId, address.toFullString)
@@ -738,7 +738,11 @@ class ContainerProxy(factory: (TransactionId,
                      for {
                        name <- msg.get("t")
                        info <- msg.get("d")
-                     } yield addressBook.finishReply(self, request.toProxyAddress, TransportAddress.ProxyTransport(info))
+                       ab <- addressBook
+                     } {
+                       val srcAddr = ProxyAddress(activationId, name)
+                       ab.finishReply(self, srcAddr, TransportAddress.ProxyTransport(info))
+                     }
                    }
                 }
             }
@@ -1123,6 +1127,7 @@ object ContainerProxy {
             msgProducer: MessageProducer,
             tcp: Option[ActorRef] = None,
             resultWaiter: Option[ActorRef] = None,
+            addressBook: Option[ActorProxyAddressBook]
            ) =
     Props(
       new ContainerProxy(
@@ -1139,6 +1144,7 @@ object ContainerProxy {
         msgProducer,
         tcp,
         resultWaiter,
+        addressBook
       ))
 
   // Needs to be thread-safe as it's used by multiple proxies concurrently.
