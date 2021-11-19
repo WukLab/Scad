@@ -569,7 +569,7 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
       entityName.name,
       exec,
       PorusParams(runtimeType = porusParams.runtimeType, parallelism = porusParams.parallelism, relationships = relationships,
-                  parentFunc = parentFunc, withMemory = porusParams.withMemory),
+                  parentFunc = parentFunc, withMerged = porusParams.withMerged),
       parameters,
       limits,
       content.version getOrElse SemVer(),

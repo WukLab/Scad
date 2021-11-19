@@ -29,10 +29,12 @@ import scala.util.{Failure, Success, Try}
 import spray.json._
 import spray.json.DefaultJsonProtocol._
 import org.apache.openwhisk.common.TransactionId
+import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.database.ArtifactStore
 import org.apache.openwhisk.core.database.DocumentFactory
 import org.apache.openwhisk.core.database.CacheChangeNotification
 import org.apache.openwhisk.core.entity.Attachments._
+import org.apache.openwhisk.core.entity.ElementType.ElementType
 import org.apache.openwhisk.core.entity.WhiskActivation.instantSerdes
 import org.apache.openwhisk.core.entity.types.EntityStore
 
@@ -351,16 +353,41 @@ case class WhiskActionRelationship(
   }
 }
 
-case class PorusParams(runtimeType: Option[String] = None,
+// From https://github.com/spray/spray-json/issues/200
+class EnumJsonConverter[T <: scala.Enumeration](enu: T) extends RootJsonFormat[T#Value] {
+  override def write(obj: T#Value): JsValue = JsString(obj.toString)
+
+  override def read(json: JsValue): T#Value = {
+    json match {
+      case JsString(txt) => enu.withName(txt)
+      case somethingElse => throw DeserializationException(s"Expected a value from enum $enu instead of $somethingElse")
+    }
+  }
+}
+
+object ElementType extends Enumeration with DefaultJsonProtocol {
+  type ElementType = Value
+  val Compute, Memory, Storage = Value
+
+  implicit val serdes: RootJsonFormat[ElementType] = new EnumJsonConverter[ElementType.this.type](ElementType);
+}
+
+case class MergedAction(action: WhiskEntityReference, resources: RuntimeResources, elem: ElementType)
+
+object MergedAction extends DefaultJsonProtocol {
+  implicit val serdes: RootJsonFormat[MergedAction] = jsonFormat3(MergedAction.apply)
+}
+
+case class PorusParams(runtimeType: Option[ElementType] = None,
                        relationships: Option[WhiskActionRelationship] = None,
                        parallelism: Option[Int] = None,
                        parentFunc: Option[WhiskEntityReference] = None,
-                       withMemory: Option[Boolean] = None) {
+                       withMerged: Seq[MergedAction] = Seq.empty) {
   def toPorusParamsPut(): PorusParamsPut = {
     PorusParamsPut(runtimeType,
       relationships = relationships.map(_.toRelationshipPut()),
       parallelism = parallelism,
-      withMemory = withMemory,
+      withMerged = withMerged,
     )
   }
 }
@@ -369,10 +396,10 @@ object PorusParams extends DefaultJsonProtocol {
   implicit val serdes: RootJsonFormat[PorusParams] = jsonFormat5(PorusParams.apply)
 }
 
-case class PorusParamsPut(runtimeType: Option[String] = None,
+case class PorusParamsPut(runtimeType: Option[ElementType] = None,
                           relationships: Option[WhiskActionRelationshipPut] = None,
                           parallelism: Option[Int] = None,
-                          withMemory: Option[Boolean] = None,
+                          withMerged: Seq[MergedAction] = Seq.empty,
                          )
 
 object PorusParamsPut extends DefaultJsonProtocol {

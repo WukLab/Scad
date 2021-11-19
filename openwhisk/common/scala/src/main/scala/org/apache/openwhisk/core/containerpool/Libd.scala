@@ -2,10 +2,11 @@ package org.apache.openwhisk.core.containerpool
 
 import akka.http.scaladsl.model.HttpMethods
 import org.apache.openwhisk.common.TransactionId
-import org.apache.openwhisk.core.entity.{ActivationId, WhiskActionLike}
+import org.apache.openwhisk.core.entity.{ActivationId, ElementType, WhiskActionLike}
 import spray.json._
 import DefaultJsonProtocol._
 import org.apache.openwhisk.core.connector.RunningActivation
+import org.apache.openwhisk.core.entity.ElementType.ElementType
 
 trait LibdAPIs[T <: Container] {
 
@@ -63,16 +64,17 @@ object LibdAPIs {
     def getDefaultTransport(action : WhiskActionLike, useRdma: Boolean) : Option[Seq[String]] =
       action.porusParams.runtimeType
         .flatMap {
-          case "memory" =>
+          case ElementType.Memory =>
             // TODO: change those to parameters
             val name = "memory"
             val impl = if (useRdma) "rdma_uverbs_server" else "rdma_tcp_server"
             val port = 2333
             val size = 64 * 1024 * 1024
             Some(Seq(s"${name};${impl};url,tcp://*:${port};size,${size};"))
-          case "compute" =>
-            if (action.porusParams.withMemory.getOrElse(false)) {
-              Some(Seq(s"memory;rdma_local;url,RDMA_LOCAL;size,${action.limits.resources.limits.mem.toBytes};"))
+          case ElementType.Compute =>
+            val mergedMem: Long = action.porusParams.withMerged.filter(p => p.elem.equals(ElementType.Memory)).map(_.resources.mem.toBytes).sum
+            if (mergedMem > 0) {
+              Some(Seq(s"memory;rdma_local;url,RDMA_LOCAL;size,${action.limits.resources.limits.mem.toBytes + mergedMem};"))
             } else {
               None
             }
@@ -80,19 +82,19 @@ object LibdAPIs {
         }
 
     def getName(ra: RunningActivation): String = ra.objName.split('/').last
-    def getImpl(ra: RunningActivation, runtimeType: String): String = runtimeType match {
-      case "memory" => s"rdma_${ra.transportImpl.toLowerCase()}_server"
-      case _        => s"rdma_${ra.transportImpl.toLowerCase()}"
+    def getImpl(ra: RunningActivation, runtimeType: ElementType): String = runtimeType match {
+      case ElementType.Memory => s"rdma_${ra.transportImpl.toLowerCase()}_server"
+      case _                  => s"rdma_${ra.transportImpl.toLowerCase()}"
     }
 
     def getPort(ra: RunningActivation): Int = 2333
-    def needWait(runtimeType : String) : Boolean = runtimeType match {
-      case "memory" => false
-      case _        => true
+    def needWait(runtimeType : ElementType) : Boolean = runtimeType match {
+      case ElementType.Memory => false
+      case _                  => true
     }
-    def needSignal(runtimeType : String) : Boolean = runtimeType match {
-      case "memory" => true
-      case _        => false
+    def needSignal(runtimeType : ElementType) : Boolean = runtimeType match {
+      case ElementType.Memory => true
+      case _                  => false
     }
 
   }
