@@ -909,25 +909,25 @@ class ActionsApiTests extends ControllerTestCommon with WhiskActionsApi {
     val baseAction = WhiskActionPut.fromWhiskAction(
       WhiskAction(namespace, aname(),
         jsDefault(Base64.getEncoder.encodeToString(Array(0x7a)), Some("test")),
-        PorusParams(runtimeType = Some("compute")),
+        PorusParams(runtimeType = Some(ElementType.Compute)),
         annotations = Parameters("exec", "javascript"))
     )
     val baseAction2 = WhiskActionPut.fromWhiskAction(
       WhiskAction(namespace, aname(),
         jsDefault(Base64.getEncoder.encodeToString(Array(0x7a)), Some("test2")),
-        PorusParams(runtimeType = Some("compute")),
+        PorusParams(runtimeType = Some(ElementType.Compute)),
         annotations = Parameters("exec", "javascript"))
     )
     val baseAction3 = WhiskActionPut.fromWhiskAction(
       WhiskAction(namespace, aname(),
         jsDefault(Base64.getEncoder.encodeToString(Array(0x7a)), Some("test3")),
-        PorusParams(runtimeType = Some("memory")),
+        PorusParams(runtimeType = Some(ElementType.Compute)),
         annotations = Parameters("exec", "javascript"))
     )
     val baseAction4 = WhiskActionPut.fromWhiskAction(
       WhiskAction(namespace, aname(),
         jsDefault(Base64.getEncoder.encodeToString(Array(0x7a)), Some("test4")),
-        PorusParams(runtimeType = Some("compute")),
+        PorusParams(runtimeType = Some(ElementType.Compute)),
         annotations = Parameters("exec", "javascript"))
     )
     val obj = baseAction.withRelationshipsPut(WhiskActionRelationshipPut(Seq(baseAction2.name.get, baseAction3.name.get), Seq(), Seq()))
