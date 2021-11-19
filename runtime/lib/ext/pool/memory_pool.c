@@ -61,13 +61,23 @@ void conn_setup(struct rdma_conn * conn, struct rdma_conn * old) {
     }
 }
 
+static inline struct mp_element * get_by_id(GArray * elements, uint16_t id) {
+    for (int i = 0; i < elements->len; i++) {
+        melement = &g_array_index(elements,
+                      struct mp_element, i);
+        if (melement->id == id)
+            return melement;
+    }
+    return NULL;
+}
+
 
 int main(int argc, char *argv[]) {
     char * socketpath;
     int num_devices = 2;
     char * device_name;
 
-    int ret;
+    int ret, index;
     int sfd, fd, bytes, cur_size;
     char buf[MPOOL_MSG_SIZE_LIMIT];
 
@@ -120,21 +130,23 @@ int main(int argc, char *argv[]) {
 
         switch (mselect->op_code) {
             case MPOOL_ALLOC:
-                // allocate or get new element
-                if (mselect->id < 0) {
-                    mselect->id = elements->len;
-                    g_array_set_size(elements, mselect->id + 1);
+                // allocates new elements
+                melement = get_by_id(elements, mselect->id);
+                if (melement == NULL) {
+                    g_array_set_size(elements, elements->len + 1);
+                    melement = &g_array_index(elements,
+                                  struct mp_element, cur_size);
+                    melement->id = mselect->id;
+                    melement->conns =
+                        g_array_new(FALSE, TRUE, sizeof(struct rdma_conn));
                 }
 
-                cur_size = mselect->conn_id;
-                melement = &g_array_index(elements,
-                              struct mp_element, cur_size);
-                melement->conns =
-                    g_array_sized_new(FALSE, TRUE,
-                                      sizeof(struct rdma_conn),
-                                      cur_size);
+                // expend the size
+                cur_size = melement->conns->len;
+                g_array_set_size(melement->conns, cur_size + mselect->conn_id);
 
-                for (int i = 0; i < cur_size; i++) {
+                // get more connections
+                for (int i = cur_size; i < cur_size + mselect->conn_id; i++) {
                     conn = &g_array_index(melement->conns,
                                   struct rdma_conn, i);
 
@@ -146,10 +158,9 @@ int main(int argc, char *argv[]) {
                         conn_setup(conn, &g_array_index(melement->conns,
                                   struct rdma_conn, 0));
                         
-                    
                     // assamble message and reply
                     // extract mr info to message
-                    mselect-> size =
+                    mselect->size =
                         extract_info_inplace(conn, &mselect->msg,
                                             MPOOL_DATA_SIZE_LIMIT);
                     mselect->status = MPOOL_STATUS_OK;
@@ -160,8 +171,7 @@ int main(int argc, char *argv[]) {
                 }
                 break;
             case MPOOL_FREE:
-                melement = &g_array_index(elements,
-                              struct mp_element, mselect->id);
+                melement = get_by_id(elements, mselect->id);
                 if (melement == NULL) {
                     mselect->status = MPOOL_STATUS_NEXIST;
                     send(fd, buf, sizeof(struct mp_select), 0);
@@ -201,15 +211,13 @@ int main(int argc, char *argv[]) {
                 break;
 
             case MPOOL_OPEN: // open a new conn for new connection
-                melement = &g_array_index(elements,
-                              struct mp_element, mselect->id);
-
-                // TODO: keep this?
-                if (mselect->conn_id < 0) {
-                    // <0 will allocate new connection
-                    mselect->conn_id = melement->conns->len;
-                    g_array_set_size(elements, mselect->conn_id + 1);
+                melement = get_by_id(elements, mselect->id);
+                if (melement == NULL) {
+                    mselect->status = MPOOL_STATUS_NEXIST;
+                    send(fd, buf, sizeof(struct mp_select), 0);
+                    break;
                 }
+
                 conn = &g_array_index(melement->conns, struct rdma_conn,
                                       mselect->conn_id);
                 conn->peerinfo = (struct conn_info *)mselect->msg;

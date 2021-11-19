@@ -203,8 +203,7 @@ class InvokerReactive(
   }
 
   val proxyNode = new ProxyNode(23333, Map.empty, "local")
-  val useProxy : Boolean = false
-  val addressBook = useProxy match {
+  val addressBook = poolConfig.useProxy match {
     case true  => Some(new ActorProxyAddressBook(proxyNode))
     case false => None
   }
@@ -231,6 +230,10 @@ class InvokerReactive(
 
   private val pool =
     actorSystem.actorOf(ContainerPool.props(childFactory, poolConfig, activationFeed, prewarmingConfigs))
+
+  //TODO: Zhiyuan: create a new pool here (or inside the container pool) to handle the messages
+  val domainSocketFile = "/tmp/memorypool.sock"
+  val memoryPool = new MemoryPoolEndPoint(domainSocketFile, proxyNode)
 
    def handlePrewarmMessage(msg: ActivationMessage, partialConfig: PartialPrewarmConfig)(implicit transid: TransactionId): Future[Unit] = {
      val namespace = msg.action.path

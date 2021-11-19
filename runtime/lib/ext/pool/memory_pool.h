@@ -47,6 +47,7 @@ struct mp_select {
 } __attribute__((packed));
 
 struct mp_element {
+    uint16_t id;
     GArray /* struct rdma_conns */ * conns;
 };
 

@@ -1,14 +1,17 @@
 package org.apache.openwhisk.core.containerpool
 
 
-import java.util
 import io.netty.bootstrap.Bootstrap
 import io.netty.buffer.ByteBuf
-import io.netty.channel.{ChannelFuture, ChannelHandlerContext, ChannelInitializer, SimpleChannelInboundHandler}
 import io.netty.channel.epoll.{EpollDomainSocketChannel, EpollEventLoopGroup}
 import io.netty.channel.unix.{DomainSocketAddress, UnixChannel}
+import io.netty.channel._
 import io.netty.handler.codec.{ByteToMessageDecoder, MessageToByteEncoder}
+import org.apache.openwhisk.core.connector._
+import org.apache.openwhisk.core.entity.ActivationId
 
+import java.util
+import java.util.Base64
 import scala.collection.mutable
 
 
@@ -70,78 +73,134 @@ class MemoryPoolClientHandler(client: MemoryPoolClient) extends ChannelInitializ
   }
 }
 
-// Handler for
-class MemoryPoolClient(ch: UnixChannel) extends ProxyClient[(Int, Int)] {
+case class MemoryPoolEnd()
 
+// Handler for
+// (Int, Int) -> MessageId, ConnID
+class MemoryPoolClient(val proxy: ProxyNode) extends ProxyClient[(Int, Int)] {
   // for async operations
-  type Direction = Boolean
   type RKey = Array[Byte]
-  val InBound = true
-  val OutBound = false
-  type ConnectionInfo = (Direction, RKey)
 
   type ElementId = Int
   type ConnectionId = Int
 
-  val infos : mutable.Map[ElementId, mutable.Map[ConnectionId, ConnectionInfo]] =
-    mutable.HashMap.empty
+  var ch : Channel = null
+  def setChannel(channel: Channel) = ch = channel
 
+  // increasing counter
+  var currentElementId : Int = 0
+  def newElementId: Int = {
+    currentElementId += 1
+    currentElementId
+  }
+
+  // -> (id, referenceCount)
+  val activationIdMap = mutable.Map.empty[Int, (ActivationId, String, Int)]
+
+  // For Async request, do not use for now
   val cmplQueue : mutable.Queue[MPSelectMsg] = mutable.Queue.empty
 
-  val elementMap = mutable.HashMap.empty[String, Int]
-  val elementQueue = mutable.Queue.empty[String]
+  // C library APIs
+  def alloc(aid: ActivationId, transport: String, size: Long, preAllocatedConnections : Int = 1) = {
+    val elementId = newElementId
+    activationIdMap += elementId -> (aid, transport, preAllocatedConnections)
 
-  // actions
-  def alloc(element: String, size: Long, preAllocatedConnections : Int = 1) = {
     val req = MPSelectMsg(op_code = MPOpCode.ALLOC, size = size,
-      id = elementMap.getOrElse(element, -1), conn_id = preAllocatedConnections)
+      id = elementId, conn_id = preAllocatedConnections)
     ch.writeAndFlush(req)
+    elementId
   }
   def free() = ???
   def extend() = ???
-//  def open(rKey: RKey, element: String, connId : Int = -1) = {
-//    // just error if not exist
-//    val id = elementMap.get(element).get
-////    open(rKey, id, connId)
-//  }
-  def open(rKey: RKey, elementId: Int, connId : Int = -1) = {
+  def open(rKey: RKey, elementId: Int, connId : Int) = {
+    // insert the command
     // just error if not exist
     val req = MPSelectMsg(op_code = MPOpCode.OPEN, status = rKey.length,
       id = elementId, conn_id = connId, msg = Option(rKey))
     ch.writeAndFlush(req)
   }
-  def close() = ???
+  def close(elementId: Int) = {
+    val req = MPSelectMsg(op_code = MPOpCode.CLOSE, id = elementId);
+    ch.writeAndFlush(req)
+  }
 
   def messageHandler = new SimpleChannelInboundHandler[MPSelectMsg]() {
     override def channelRead0(ctx: ChannelHandlerContext, msg: MPSelectMsg): Unit = msg.op_code match {
       case MPOpCode.ALLOC =>
         // get Local key, add to proxy network; if match, send again
-//        msg.msg.foreach { proxyReceive(msg._, (msg.id, msg.conn_id)) }
+        msg.msg.foreach { bytes =>
+          val peerInfo = Base64.getEncoder.encodeToString(bytes)
+          val message = TransportAddress.ProxyTransport(peerInfo)
+          val (aid, trans, _) = activationIdMap.get(msg.id).get
+          postReply(ProxyAddress(aid, trans), (msg.id, msg.conn_id), message)
+        }
       case MPOpCode.OPEN  =>
-        // get remote key, remove the entry from proxy
+        // OPEN request will always carry the new info, do not request
       case _              =>
         // just check if is success
     }
   }
 
-  override def proxyReceive(sender: ProxyAddress, message: Array[Byte], messageId: (Int, Int)) = {
+  // Means that some one has shared the message
+  override def proxyReceive(sender: ProxyAddressBase,
+                            message: Serializable,
+                            messageId: (Int, Int)): Unit = {
+    val (elementId, connId) = messageId
+
+    message match {
+      case m: TransportAddress =>
+        val peerInfo = m.asInstanceOf[TransportAddress].config.get("peerinfo").get
+        open(Base64.getDecoder.decode(peerInfo), elementId, connId)
+      case _: MemoryPoolEnd =>
+        release(elementId)
+    }
+
 
   }
 
-  override val proxy: ProxyNode = ???
+  // Public APIs
+  // initialization and Run
+  def initRun(r: ActivationMessage) = {
+    val parallelism = r.siblings.size
+    // allocate
+    // TODO: hardcode for now
+    val trans = "memory"
+    // post release hooks
+    val elementId = alloc(r.activationId, trans, parallelism)
+    val releaseTrans = s"${trans}@release"
+    (0 until parallelism).map {connId =>
+      val address = ProxyAddress(aid = r.activationId, transport = releaseTrans, port = connId)
+      postRecv(address, (elementId, connId))
+    }
+
+  }
+
+  def release(elementId: Int) = {
+    activationIdMap
+      .get(elementId)
+      .foreach { case t@(_, _, references) =>
+        val newRef = references - 1
+        activationIdMap.update(elementId, t.copy(_3 = newRef))
+        if (newRef == 0)
+          close(elementId)
+      }
+  }
+
 }
 
-class MemoryPoolEndPoint(socketFile : String, client: MemoryPoolClient) {
+class MemoryPoolEndPoint(socketFile : String, proxy: ProxyNode) {
   val bs = new Bootstrap()
   val group = new EpollEventLoopGroup()
+
+  val client = new MemoryPoolClient(proxy)
 
   bs.group(group)
     .channel(classOf[EpollDomainSocketChannel])
     .handler(new MemoryPoolClientHandler(client))
 
-  val launch: ChannelFuture = bs
+  val launch = bs
     .connect(new DomainSocketAddress(socketFile))
     .channel()
-    .closeFuture()
-    .sync()
+
+  client.setChannel(launch)
 }
