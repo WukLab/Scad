@@ -71,6 +71,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                     feed: ActorRef,
                     prewarmConfig: List[PrewarmingConfig] = List.empty,
                     poolConfig: ContainerPoolConfig,
+                    proxyAddressBook: Option[ActorProxyAddressBook]
                    )(implicit val logging: Logging)
     extends Actor {
   import ContainerPool.resourceConsumptionOf
@@ -242,8 +243,17 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                   val request = if (isPar) TransportRequest.configPar(name, par, impl, aid)
                                 else TransportRequest.config(name, impl, aid)
 
-                  if (poolConfig.useProxy) ""
-                  else addressBook
+                  if (poolConfig.useProxy) {
+                    proxyAddressBook.foreach { book =>
+                      val srcTransportName = if (isPar) s"$name@$par" else name
+                      val dstTransportName = "memory"
+                      book.prepareReply(
+                        src = ProxyAddress(aid,              srcTransportName),
+                        dst = ProxyAddress(ra.objActivation, dstTransportName))
+                    }
+                    // Return empty string for config.
+                    ""
+                  } else addressBook
                     .postWait(ra.objActivation, request)
                     .toFullString
 
@@ -390,7 +400,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       activationMap = activationMap - activationId
       if (poolConfig.useProxy)
         // TODO: release the connection
-        ???
+        proxyAddressBook.foreach { book => book.releaseAll(activationId) }
       else
         addressBook.remove(activationId)
 
@@ -802,9 +812,10 @@ object ContainerPool {
   def props(factory: ActorRefFactory => ActorRef,
             poolConfig: ContainerPoolConfig,
             feed: ActorRef,
-            prewarmConfig: List[PrewarmingConfig] = List.empty
+            prewarmConfig: List[PrewarmingConfig] = List.empty,
+            proxyAddressBook: Option[ActorProxyAddressBook]
            )(implicit logging: Logging) =
-    Props(new ContainerPool(factory, feed, prewarmConfig, poolConfig))
+    Props(new ContainerPool(factory, feed, prewarmConfig, poolConfig, proxyAddressBook))
 }
 
 /** Contains settings needed to perform container prewarming. */

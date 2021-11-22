@@ -231,7 +231,7 @@ class InvokerReactive(
   }
 
   private val pool =
-    actorSystem.actorOf(ContainerPool.props(childFactory, poolConfig, activationFeed, prewarmingConfigs))
+    actorSystem.actorOf(ContainerPool.props(childFactory, poolConfig, activationFeed, prewarmingConfigs, addressBook))
 
   //TODO: Zhiyuan: create a new pool here (or inside the container pool) to handle the messages
   val domainSocketFile = "/tmp/memorypool.sock"
@@ -281,7 +281,13 @@ class InvokerReactive(
       .flatMap(action => {
         action.toExecutableWhiskAction match {
           case Some(executable) =>
-            pool ! Run(executable, msg)
+            // If is memory, dispatch the element to memory pool; else, launch container
+            val run = Run(executable, msg)
+            val isMemory = action.porusParams.runtimeType.getOrElse(ElementType.Compute) == ElementType.Memory
+            if (poolConfig.useProxy && isMemory)
+              memoryPool.initRun(run)
+            else
+              pool ! run
 
             Future.successful(())
           case None =>
