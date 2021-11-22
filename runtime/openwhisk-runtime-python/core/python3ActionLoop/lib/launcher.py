@@ -91,7 +91,11 @@ def handle_message(fifoIn, runtime):
             body = json.loads(msg.get('body', "{}"))
             params = msg.get('params', [])
             debug('get cmd', msg['cmd'], params, body)
-            cmd_funcs[msg['cmd']](runtime, params, body)
+
+            if msg['cmd'] == 'ACTADD' or params[0] in runtime.actions:
+                cmd_funcs[msg['cmd']](runtime, params, body)
+            else:
+                runtime.stash(params[0], cmd_funcs[msg['cmd']], params, body)
     finally:
         debug('Error happens in FIFO thread')
 
@@ -117,13 +121,9 @@ def _trans_add      (runtime, params, body):
     runtime.get_action(params[0]).add_transport(**body)
     _act_msgs(runtime, params)
 def _trans_config   (runtime, params, body):
-    debug('try to config', params, body)
-    if params[0] in runtime.actions:
-        action = runtime.get_action(params[0])
-        action.config_transport(params[1], body['durl'])
-        debug('finish config', params, body)
-    else:
-        runtime.stash(params[0], _trans_config, params, body)
+    action = runtime.get_action(params[0])
+    action.config_transport(params[1], body['durl'])
+    debug('finish config', params, body)
 
 cmd_funcs = {
     # create action

@@ -109,7 +109,9 @@ if __name__ == '__main__':
 
         elif action == 'run':
             host = get_container_address(args.container)
-            aid = gen_activationid(32)
+            aid = args.aid
+            if aid is None:
+                aid = gen_activationid(32) 
             body = build_run(aid, transports = args.transport)
             if args.transport is None:
                 del body['transports']
