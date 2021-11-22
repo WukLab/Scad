@@ -189,7 +189,7 @@ class InvokerReactive(
     new MessageFeed("schedulingResults", logging, schedResultConsumer, maxPeek, 1.second, parseSchedResult)
   })
 
-  private val ack = {
+  private val ack: MessagingActiveAck = {
     val sender = if (UserEvents.enabled) Some(new UserEventSender(producer)) else None
     new MessagingActiveAck(producer, instance, sender)
   }
@@ -235,7 +235,7 @@ class InvokerReactive(
 
   //TODO: Zhiyuan: create a new pool here (or inside the container pool) to handle the messages
   val domainSocketFile = "/tmp/memorypool.sock"
-  val memoryPool = new MemoryPoolEndPoint(domainSocketFile, proxyNode)
+  val memoryPool = new MemoryPoolEndPoint(domainSocketFile, proxyNode, ack)
 
    def handlePrewarmMessage(msg: ActivationMessage, partialConfig: PartialPrewarmConfig)(implicit transid: TransactionId): Future[Unit] = {
      val namespace = msg.action.path

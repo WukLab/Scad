@@ -813,7 +813,7 @@ object ContainerPool {
             poolConfig: ContainerPoolConfig,
             feed: ActorRef,
             prewarmConfig: List[PrewarmingConfig] = List.empty,
-            proxyAddressBook: Option[ActorProxyAddressBook]
+            proxyAddressBook: Option[ActorProxyAddressBook] = None,
            )(implicit logging: Logging) =
     Props(new ContainerPool(factory, feed, prewarmConfig, poolConfig, proxyAddressBook))
 }
