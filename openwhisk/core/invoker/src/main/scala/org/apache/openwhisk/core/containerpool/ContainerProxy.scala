@@ -1127,7 +1127,7 @@ object ContainerProxy {
             msgProducer: MessageProducer,
             tcp: Option[ActorRef] = None,
             resultWaiter: Option[ActorRef] = None,
-            addressBook: Option[ActorProxyAddressBook]
+            addressBook: Option[ActorProxyAddressBook] = None,
            ) =
     Props(
       new ContainerProxy(
@@ -1144,7 +1144,7 @@ object ContainerProxy {
         msgProducer,
         tcp,
         resultWaiter,
-        addressBook
+        addressBook,
       ))
 
   // Needs to be thread-safe as it's used by multiple proxies concurrently.
