@@ -152,16 +152,23 @@ func (ap *ActionProxy) StartLatestAction() error {
 	// create a fifo file in the directory
 	// The filename is defined as a protocol, do not need to pass the filename
 	// This fifo file will also be deleted when we remove the whole process
-	fifoFile := fmt.Sprintf("%s/%d/fifo", ap.baseDir, highestDir)
-	Debug("preparing FIFO for %s at %s", executable, fifoFile)
-	err := syscall.Mkfifo(fifoFile, 0666)
+	fifoInFile := fmt.Sprintf("%s/%d/fifoIn", ap.baseDir, highestDir)
+	Debug("preparing FIFO for %s at %s", executable, fifoInFile)
+	err := syscall.Mkfifo(fifoInFile, 0666)
 	if err != nil {
 		// TODO: check this
-		Debug("cannot create fifo file")
+		Debug("cannot create fifoIn file")
+	}
+	fifoOutFile := fmt.Sprintf("%s/%d/fifoOut", ap.baseDir, highestDir)
+	Debug("preparing FIFO for %s at %s", executable, fifoOutFile)
+	err = syscall.Mkfifo(fifoOutFile, 0666)
+	if err != nil {
+		// TODO: check this
+		Debug("cannot create fifoOut file")
 	}
 	// TODO: why this open use all permissions?
-	ap.fifoInFile, err = os.OpenFile(fifoFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0777)
-	ap.fifoOutFile, err = os.OpenFile(fifoFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0777)
+	ap.fifoInFile, err = os.OpenFile(fifoInFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0777)
+	ap.fifoOutFile, err = os.OpenFile(fifoOutFile, os.O_RDWR|os.O_CREATE, 0777)
 
 	if err != nil {
 		// TODO: check this

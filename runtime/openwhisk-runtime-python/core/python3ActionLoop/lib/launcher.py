@@ -31,15 +31,6 @@ import threading, struct, os
 def debug(*args):
     print(*args, file=stderr)
     stderr.flush()
-# class LibdRequest:
-#     def __init__(self, aid, serverUrl):
-#         self.aid = aid
-#         self.surl = serverUrl
-#     def __ep(self, api, data):
-#         url = "{}/activation/{}/{}".format(self.surl, self.aid, api)
-#         return requests.post(api, json.dumps(data))
-#     def dependency(target = null, value = null, parallelism = null, dependency = null, functionActivationId = null, appActivationId = null):
-#         data = {}
 
 class LibdRuntime:
     def __init__(self):
@@ -81,10 +72,25 @@ FIFO_IN_FILE = os.path.join(
     "../fifoIn")
 FIFO_OUT_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
-    "../fifoIn")
+    "../fifoOut")
 
-fifoIn  = os.open(inFifo, os.O_RDONLY)
-fifoOut = os.open(outFifo, os.O_WRONLY)
+fifoIn  = os.open(FIFO_IN_FILE, os.O_RDONLY)
+fifoOut = os.open(FIFO_OUT_FILE, os.O_WRONLY)
+
+def handle_message(fifoIn, runtime):
+    try:
+        while True:
+            debug('Listen on input FIFO')
+            # parse message from FIFO
+            size = struct.unpack("<I", os.read(fifoIn, 4))[0]
+            content = os.read(fifoIn, size).decode('ascii')
+            msg = json.loads(content)
+            body = json.loads(msg.get('body', "{}"))
+            params = msg.get('params', [])
+            debug('get cmd', msg['cmd'], params, body)
+            cmd_funcs[msg['cmd']](runtime, params, body)
+    finally:
+        debug('Error happens in FIFO thread')
 
 _runtime = LibdRuntime()
 threading.Thread(target=handle_message, args=(fifoIn, _runtime)).start()
@@ -94,15 +100,14 @@ threading.Thread(target=handle_message, args=(fifoIn, _runtime)).start()
 def _act_msgs       (runtime, params, body = None):
     msgs = {}
     action = runtime.get_action (params[0])
-    for t in action.raw_transports:
+    for name, t in action.raw_transports.items():
         size, msg = t.get_msg()
         if size > 0:
-            msgs[t.name] = msg
+            msgs[name] = msg
     rep = json.dumps({'ok': True, 'messages': msgs})
-    debug('collect messages', rep)
     os.write(fifoOut, struct.pack("<I", len(rep)))
-    os.write(fifoOut, msg_json.encode('ascii'))
-    debug('send message', message)
+    os.write(fifoOut, rep.encode('ascii'))
+    debug('send message', rep)
 def _act_add        (runtime, params, body):
     runtime.create_action(params['activation_id'])
 def _trans_add      (runtime, params, body):
@@ -114,7 +119,6 @@ def _trans_config   (runtime, params, body):
         action = runtime.get_action(params[0])
         action.config_transport(params[1], body['durl'])
         debug('finish config', params, body)
-        _act_msgs(runtime, params)
     else:
         runtime.stash(params[0], _trans_config, params, body)
 
@@ -128,22 +132,6 @@ cmd_funcs = {
 
 # Open FIFOs
 
-def handle_message(fifoIn, runtime):
-    try:
-        while True:
-            stderr.write('Listen on fifo file ' + fifoName + '\n')
-            stderr.flush()
-            # parse message from FIFO
-            size = struct.unpack("<I", os.read(fifoIn, 4))[0]
-            content = os.read(fifoIn, size).decode('ascii')
-            msg = json.loads(content)
-            body = json.loads(msg.get('body', "{}"))
-            params = msg.get('params', [])
-            debug('get cmd', params, body)
-            cmd_funcs[msg['cmd']](runtime, params, body)
-    finally:
-        print('Error happens in FIFO thread', file=stderr)
-        stderr.flush()
 ####################
 # END   libd runtime
 ####################

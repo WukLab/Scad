@@ -7,6 +7,7 @@ from functools import partial
 cdef class LibdAction:
     cdef clibd.libd_action * _c_action
     cdef public object transports
+    cdef public object raw_transports
     cdef public object cv
 
     def __cinit__(self, cv, str aid, **kwargs):
@@ -94,8 +95,6 @@ cdef class LibdTransport:
         # TODO: spin here if we cannot get a transport
         if self._c_trans is NULL:
             raise MemoryError()
-    def __init__(self, action, name, *argv):
-        self.name = name
 
     # TODO: check this
     def get_msg(self):
@@ -104,7 +103,7 @@ cdef class LibdTransport:
             raise MemoryError()
         msg = <bytes>clibd.libd_transport_get_message(
                       self._c_trans, &msg_size)
-        return msg_size, msg
+        return msg_size, msg.decode('ascii')
         
     # we do not need to have __dealloc__ for all transports, clib will handle this
 

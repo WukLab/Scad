@@ -388,7 +388,11 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     // Handles end of objects
     case ObjectEnd(activationId) =>
       activationMap = activationMap - activationId
-      addressBook.remove(activationId)
+      if (poolConfig.useProxy)
+        // TODO: release the connection
+        ???
+      else
+        addressBook.remove(activationId)
 
     // This message is received for one of these reasons:
     // 1. Container errored while resuming a warm container, could not process the job, and sent the job back

@@ -14,9 +14,8 @@
 static struct ibv_pd      *_pd      = NULL;
 static struct ibv_context *_context = NULL;
 
-#define GID     (0)
-#define PORT    (1)
 #define CQ_SIZE (16)
+#define SOCKET_FILE "/tmp/memorypool.sock"
 
 #define MR_ACCESS (IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ)
 
@@ -49,9 +48,11 @@ void conn_setup(struct rdma_conn * conn, struct rdma_conn * old) {
     conn->pd = _pd;
 
     // parameters ..
-    conn->gid  = GID;
-    conn->port = PORT;
+    conn->gid  = RDMA_GID;
+    conn->port = RDMA_PORT;
     conn->cq   = ibv_create_cq(_context, CQ_SIZE, NULL, NULL, 0);
+    create_qp(conn);
+
     conn->num_mr = 0;
     conn->mr     = NULL;
 
@@ -62,6 +63,7 @@ void conn_setup(struct rdma_conn * conn, struct rdma_conn * old) {
 }
 
 static inline struct mp_element * get_by_id(GArray * elements, uint16_t id) {
+    struct mp_element * melement;
     for (int i = 0; i < elements->len; i++) {
         melement = &g_array_index(elements,
                       struct mp_element, i);
@@ -77,7 +79,7 @@ int main(int argc, char *argv[]) {
     int num_devices = 2;
     char * device_name;
 
-    int ret, index;
+    int ret;
     int sfd, fd, bytes, cur_size;
     char buf[MPOOL_MSG_SIZE_LIMIT];
 
@@ -90,8 +92,10 @@ int main(int argc, char *argv[]) {
     struct mp_element *melement;
     struct rdma_conn *conn;
 
-    socketpath = argc > 1 ? argv[1] : "/tmp/memorypool.sock";
-    device_name = argc > 2 ? argv[2] : "mlx5_1";
+    socketpath = argc > 1 ? argv[1] : SOCKET_FILE;
+    device_name = argc > 2 ? argv[2] : RDMA_DEVICE_NAME;
+
+    dprintf("start memory pool on %s with file %s", device_name, socketpath);
 
     if ((sfd = socket_setup(socketpath)) < 0)
         return sfd;
@@ -119,7 +123,9 @@ int main(int argc, char *argv[]) {
         dprintf("serving socket requests");
         mselect = (struct mp_select *)buf;
         bytes = recv(fd, buf, sizeof(struct mp_select), 0);
-        if (bytes < 0) {
+        dprintf("get request, with msg size %d", bytes);
+        // TODO: = 0 means fd is closed
+        if (bytes <= 0) {
             dprintf("recv %d error, %d %s", fd, bytes, strerror(errno));
             return -1;
         }
@@ -130,12 +136,14 @@ int main(int argc, char *argv[]) {
 
         switch (mselect->op_code) {
             case MPOOL_ALLOC:
+                dprintf("Get ALLOC, id %d, conn_id %d, size %lu",
+                        mselect->id, mselect->conn_id, mselect->size);
                 // allocates new elements
                 melement = get_by_id(elements, mselect->id);
                 if (melement == NULL) {
                     g_array_set_size(elements, elements->len + 1);
                     melement = &g_array_index(elements,
-                                  struct mp_element, cur_size);
+                                  struct mp_element, mselect->id);
                     melement->id = mselect->id;
                     melement->conns =
                         g_array_new(FALSE, TRUE, sizeof(struct rdma_conn));
@@ -157,17 +165,21 @@ int main(int argc, char *argv[]) {
                     } else
                         conn_setup(conn, &g_array_index(melement->conns,
                                   struct rdma_conn, 0));
-                        
+
+                    dprintf("before dump info");
                     // assamble message and reply
                     // extract mr info to message
-                    mselect->size =
+                    mselect->msg_size =
                         extract_info_inplace(conn, &mselect->msg,
                                             MPOOL_DATA_SIZE_LIMIT);
                     mselect->status = MPOOL_STATUS_OK;
                     mselect->conn_id = i;
 
+                    dprintf("Reply ALLOC, eid %d connid %d msgSize %d",
+                            mselect->id, mselect->conn_id, mselect->msg_size);
+
                     send(fd, buf,
-                        mselect->size + sizeof(struct mp_select), 0);
+                        mselect->msg_size + sizeof(struct mp_select), 0);
                 }
                 break;
             case MPOOL_FREE:
@@ -211,6 +223,7 @@ int main(int argc, char *argv[]) {
                 break;
 
             case MPOOL_OPEN: // open a new conn for new connection
+                dprintf("Get OPEN");
                 melement = get_by_id(elements, mselect->id);
                 if (melement == NULL) {
                     mselect->status = MPOOL_STATUS_NEXIST;
@@ -233,6 +246,9 @@ int main(int argc, char *argv[]) {
                 break;
             case MPOOL_CLOSE:
                 goto cleanup;
+                break;
+            default:
+                dprintf("Error: get Unkonw requests");
                 break;
         }
 

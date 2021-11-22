@@ -4,6 +4,7 @@
 #include <time.h>
 
 // shm
+#include <unistd.h>
 #include <sys/mman.h>
 #include <sys/stat.h>        /* For mode constants */
 #include <fcntl.h>           /* For O_* constants */
@@ -51,7 +52,6 @@ static int _connect(struct libd_transport *trans) {
 }
 
 static int _terminate(struct libd_transport * trans) {
-    int ret;
     get_local_state(rstate,trans,struct local_rdma_state);
     dprintf("calling terminate with %d size", rstate->size);
 
@@ -62,8 +62,6 @@ static int _terminate(struct libd_transport * trans) {
 
 // actions
 static void * _reg(struct libd_transport *trans, size_t s, void *buf) {
-    get_local_state(rstate,trans,struct local_rdma_state);
-
     if (buf == NULL) {
         buf = malloc(s);
     }
@@ -74,24 +72,15 @@ static void * _reg(struct libd_transport *trans, size_t s, void *buf) {
 static int _read(struct libd_transport *trans,
                 size_t size, uint64_t addr, void * buf) {
     get_local_state(rstate,trans,struct local_rdma_state);
-    return memcpy(buf, rstate->mem + addr, size);
+    memcpy(buf, rstate->mem + addr, size);
+    return size;
 }
 
 static int _write(struct libd_transport *trans,
                   size_t size, uint64_t addr, void * buf) {
     get_local_state(rstate,trans,struct local_rdma_state);
-    return memcpy(rstate->mem + addr, buf, size);
-}
-
-// Async calls unimplemented
-static int _async_write() {
-    return -1;
-}
-static int _async_read() {
-    return -1;
-}
-static int _async_poll(struct libd_transport * trans, int id) {
-    return -1;
+    memcpy(rstate->mem + addr, buf, size);
+    return size;
 }
 
 // export struct

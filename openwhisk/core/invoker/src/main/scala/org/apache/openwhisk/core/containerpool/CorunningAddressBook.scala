@@ -80,14 +80,33 @@ class ActorProxyAddressBook(override val proxy: ProxyNode)(implicit logging: Log
     pendingRequests += src -> dst
 
   /**
-   * After getting a communication channel, register a reply
+   * After getting a communication channel, register a send and recv
    * @param actor
    * @param src
    * @param info
    */
   def finishReply(actor: ActorRef, src: ProxyAddress, info: TransportAddress) = {
     val request = TransportRequest.config(src.transport,"rdma_uverbs_proxy",src.aid)
-    postReply(src, (actor, request), info)
+    pendingRequests.get(src).foreach { dst =>
+      postSendRecv(src, dst.masked(m3 = false), (actor, request), info)
+    }
+  }
+
+  /**
+   * Remove from address book, and post a release message
+   * @param src
+   */
+  def release(src: ProxyAddress) = {
+    pendingRequests.remove(src).foreach { dst =>
+      val releaseAddr = dst.copy(transport = s"${dst.transport}@release")
+                           .masked(m3 = false)
+      proxy.postSend(src, releaseAddr, MemoryPoolEnd())
+    }
+  }
+  def releaseAll(aid: ActivationId) = {
+    pendingRequests
+      .filterKeys(_.aid == aid)
+      .foreach { case (src, _) => release(src) }
   }
 
 }

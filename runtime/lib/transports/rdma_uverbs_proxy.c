@@ -20,7 +20,6 @@ static struct ibv_context *_context = NULL;
 // TODO: async requests
 static inline int _request(struct rdma_conn * conn, size_t size, int opcode,
                 uint64_t local_addr, uint64_t remote_addr) {
-    int ret;
     struct ibv_wc wc;
     int bytes;
 
@@ -36,7 +35,7 @@ static inline int _request(struct rdma_conn * conn, size_t size, int opcode,
     wr.sg_list = &sge;
     wr.num_sge = 1;
 
-    wr.wr.rdma.remote_addr = conn->peerinfo->mr[0].addr + remote_addr;
+    wr.wr.rdma.remote_addr = (uintptr_t)conn->peerinfo->mr[0].addr + remote_addr;
     wr.wr.rdma.rkey = conn->peerinfo->mr[0].rkey;
     wr.opcode = opcode;
 
@@ -59,14 +58,14 @@ static int _init(struct libd_transport *trans) {
     init_config_for(trans, struct uverbs_rdma_state);
     get_local_state(rstate,trans,struct uverbs_rdma_state);
     init_config_set(num_devices, 2);
-    init_config_set(device_name, "mlx5_1");
+    init_config_set(device_name, RDMA_DEVICE_NAME);
     init_config_set(cq_size, 16);
 
     // init the RDMA connection
     if (!trans->initd) {
         memset(&rstate->conn, 0, sizeof(struct rdma_conn));
-        rstate->conn.gid = 0;
-        rstate->conn.port = 1;
+        rstate->conn.gid = RDMA_GID;
+        rstate->conn.port = RDMA_PORT;
 
         // init using the global context and PD
         if (_context == NULL)
@@ -184,10 +183,6 @@ static int _write(struct libd_transport *trans,
     get_local_state(rstate,trans,struct uverbs_rdma_state);
     return _request(&rstate->conn, size, IBV_WR_RDMA_WRITE,
                     (uint64_t)buf, addr);
-}
-
-static int _not_implemented_async_write() {
-    return -1;
 }
 
 // export struct

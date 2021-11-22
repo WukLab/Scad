@@ -41,11 +41,11 @@ int create_qp(struct rdma_conn *conn) {
         dprintf("create qp fail\n");
         return -1;
     }
+    return 0;
 }
 
 int create_mr(struct rdma_conn *conn, size_t size, int access,
               void * buffer) {
-    int ret;
     struct ibv_mr *mr;
 
     if (buffer == NULL)

@@ -19,7 +19,8 @@ abstract class ProxyAddressBase {
 // defines the proxy network address
 case class ProxyAddress(aid: ActivationId, transport: String, port: Int = 0) extends ProxyAddressBase {
   def port(port: Int) = copy(port = port)
-  def masked = ProxyAddressMasked(aid, transport, port)
+  def masked(m1: Boolean = true, m2: Boolean = true, m3: Boolean = true) =
+    ProxyAddressMasked(aid, transport, port, Vector(m1,m2,m3))
 }
 
 case class ProxyAddressMasked(aid: ActivationId, transport: String, port: Int = 0,
@@ -41,6 +42,8 @@ trait ProxyClient[T] {
   val proxy: ProxyNode
   // interface for receiving
   def proxyReceive(sender: ProxyAddressBase, message: Serializable, messageId: T)
+  def postSendRecv(src: ProxyAddress, dst: ProxyAddressMasked, id: T, message: Serializable) =
+    proxy.postSendRecv(src, dst, this, id, message)
   def postReply(addr: ProxyAddress, id: T, message: Serializable) =
     proxy.postReply(addr, this, id, message)
   def postRecv(addr: ProxyAddress, id: T) =
@@ -83,7 +86,17 @@ class ProxyNode(serverPort: Int,
     }
     doRecv(addr, mp)
   }
+
   // post a recv and auto send
+  def postSendRecv[T](src: ProxyAddress, dst: ProxyAddressMasked,
+                      client: ProxyClient[T], id: T, message: Message) = {
+    val mp = new MessagePair {
+      override type Tag = T
+      override val c = (client, id, Some(message))
+    }
+    postRecv(src, client, id)
+    postSend(src, dst, message)
+  }
   def postReply[T](addr: ProxyAddress, client: ProxyClient[T], id: T, message: Message) = {
     val mp = new MessagePair {
       override type Tag = T
@@ -92,12 +105,13 @@ class ProxyNode(serverPort: Int,
 
     // doRecv will trigger callback
     doRecv(addr, mp)
-      .foreach { case (a, m) => postSend(addr, a.masked, m) }
+      .foreach { case (a, m) => postSend(addr, a.masked(), m) }
   }
 
   // return: if success recv, return value and sender address
   def doRecv(addr: ProxyAddress, pair : MessagePair): Option[(ProxyAddress, Message)] = {
     val (client, id, _) = pair.c
+    logging.debug(this, s"[MPT] recv from $addr to ${pair.c}, $client,$id")
     inBox.find(_._1.maskMatch(addr))
          .map { case (_, p@(a, m)) => client.proxyReceive(a, m, id); p }
          .orElse {
@@ -109,6 +123,7 @@ class ProxyNode(serverPort: Int,
 
 
   def inBound(src: ProxyAddress, dest: ProxyAddressMasked, message: Message): Unit = {
+    logging.debug(this, s"[MPT] inbound message $message: $src -> $dest")
     recvOutBox
       .find { case (k,_) => dest.maskMatch(k) }
     match {
@@ -116,7 +131,7 @@ class ProxyNode(serverPort: Int,
       case Some((k, mp)) =>
         val (client, id, reply) = mp.c
         reply match {
-          case Some(msg) => postSend(src = k, dst = src.masked, msg)
+          case Some(msg) => postSend(src = k, dst = src.masked(), msg)
           case None => client.proxyReceive(dest, message, id)
         }
         recvOutBox.remove(k)
@@ -137,6 +152,7 @@ class ProxyNode(serverPort: Int,
   var serverChannel = Option.empty[Channel]
 
   def route(dst: ProxyAddressBase)(msg: ProxyMessage): Unit = {
+    logging.debug(this, s"[MPT] routing message $msg -> $dst")
     routingTable
       .find { case (mask, _) => mask.maskMatch(dst) }
       .map(_._2)
@@ -170,7 +186,7 @@ class ProxyNode(serverPort: Int,
         }
       })
 
-    logging.debug(this, s"Starting Server on port ${serverPort}")
+    logging.debug(this, s"[MPT] Starting Server on port ${serverPort}")
     serverChannel = Option(bs.bind(serverPort).sync().channel())
 
     // start network clients

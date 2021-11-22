@@ -62,6 +62,10 @@ object LibdAPIs {
         "transports" -> transports.toJson
       )
     }
+
+    def getSize(actionLike: WhiskActionLike) = {
+      actionLike.limits.resources.limits.mem.toBytes
+    }
   }
 
   object Transport {
@@ -75,7 +79,7 @@ object LibdAPIs {
             val name = "memory"
             val impl = if (useRdma) "rdma_uverbs_server" else "rdma_tcp_server"
             val port = 2333
-            val size = 64 * 1024 * 1024
+            val size = action.limits.resources.limits.mem.toBytes
             Some(Seq(s"${name};${impl};url,tcp://*:${port};size,${size};"))
           case ElementType.Compute =>
             val mergedMem: Long = action.porusParams.withMerged.filter(p => p.elem.equals(ElementType.Memory)).map(_.resources.mem.toBytes).sum

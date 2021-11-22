@@ -12,7 +12,7 @@ import (
 // LibdMessage is message for communication with c backend
 type LibdMessage struct {
 	Cmd    string   `json:"cmd"`
-	Body   string   `json:"body"`
+	Body   string   `json:"body,omitempty"`
 	Params []string `json:"params"`
 }
 
@@ -47,7 +47,8 @@ func (ap *ActionProxy) fifoRead() (msg []byte, err error) {
 		return nil, fmt.Errorf("Read Message Size Error")
 	}
 
-	msgSizeInt := binary.LittleEndian.Uint64(msgSize)
+	msgSizeInt := binary.LittleEndian.Uint32(msgSize)
+	Debug("Read length success %d", msgSizeInt)
 	msg = make([]byte, msgSizeInt)
 
 	bytes, err = ap.fifoOutFile.Read(msg)
@@ -110,10 +111,9 @@ func (ap *ActionProxy) handleLibdRequest(w http.ResponseWriter, r *http.Request)
 					Body:   bodyStr,
 					Params: []string{fields[1], fields[3]},
 				})
-				msg, _ := ap.fifoRead()
 
-				sendReply(w, msg)
-
+				// trans config will not expect reply
+				sendOK(w)
 				return
 			} else if r.Method == "GET" {
 				// app.get ('/action/:aid/transport/:tname', platformFactory.wrapEndpoint(service.configTransport));

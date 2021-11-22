@@ -35,12 +35,12 @@ enum {
 
 
 struct mp_select {
-    uint64_t size;
-    uint16_t op_code;
     union {
-        uint16_t status;
-        uint16_t msg_size;
+        uint64_t status;
+        uint64_t size;
     };
+    uint16_t op_code;
+    uint16_t msg_size;
     int16_t id;
     int16_t conn_id;
     uint8_t msg[0];
