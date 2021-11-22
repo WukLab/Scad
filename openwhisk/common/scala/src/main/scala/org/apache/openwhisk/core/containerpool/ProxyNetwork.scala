@@ -74,6 +74,7 @@ class ProxyNode(serverPort: Int,
   val inBox = mutable.HashMap.empty[ProxyAddressMasked, (ProxyAddress, Message)]
 
   def postSend(src: ProxyAddress, dst: ProxyAddressMasked, message: Message) = {
+    logging.debug(this, s"[MPT] send $message: $src -> $dst")
     // check routeTable
     val proxyMsg = ProxyMessage(src, dst, message)
     route(dst)(proxyMsg)
@@ -105,18 +106,23 @@ class ProxyNode(serverPort: Int,
 
     // doRecv will trigger callback
     doRecv(addr, mp)
-      .foreach { case (a, m) => postSend(addr, a.masked(), m) }
+      .foreach { case (a, _) => postSend(addr, a.masked(), message) }
   }
 
   // return: if success recv, return value and sender address
   def doRecv(addr: ProxyAddress, pair : MessagePair): Option[(ProxyAddress, Message)] = {
     val (client, id, _) = pair.c
-    logging.debug(this, s"[MPT] recv from $addr to ${pair.c}, $client,$id")
+    logging.debug(this, s"[MPT] recv from $addr <- ${pair.c}")
     inBox.find(_._1.maskMatch(addr))
-         .map { case (_, p@(a, m)) => client.proxyReceive(a, m, id); p }
+         .map { case (_, p@(a, m)) =>
+           client.proxyReceive(a, m, id)
+           logging.debug(this, s"[MPT] recv fordward")
+           p
+         }
          .orElse {
            // post recv
            recvOutBox += addr -> pair
+           logging.debug(this, s"[MPT] recv stashed")
            None
          }
   }
@@ -135,7 +141,10 @@ class ProxyNode(serverPort: Int,
           case None => client.proxyReceive(dest, message, id)
         }
         recvOutBox.remove(k)
-      case None => inBox += dest -> (src, message)
+        logging.debug(this, s"[MPT] inbound message forwarded")
+      case None =>
+        inBox += dest -> (src, message)
+        logging.debug(this, s"[MPT] inbound message stashed")
     }
   }
 

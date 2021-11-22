@@ -111,6 +111,7 @@ static int _init(struct libd_transport *trans) {
     rstate->conn.peerinfo = malloc(bytes);
     memcpy(rstate->conn.peerinfo, info, bytes);
     g_free(info);
+    dprintf("set a peerinfo with %d bytes", bytes);
 
     return 0;
 }

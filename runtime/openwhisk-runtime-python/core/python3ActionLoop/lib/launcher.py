@@ -74,6 +74,9 @@ FIFO_OUT_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "../fifoOut")
 
+# TODO: why use a FD 3 here?
+out = fdopen(3, "wb")
+
 fifoIn  = os.open(FIFO_IN_FILE, os.O_RDONLY)
 fifoOut = os.open(FIFO_OUT_FILE, os.O_WRONLY)
 
@@ -109,7 +112,7 @@ def _act_msgs       (runtime, params, body = None):
     os.write(fifoOut, rep.encode('ascii'))
     debug('send message', rep)
 def _act_add        (runtime, params, body):
-    runtime.create_action(params['activation_id'])
+    runtime.create_action(params[0])
 def _trans_add      (runtime, params, body):
     runtime.get_action(params[0]).add_transport(**body)
     _act_msgs(runtime, params)
@@ -156,7 +159,6 @@ except Exception:
 # now import the action as process input/output
 from main__ import main as main
 
-out = fdopen(3, "wb")
 if os.getenv("__OW_WAIT_FOR_ACK", "") != "":
     out.write(json.dumps({"ok": True}, ensure_ascii=False).encode('utf-8'))
     out.write(b'\n')

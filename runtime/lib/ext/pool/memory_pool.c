@@ -223,7 +223,7 @@ int main(int argc, char *argv[]) {
                 break;
 
             case MPOOL_OPEN: // open a new conn for new connection
-                dprintf("Get OPEN");
+                dprintf("Get OPEN id %d connid %d", mselect->id, mselect->conn_id);
                 melement = get_by_id(elements, mselect->id);
                 if (melement == NULL) {
                     mselect->status = MPOOL_STATUS_NEXIST;
@@ -242,6 +242,7 @@ int main(int argc, char *argv[]) {
                 // reply msg
                 // we can safely change the code, since peerinfo is useless
                 mselect->status = MPOOL_STATUS_OK;
+                mselect->msg_size = 0;
                 send(fd, buf, sizeof(struct mp_select), 0);
                 break;
             case MPOOL_CLOSE:
