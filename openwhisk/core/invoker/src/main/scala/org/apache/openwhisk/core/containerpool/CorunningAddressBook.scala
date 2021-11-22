@@ -75,9 +75,16 @@ class ActorProxyAddressBook(override val proxy: ProxyNode)(implicit logging: Log
 
   def requestAddress(request: TransportRequest) = ProxyAddress(request.activationId, request.name)
 
-  // useless for a reply: reply do not need dest address
+  /* useless for a reply: reply do not need dest address */
   def prepareReply(src: ProxyAddress, dst: ProxyAddress) =
     pendingRequests += src -> dst
+
+  /**
+   * After getting a communication channel, register a reply
+   * @param actor
+   * @param src
+   * @param info
+   */
   def finishReply(actor: ActorRef, src: ProxyAddress, info: TransportAddress) = {
     val request = TransportRequest.config(src.transport,"rdma_uverbs_proxy",src.aid)
     postReply(src, (actor, request), info)

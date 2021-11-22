@@ -7,6 +7,7 @@ import io.netty.channel.epoll.{EpollDomainSocketChannel, EpollEventLoopGroup}
 import io.netty.channel.unix.{DomainSocketAddress, UnixChannel}
 import io.netty.channel._
 import io.netty.handler.codec.{ByteToMessageDecoder, MessageToByteEncoder}
+import org.apache.openwhisk.common.Logging
 import org.apache.openwhisk.core.connector._
 import org.apache.openwhisk.core.entity.ActivationId
 
@@ -77,7 +78,7 @@ case class MemoryPoolEnd()
 
 // Handler for
 // (Int, Int) -> MessageId, ConnID
-class MemoryPoolClient(val proxy: ProxyNode) extends ProxyClient[(Int, Int)] {
+class MemoryPoolClient(val proxy: ProxyNode)(implicit logging: Logging) extends ProxyClient[(Int, Int)] {
   // for async operations
   type RKey = Array[Byte]
 
@@ -154,25 +155,6 @@ class MemoryPoolClient(val proxy: ProxyNode) extends ProxyClient[(Int, Int)] {
       case _: MemoryPoolEnd =>
         release(elementId)
     }
-
-
-  }
-
-  // Public APIs
-  // initialization and Run
-  def initRun(r: ActivationMessage) = {
-    val parallelism = r.siblings.size
-    // allocate
-    // TODO: hardcode for now
-    val trans = "memory"
-    // post release hooks
-    val elementId = alloc(r.activationId, trans, parallelism)
-    val releaseTrans = s"${trans}@release"
-    (0 until parallelism).map {connId =>
-      val address = ProxyAddress(aid = r.activationId, transport = releaseTrans, port = connId)
-      postRecv(address, (elementId, connId))
-    }
-
   }
 
   def release(elementId: Int) = {
@@ -186,9 +168,23 @@ class MemoryPoolClient(val proxy: ProxyNode) extends ProxyClient[(Int, Int)] {
       }
   }
 
+  // Public APIs
+  // initialization and Run
+  def initRun(activationId: ActivationId, trans: String, parallelism: Int) = {
+    // alloc
+    val elementId = alloc(activationId, trans, parallelism)
+    // post release hooks
+    val releaseTrans = s"${trans}@release"
+    (0 until parallelism).map {connId =>
+      val address = ProxyAddress(aid = activationId, transport = releaseTrans, port = connId)
+      postRecv(address, (elementId, connId))
+    }
+
+  }
+
 }
 
-class MemoryPoolEndPoint(socketFile : String, proxy: ProxyNode) {
+class MemoryPoolEndPoint(socketFile : String, proxy: ProxyNode)(implicit logging: Logging) {
   val bs = new Bootstrap()
   val group = new EpollEventLoopGroup()
 
@@ -203,4 +199,18 @@ class MemoryPoolEndPoint(socketFile : String, proxy: ProxyNode) {
     .channel()
 
   client.setChannel(launch)
+
+  // APIs
+  def initRun(activationId: ActivationId, transportName: String, parallelism: Int) =
+    client.initRun(activationId, transportName, parallelism)
+
+  // Hardcode for now
+  def initRun(r: ActivationMessage) =
+    client.initRun(r.activationId, "memory", r.siblings.size)
+
+  def initRunTest(parallelism: Int) = {
+    val aid = ActivationId.generate()
+    initRun(aid, "memory", parallelism)
+    aid
+  }
 }

@@ -202,7 +202,9 @@ class InvokerReactive(
     activationStore.storeAfterCheck(activation, isBlocking, None, context)(tid, notifier = None, logging)
   }
 
-  val proxyNode = new ProxyNode(23333, Map.empty, "local")
+  // TODO: change this to config
+  val proxyNodePort = 23333
+  val proxyNode = new ProxyNode(proxyNodePort, Map.empty, "local")
   val addressBook = poolConfig.useProxy match {
     case true  => Some(new ActorProxyAddressBook(proxyNode))
     case false => None

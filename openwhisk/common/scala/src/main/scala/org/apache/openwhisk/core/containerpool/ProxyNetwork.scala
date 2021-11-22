@@ -5,6 +5,7 @@ import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.socket.nio.{NioServerSocketChannel, NioSocketChannel}
 import io.netty.channel.{Channel, ChannelHandlerContext, ChannelInitializer, SimpleChannelInboundHandler}
 import io.netty.handler.codec.serialization.{ClassResolvers, ObjectDecoder, ObjectEncoder}
+import org.apache.openwhisk.common.Logging
 import org.apache.openwhisk.core.entity.ActivationId
 
 import scala.collection.mutable
@@ -49,7 +50,7 @@ trait ProxyClient[T] {
 class ProxyNode(serverPort: Int,
                 nodeTable: Map[String, (String, Int)], // name -> addr, port
                 defaultRoute : String,
-               ) {
+               )(implicit logging: Logging) {
   // Function, Instance, Element, Parallelism
   type Message = Serializable
 
@@ -169,6 +170,7 @@ class ProxyNode(serverPort: Int,
         }
       })
 
+    logging.debug(this, s"Starting Server on port ${serverPort}")
     serverChannel = Option(bs.bind(serverPort).sync().channel())
 
     // start network clients
@@ -188,6 +190,7 @@ class ProxyNode(serverPort: Int,
 
     // call .channel will block
     clientChannels = nodeTable.mapValues { case (addr, port) => clientBs.connect(addr, port).channel() }
+    logging.debug(this, s"Connecting to tables")
   }
 
   def close = {
