@@ -216,7 +216,7 @@ object Invoker {
     implicit val entityStore: ArtifactStore[WhiskEntity] = WhiskEntityStore.datastore()
     implicit val authStore: ArtifactStore[WhiskAuth] = WhiskAuthStore.datastore()
 
-    val invokerRuntimeServer = new InvokerRuntimeServer(null, msgProvider, invoker)
+    val invokerRuntimeServer = new InvokerRuntimeServer(config, msgProvider)
     BasicHttpService.startHttpService(invokerRuntimeServer.route, runtimePort, httpsConfig)(
       actorSystem,
       ActorMaterializer.create(actorSystem), logger)

@@ -29,7 +29,7 @@ class SwapApiTests extends ControllerTestCommon with SwapApi {
   it should "return empty list when no actions exist" in {
     implicit val tid: TransactionId = transid()
 
-    val swap = SwapObject("test/action", InvokerInstanceId(0, None, None, RuntimeResources.none()), ActivationId.generate(), ActivationId.generate(), ByteSize.fromString("512M"))
+    val swap = SwapObject("test/action", InvokerInstanceId(0, None, None, RuntimeResources.none()), ActivationId.generate(), ActivationId.generate(), ByteSize.fromString("512M"), creds)
     val content = SwapObject.serdes.write(swap).asJsObject
 
     Put(basePath + "/aaaa", content) ~> Route.seal(routes(creds)) ~> check {

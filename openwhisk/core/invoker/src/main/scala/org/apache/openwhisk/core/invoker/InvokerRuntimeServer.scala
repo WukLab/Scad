@@ -53,8 +53,7 @@ class InvokerRuntimeServer(config: WhiskConfig, msgProvider: MessagingProvider)(
           post {
             entity(as[LaunchCommand]) { cmd =>
               cmd.swap.map({ obj =>
-                val ident = Identity(null, null, null)
-                scheduleSwap(obj, null)
+                scheduleSwap(obj)
               }) match {
                 case Some(value) =>
                   Try(Await.result(value, FiniteDuration(1, TimeUnit.MINUTES))) match {
@@ -86,12 +85,12 @@ class InvokerRuntimeServer(config: WhiskConfig, msgProvider: MessagingProvider)(
       }
     }
 
-  protected def activationMsgFromObj(swap: SwapObject, user: Identity): ActivationMessage = {
+  protected def activationMsgFromObj(swap: SwapObject): ActivationMessage = {
     ActivationMessage(
       TransactionId(TransactionId.generateTid()),
       EntityPath(swap.originalAction).toFullyQualifiedEntityName,
       DocRevision.empty,
-      user,
+      swap.user,
       ActivationId.generate(),
       schedId,
       blocking = false,
@@ -102,8 +101,8 @@ class InvokerRuntimeServer(config: WhiskConfig, msgProvider: MessagingProvider)(
     )
   }
 
-  protected def scheduleSwap(obj: SwapObject, user: Identity): Future[ActivationId] = {
-    val msg = activationMsgFromObj(obj, user)
+  protected def scheduleSwap(obj: SwapObject): Future[ActivationId] = {
+    val msg = activationMsgFromObj(obj)
     logging.debug(this, s"scheduling additional mem object activation for ${obj.appActivationId}::${obj.functionActivationId} with activation ${msg.activationId}")
     msgProducer.send(schedId.schedTopic, msg).map(_ => msg.activationId).map(_ => msg.activationId)
   }
