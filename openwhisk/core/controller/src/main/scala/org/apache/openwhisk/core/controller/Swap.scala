@@ -11,15 +11,11 @@ import org.apache.openwhisk.core.entitlement.Privilege.PUT
 import org.apache.openwhisk.core.entitlement.{Collection, Privilege, Resource}
 import org.apache.openwhisk.core.entity.{ActivationId, ControllerInstanceId, DocRevision, EntityName, EntityPath, Identity, WhiskAction, WhiskActionMetaData}
 import org.apache.openwhisk.core.entity.types.EntityStore
-import org.apache.openwhisk.core.topbalancer.SwapObject
+import org.apache.openwhisk.core.swap.SwapObject
 import spray.json.JsObject
 
 import scala.concurrent.Future
 import scala.util.{Failure, Success}
-
-object Swap {
-
-}
 
 /**
  * This represents the API for scheduling new swap objects.
