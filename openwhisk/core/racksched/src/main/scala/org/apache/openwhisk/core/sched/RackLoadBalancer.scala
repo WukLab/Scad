@@ -231,8 +231,8 @@ class RackSimpleBalancer(config: WhiskConfig,
   }))
 
   val maxPeek = 128
-  private val scheduleConsumer = messagingProvider.getConsumer(config, rackschedInstance.toString,
-      rackschedInstance.toString, maxPeek, maxPollInterval = TimeLimit.MAX_DURATION + 1.minute)
+  private val scheduleConsumer = messagingProvider.getConsumer(config, rackschedInstance.schedTopic,
+      rackschedInstance.schedTopic, maxPeek, maxPollInterval = TimeLimit.MAX_DURATION + 1.minute)
 
   private val activationFeed = actorSystem.actorOf(Props {
     new MessageFeed("racktivation", logging, scheduleConsumer, maxPeek, 1.second, parseActivationMessage)

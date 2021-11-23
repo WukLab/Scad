@@ -35,6 +35,7 @@ import org.apache.openwhisk.core.loadBalancer.FeedFactory
 import org.apache.openwhisk.core.loadBalancer.LoadBalancerException
 import org.apache.openwhisk.core.loadBalancer.ShardingContainerPoolBalancer
 import org.apache.openwhisk.core.scheduler.FinishActivation
+import org.apache.openwhisk.core.swap.SwapObject
 import org.apache.openwhisk.spi.SpiLoader
 import pureconfig.loadConfigOrThrow
 import pureconfig._

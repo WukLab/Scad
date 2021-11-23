@@ -6,10 +6,10 @@ import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport.sprayJsonMarsha
 import spray.json.DefaultJsonProtocol._
 import org.apache.openwhisk.common.TransactionId
 import org.apache.openwhisk.core.containerpool.RuntimeResources
+import org.apache.openwhisk.core.swap.SwapObject
 import org.apache.openwhisk.core.controller.SwapApi
 import org.apache.openwhisk.core.database.UserContext
 import org.apache.openwhisk.core.entity.{ActivationId, ByteSize, ControllerInstanceId, EntityPath, Identity, InvokerInstanceId, TopSchedInstanceId}
-import org.apache.openwhisk.core.topbalancer.SwapObject
 import org.junit.runner.RunWith
 import org.scalatestplus.junit.JUnitRunner
 
