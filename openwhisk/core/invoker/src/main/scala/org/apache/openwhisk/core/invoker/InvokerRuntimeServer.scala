@@ -7,16 +7,13 @@ import akka.http.scaladsl.server.Route
 import org.apache.openwhisk.common.{Logging, TransactionId}
 import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
 import org.apache.openwhisk.core.connector.{ActivationMessage, MessagingProvider}
-import org.apache.openwhisk.core.containerpool.RuntimeResources
+import org.apache.openwhisk.core.containerpool.{ActorProxyAddressBook, ProxyAddress, RuntimeResources}
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.swap.SwapObject
 import pureconfig.loadConfigOrThrow
 import spray.json._
 
-import java.util.concurrent.TimeUnit
-import scala.concurrent.duration.FiniteDuration
-import scala.concurrent.{Await, ExecutionContext, Future}
-import scala.util.{Failure, Success, Try}
+import scala.concurrent._
 
 case class RuntimeDependencyInvocation(target: String,
                                        value: Option[JsObject],
@@ -29,7 +26,8 @@ object RuntimeDependencyInvocation extends DefaultJsonProtocol with SprayJsonSup
   implicit val serdes: RootJsonFormat[RuntimeDependencyInvocation] = jsonFormat6(RuntimeDependencyInvocation.apply)
 }
 
-class InvokerRuntimeServer(config: WhiskConfig, msgProvider: MessagingProvider)(
+class InvokerRuntimeServer(config: WhiskConfig, msgProvider: MessagingProvider,
+                           addressBook: Option[ActorProxyAddressBook])(
   implicit val actorSystem : ActorSystem,
   implicit val executionContext: ExecutionContext,
   implicit val logging: Logging
@@ -48,29 +46,50 @@ class InvokerRuntimeServer(config: WhiskConfig, msgProvider: MessagingProvider)(
 
   def route : Route =
     pathPrefix ("activation" / Segment ) { _activationId : String =>
+      val activationId = ActivationId.parse(_activationId).toOption
       concat {
-        path ("launch") {
+
+        // Release a related memory segment
+        path ("transport" / Segment) { _transport : String =>
+          /**
+           * delete, remove a existing transport
+           */
+          delete {
+            val rep = for {
+              book <- addressBook
+              aid <- activationId
+            } yield book.release(ProxyAddress(aid, _transport))
+
+            complete((200, "ok"))
+          }
+
+          /**
+           * Ppst, create a new transport
+           */
           post {
             entity(as[LaunchCommand]) { cmd =>
               cmd.swap.map({ obj =>
                 scheduleSwap(obj)
               }) match {
                 case Some(value) =>
-                  Try(Await.result(value, FiniteDuration(1, TimeUnit.MINUTES))) match {
-                    case Failure(exception) =>
-                      complete((500, exception.toString))
-                    case Success(value) =>
-                      complete((200, value.asString))
+                  // TODO option to future
+                  value.foreach { destAid =>
+                    for {
+                      book <- addressBook
+                      aid <- activationId
+                    } yield {
+                      val src = ProxyAddress(aid, _transport)
+                      val dst = ProxyAddress(destAid, "memory")
+                      book.prepareReply(src, dst)
+                      // TODO: message the "ACTMSGS"
+                    }
                   }
+                  complete((200, "ok"))
                 case None =>
                   complete((500, "no swap"))
               }
             }
           }
-        }
-
-        path ("corunning") {
-          complete((500, s"not implemented ${_activationId}"))
         }
 
         path ("dependency") {
