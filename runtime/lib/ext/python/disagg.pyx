@@ -9,6 +9,7 @@ cdef class LibdAction:
     cdef public object transports
     cdef public object raw_transports
     cdef public object cv
+    cdef public object runtime
 
     def __cinit__(self, cv, str aid, **kwargs):
         # prepare args for init call
@@ -35,6 +36,7 @@ cdef class LibdAction:
 
     # Python init part, I assume they have same objects
     def __init__(self, *args, **kwargs):
+        self.runtime = None
         self.transports = {}
         self.raw_transports = {}
 
