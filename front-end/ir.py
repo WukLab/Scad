@@ -2,6 +2,12 @@ from itertools import chain
 import json
 from element import ElementStats
 
+# merge and split object
+class DAGNode:
+    def __init__(self, meta):
+        self.meta = meta
+    def 
+
 # immutable obejct
 class SplitTree:
     @staticmethod

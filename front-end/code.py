@@ -1,17 +1,21 @@
-from abc import ABC
+from abc import *
+
+# classes for operating DAGs
 
 # abstract class of Code Block, which can be black box code generate by external compilers
+class Element:
+    pass
+
 class CodeOperator(ABC):
     @abstractmethod
     def getLine(self, n):
         pass
 
 
-class Code(ABC):
+class ElementContent(ABC):
     def __init__(self, operator):
         self.op = operator
         
-
     @abstractmethod
     def dump(self):
         pass
@@ -19,23 +23,27 @@ class Code(ABC):
     def dumpWithMeta(self):
         pass
 
-class PythonCode(Code):
-    pass
+class PythonElement(ElementContent):
+    def __inti__(self):
+        super().__init__(self, None)
+    
+    def dump(self):
+        return
 
 class FileOperator(CodeOperator):
-    def __init__(self, code):
-        self.code = code
+    def __init__(self, filename):
+        self.filename = filename
 
     def toArray(self):
-        return ArrayOperator(self, code):
+        return MemoryOperator(self, code):
 
     def copy(self):
         pass
         
 
 # python code with 
-class ArrayOperator(CodeOperator):
-    def __init__(self, code):
+class MemoryOperator(CodeOperator):
+    def __init__(self, codeList):
         self.code = []
         self.tags = {}
         self.ext = ext
@@ -91,4 +99,6 @@ class ArrayOperator(CodeOperator):
     def tagLine(self, key):
         return self.tag(key, CodePos(len(self.code)))
     
-    
+# load folder from file
+def loadFolder():
+    pass

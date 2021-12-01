@@ -1,5 +1,5 @@
-from spilttree import SplitTree
-from abc import ABC
+from ir import SplitTree
+from abc import *
 
 class Stage(ABC):
     # TODO: check valid priority
