@@ -44,7 +44,7 @@ case class RuntimeResources(cpu: Double = 1, mem: ByteSize = 0.B, storage: ByteS
    * if any one of mem, cpu, or storage exceeds then this function returns false.
    */
   def exceedsAnyOf(other: RuntimeResources): Boolean = {
-    cpu >= other.cpu || mem >= other.mem || storage > other.storage
+    cpu > other.cpu || mem > other.mem || storage > other.storage
   }
 
   override def toString = s"{CPU: ${cpu} | MEM: ${mem.toMB}MB | STORAGE: ${storage.toMB}MB}"

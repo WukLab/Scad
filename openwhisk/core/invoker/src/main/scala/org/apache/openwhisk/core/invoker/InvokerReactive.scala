@@ -39,6 +39,7 @@ import pureconfig._
 import pureconfig.generic.auto._
 import spray.json._
 
+import java.util.concurrent.TimeUnit
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
@@ -69,8 +70,8 @@ class InvokerReactive(
   implicit val ec: ExecutionContext = actorSystem.dispatcher
   implicit val cfg: WhiskConfig = config
 
-  private val rackId = loadConfigOrThrow[Int](ConfigKeys.invokerRack)
-  private val rackHealthTopic = RackSchedInstanceId.rackSchedHealthTopic(rackId)
+  private val rackId: RackSchedInstanceId = new RackSchedInstanceId(loadConfigOrThrow[Int](ConfigKeys.invokerRack), RuntimeResources.none())
+  private val rackHealthTopic = RackSchedInstanceId.rackSchedHealthTopic(rackId.toInt)
   logging.debug(this, s"rack health topic is ${rackHealthTopic}")
 
   private val logsProvider = SpiLoader.get[LogStoreProvider].instance(actorSystem)
@@ -159,9 +160,12 @@ class InvokerReactive(
   private val activationWaiter: ActorRef = actorSystem.actorOf(Props {
     new ActivationWaiter(activationProcessor, msgProducer)
   })
+
+  private val prewarmDeadlineCache: PrewarmDeadlineCache = PrewarmDeadlineCache()
+
   private val dependencyScheduler: ActorRef = actorSystem.actorOf(Props {
     // instance ID doesn't matter as current impl only supports one topscheduler. The topic is always the same.
-    new DepInvoker(instance, new TopSchedInstanceId("0"), msgProducer)
+    new DepInvoker(instance, rackId, msgProducer, prewarmDeadlineCache)
   })
 
   //number of peeked messages - increasing the concurrentPeekFactor improves concurrent usage, but adds risk for message loss in case of crash
@@ -217,7 +221,8 @@ class InvokerReactive(
         .props(containerFactory.createContainer, ack, store, collectLogs, instance, poolConfig,
           msgProducer = msgProducer,
           resultWaiter = Some(resultWaiter),
-          addressBook = addressBook
+          addressBook = addressBook,
+          prewarmDeadlineCache = prewarmDeadlineCache.self
         ))
 
   val prewarmingConfigs: List[PrewarmingConfig] = {
@@ -235,29 +240,35 @@ class InvokerReactive(
   //TODO: Zhiyuan: create a new pool here (or inside the container pool) to handle the messages
   val memoryPool = new MemoryPoolEndPoint(config.invokerMemoryPoolSock, proxyNode, ack)
 
-   def handlePrewarmMessage(msg: ActivationMessage, partialConfig: PartialPrewarmConfig)(implicit transid: TransactionId): Future[Unit] = {
-     val namespace = msg.action.path
-     val name = msg.action.name
-     val actionid = FullyQualifiedEntityName(namespace, name).toDocId.asDocInfo(msg.revision)
-     val subject = msg.user.subject
-     logging.debug(this, s"handling prewarm message: ${actionid.id} $subject ${msg.activationId}")
-     WhiskAction
-       .get(entityStore, actionid.id, actionid.rev, fromCache = actionid.rev != DocRevision.empty)
-       .flatMap(action => {
-         action.toExecutableWhiskAction match {
-           case Some(executable) =>
-             pool ! PrewarmContainer(executable, partialConfig)
+   def handlePrewarmMessage(msg: ActivationMessage, partialConfig: PartialPrewarmConfig)(implicit transid: TransactionId): Unit = {
+     // wait time before actually handling message. 10ms for kafka latency, 400 for cold start time, 5 as "epsilon", for
+     // some additional wiggle room
+     val time: Long = partialConfig.prevElemRuntimeMs - 10 - 400 - 5
+     val waitTime = if (time > 0) time else 0
+     logging.debug(this, s"delaying prewarming of container ${msg.action} by ${waitTime}ms")
+     actorSystem.getScheduler.scheduleOnce(FiniteDuration(waitTime, TimeUnit.MILLISECONDS))(() => {
+       val namespace = msg.action.path
+       val name = msg.action.name
+       val actionid = FullyQualifiedEntityName(namespace, name).toDocId
+       val subject = msg.user.subject
+       logging.debug(this, s"handling prewarm message: ${actionid.id} $subject ${msg.activationId}")
+       WhiskAction.get(entityStore, actionid)
+         .flatMap(action => {
+           action.toExecutableWhiskAction match {
+             case Some(executable) =>
+               pool ! PrewarmContainer(executable, partialConfig)
+               Future.successful(())
+             case None =>
+               logging.error(this, s"non-executable action attempted to prewarm at invoker ${action.fullyQualifiedName(false)}")
+               Future.successful(())
+           }
+         })
+         .recoverWith({
+           case t =>
+             logging.warn(this, s"Failed to handle prewarming request: $actionid; $t")
              Future.successful(())
-           case None =>
-             logging.error(this, s"non-executable action attempted to prewarm at invoker ${action.fullyQualifiedName(false)}")
-             Future.successful(())
-         }
-       })
-       .recoverWith({
-         case t =>
-           logging.warn(this, s"Failed to handle prewarming request: $actionid; $t")
-           Future.successful(())
-       })
+         })
+     })
    }
 
   def handleActivationMessage(msg: ActivationMessage)(implicit transid: TransactionId): Future[Unit] = {
@@ -341,7 +352,7 @@ class InvokerReactive(
   }
 
   /** Is called when an ActivationMessage is read from Kafka */
-  def processActivationMessage(msg: ActivationMessage): Future[Unit] = {
+  def processActivationMessage(msg: ActivationMessage): Unit = {
     // The message has been parsed correctly, thus the following code needs to *always* produce at least an
     // active-ack.
     implicit val transid: TransactionId = msg.transid
@@ -351,7 +362,7 @@ class InvokerReactive(
       }
     // no content provided during scheduling, need to send to the waiting map until its content arrives
     activationWaiter ! msg
-    return Future.successful(())
+    return
     }
     //set trace context to continue tracing
     WhiskTracerProvider.tracer.setTraceContext(transid, msg.traceContext)
@@ -363,7 +374,6 @@ class InvokerReactive(
       } else {
         handleActivationMessage(msg)
       }
-      future
     } else {
       // Iff the current namespace is blacklisted, an active-ack is only produced to keep the loadbalancer protocol
       // Due to the protective nature of the blacklist, a database entry is not written.
@@ -377,7 +387,6 @@ class InvokerReactive(
         msg.user.namespace.uuid,
         CombinedCompletionAndResultMessage(transid, activation, instance))
       logging.warn(this, s"namespace ${msg.user.namespace.name} was blocked in invoker.")
-      Future.successful(())
     }
   }
 

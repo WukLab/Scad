@@ -3,7 +3,7 @@
 #@   - obj0
 #@ dependents:
 #@   - obj2
-#@ parallelism: 4
+#@ parallelism: 2
 
 import time
 

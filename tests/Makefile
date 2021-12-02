@@ -35,8 +35,11 @@ build_ow:
 		cd ../openwhisk && ./gradlew build -x test
 	fi
 
+.ONESHELL:
 build_ow_base:
-	cd ../openwhisk-base && ./gradlew distDocker
+	if [[ -z $${DIST+x} ]]; then
+		cd ../openwhisk-base && ./gradlew distDocker
+	fi
 
 
 cli:
@@ -75,12 +78,20 @@ openwhisk:
 ow_base: build_ow_base
 	rm -rf ~/.openwhisk/wsklogs/*
 	cd ../openwhisk-base && git reset HEAD --hard && git apply ../ow-base.patch && ./gradlew distDocker
-	./ow_base_ansible.sh properties.yml
 	./ow_base_ansible.sh setup.yml
+	./ow_base_ansible.sh properties.yml
 	./ow_base_ansible.sh couchdb.yml
 	./ow_base_ansible.sh wipe.yml
 	./ow_base_ansible.sh initdb.yml
 	./ow_base_ansible.sh openwhisk.yml -e skip_pull_runtimes=true
+
+dist_ow_base:
+	./ow_base_ansible.sh d setup.yml
+	./ow_base_ansible.sh d properties.yml
+	./ow_base_ansible.sh d couchdb.yml
+	./ow_base_ansible.sh d wipe.yml
+	./ow_base_ansible.sh d initdb.yml
+	./ow_base_ansible.sh d openwhisk.yml -e skip_pull_runtimes=true
 
 properties:
 	$(ANSIBLE_SCRIPT) properties.yml

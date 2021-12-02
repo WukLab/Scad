@@ -116,6 +116,8 @@ case class RackSchedInstanceId(instance: Int,
 
   override val toString: String = (Seq("racksched" + instance) ++ uniqueName ++ displayName).mkString("/")
 
+  val topic: String = toString
+
   override val toJson: JsValue = RackSchedInstanceId.serdes.write(this)
 
   def healthTopic: String = rackSchedHealthTopic(instance)

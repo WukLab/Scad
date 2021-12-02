@@ -30,8 +30,9 @@ import scala.util.{Random, Try}
 import cats.implicits._
 import org.apache.openwhisk.core.ConfigKeys
 import pureconfig.loadConfigOrThrow
-
 import scala.concurrent.ExecutionContextExecutor
+
+import java.util.concurrent.atomic.LongAdder
 
 sealed trait WorkerState
 case object Busy extends WorkerState
@@ -417,7 +418,9 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
     case AdjustPrewarmedContainer =>
       adjustPrewarmedContainer(false, true)
+      logging.debug(this, s"freePool (${freePool.size}) ${freePool.values}, busyPool(${busyPool.size}): ${busyPool.values}, prewarmed (${prewarmedPool.size}): ${prewarmedPool.values}")
     case warm: PrewarmContainer =>
+      logging.debug(this, s"prewarming container ${warm.action.name} with TTL: ${warm.msg.ttlMs}ms")
       prewarmContainer(warm.action.exec, warm.msg.resources, Some(FiniteDuration(warm.msg.ttlMs, MILLISECONDS)))
 
     // Forward Libd Messages
@@ -508,6 +511,8 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       }
   }
 
+  var totalPrewarms: LongAdder = new LongAdder()
+
   /**
    * Takes a prewarm container out of the prewarmed pool
    * iff a container with a matching kind and memory is found.
@@ -516,10 +521,12 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
    * @return the container iff found
    */
   def takePrewarmContainer(action: ExecutableWhiskAction): Option[(ActorRef, ContainerData)] = {
+    totalPrewarms.increment()
+    logging.debug(this, s"total taken prewarms: ${totalPrewarms.sum()}")
     val kind = action.exec.kind
     val resources = action.limits.resources.limits
     val now = Deadline.now
-    prewarmedPool.toSeq
+    val x = prewarmedPool.toSeq
       .sortBy(_._2.expires.getOrElse(now))
       .find {
         case (_, PreWarmedData(_, `kind`, `resources`, _, _)) => true
@@ -540,6 +547,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
           prewarmContainer(action.exec, resources, ttl)
           (ref, data)
       }
+    x
   }
 
   /** Removes a container and updates state accordingly. */
@@ -699,24 +707,24 @@ object ContainerPool {
     val expireds = prewarmConfig
       .flatMap { config =>
         val kind = config.exec.kind
-        val memory = config.resources
         config.reactive
           .map { c =>
+            val exps = prewarmedPool.toSeq.map(f => f._2.isExpired())
             val expiredPrewarmedContainer = prewarmedPool.toSeq
               .filter { warmInfo =>
                 warmInfo match {
-                  case (_, p @ PreWarmedData(_, `kind`, `memory`, _, _)) if p.isExpired() => true
+                  case (_, p @ PreWarmedData(_, `kind`, _, _, _)) if p.isExpired() => true
                   case _                                                                  => false
                 }
               }
               .sortBy(_._2.expires.getOrElse(now))
 
             // emit expired container counter metric with memory + kind
-            MetricEmitter.emitCounterMetric(LoggingMarkers.CONTAINER_POOL_PREWARM_EXPIRED(memory.toString, kind))
+            MetricEmitter.emitCounterMetric(LoggingMarkers.CONTAINER_POOL_PREWARM_EXPIRED(null, kind))
             if (expiredPrewarmedContainer.nonEmpty) {
               logging.info(
                 this,
-                s"[kind: ${kind} resources: ${memory.toString}] ${expiredPrewarmedContainer.size} expired prewarmed containers")
+                s"[kind: ${kind}] ${expiredPrewarmedContainer.size} expired prewarmed containers")
             }
             expiredPrewarmedContainer.map(e => (e._1, e._2.expires.getOrElse(now)))
           }

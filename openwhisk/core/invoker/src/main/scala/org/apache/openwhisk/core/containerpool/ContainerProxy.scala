@@ -51,7 +51,7 @@ import org.apache.openwhisk.core.entity.ExecManifest.ImageName
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size._
 import org.apache.openwhisk.core.invoker.Invoker.LogsCollector
-import org.apache.openwhisk.core.invoker.ResultActivation
+import org.apache.openwhisk.core.invoker.{PrewarmDeadlineCache, ResultActivation, RunFinishedMessage}
 import org.apache.openwhisk.core.scheduler.FinishActivation
 import org.apache.openwhisk.http.Messages
 
@@ -281,6 +281,7 @@ class ContainerProxy(factory: (TransactionId,
                      unusedTimeout: FiniteDuration,
                      pauseGrace: FiniteDuration,
                      msgProducer: MessageProducer,
+                     prewarmDeadlineCache: ActorRef,
                      testTcp: Option[ActorRef],
                      resultWaiter: Option[ActorRef],
                      addressBook: Option[ActorProxyAddressBook]
@@ -317,7 +318,7 @@ class ContainerProxy(factory: (TransactionId,
         poolConfig.cpuShare(job.resources),
         None)
         .map(container =>
-          PreWarmCompleted(PreWarmedData(container, job.exec.kind, job.resources, expires = job.ttl.map(_.fromNow))))
+          PreWarmCompleted(PreWarmedData(container, job.exec.kind, job.resources, expires = job.ttl.map(_.fromNow).orElse(Some(poolConfig.prewarmExpirationCheckInterval.fromNow) ))))
         .pipeTo(self)
 
       goto(Starting)
@@ -353,7 +354,7 @@ class ContainerProxy(factory: (TransactionId,
             // the container is ready to accept an activation; register it as PreWarmed; this
             // normalizes the life cycle for containers and their cleanup when activations fail
             self ! PreWarmCompleted(
-              PreWarmedData(container, job.action.exec.kind, job.action.limits.resources.limits, 1, expires = None))
+              PreWarmedData(container, job.action.exec.kind, job.action.limits.resources.limits, 1, expires = Some(poolConfig.prewarmExpirationCheckInterval.fromNow)))
 
           case Failure(t) =>
             // the container did not come up cleanly, so disambiguate the failure mode and then cleanup
@@ -957,7 +958,7 @@ class ContainerProxy(factory: (TransactionId,
             reschedule)(job.msg.transid)
           .map {
             case (runInterval, response) =>
-              logging.debug(this, s"RUN RESPONSE $response")
+              prewarmDeadlineCache ! RunFinishedMessage(job.action.fullyQualifiedName(false).asString, runInterval)
               val initRunInterval = initInterval
                 .map(i => Interval(runInterval.start.minusMillis(i.duration.toMillis), runInterval.end))
                 .getOrElse(runInterval)
@@ -1125,6 +1126,7 @@ object ContainerProxy {
             unusedTimeout: FiniteDuration = timeouts.idleContainer,
             pauseGrace: FiniteDuration = timeouts.pauseGrace,
             msgProducer: MessageProducer,
+            prewarmDeadlineCache: ActorRef = PrewarmDeadlineCache().self,
             tcp: Option[ActorRef] = None,
             resultWaiter: Option[ActorRef] = None,
             addressBook: Option[ActorProxyAddressBook] = None,
@@ -1142,6 +1144,7 @@ object ContainerProxy {
         unusedTimeout,
         pauseGrace,
         msgProducer,
+        prewarmDeadlineCache,
         tcp,
         resultWaiter,
         addressBook,

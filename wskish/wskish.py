@@ -138,12 +138,13 @@ def main():
         start = time.time()
         iters = 0
         while time.time() - start < args.timeout and not args.non_blocking:
+            sleep_time = min(math.pow(2, iters), args.timeout)
+            time.sleep(sleep_time)
             r = do_get_activation(host, aid, wskprops.auth, args.verbose)
             if r.status_code == 200:
                 break
-            sleep_time = min(math.pow(2, iters), args.timeout)
-            time.sleep(sleep_time)
             iters += 1
+
 
 
 if __name__ == "__main__":
