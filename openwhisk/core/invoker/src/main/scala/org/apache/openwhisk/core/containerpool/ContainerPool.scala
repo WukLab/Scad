@@ -30,6 +30,7 @@ import scala.util.{Random, Try}
 import cats.implicits._
 import org.apache.openwhisk.core.ConfigKeys
 import pureconfig.loadConfigOrThrow
+import scala.concurrent.ExecutionContextExecutor
 
 import java.util.concurrent.atomic.LongAdder
 
@@ -70,13 +71,15 @@ case class PrewarmContainer(action: ExecutableWhiskAction, msg: PartialPrewarmCo
 class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                     feed: ActorRef,
                     prewarmConfig: List[PrewarmingConfig] = List.empty,
-                    poolConfig: ContainerPoolConfig)(implicit val logging: Logging)
+                    poolConfig: ContainerPoolConfig,
+                    proxyAddressBook: Option[ActorProxyAddressBook]
+                   )(implicit val logging: Logging)
     extends Actor {
   import ContainerPool.resourceConsumptionOf
 
   private val useRdma: Boolean = loadConfigOrThrow[Boolean](ConfigKeys.useRdma)
 
-  implicit val ec = context.dispatcher
+  implicit val ec: ExecutionContextExecutor = context.dispatcher
 
   var freePool = immutable.Map.empty[ActorRef, ContainerData]
   var busyPool = immutable.Map.empty[ActorRef, ContainerData]
@@ -85,21 +88,21 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   // If all memory slots are occupied and if there is currently no container to be removed, than the actions will be
   // buffered here to keep order of computation.
   // Otherwise actions with small memory-limits could block actions with large memory limits.
-  var runBuffer = immutable.Queue.empty[Run]
+  var runBuffer: immutable.Queue[Run] = immutable.Queue.empty[Run]
   // Track the resent buffer head - so that we don't resend buffer head multiple times
   var resent: Option[Run] = None
-  val logMessageInterval = 10.seconds
+  val logMessageInterval: FiniteDuration = 10.seconds
   //periodically emit metrics (don't need to do this for each message!)
   context.system.scheduler.schedule(30.seconds, 10.seconds, self, EmitMetrics)
 
   // Key is ColdStartKey, value is the number of cold Start in minute
   var coldStartCount = immutable.Map.empty[ColdStartKey, Int]
 
-  adjustPrewarmedContainer(true, false)
+  adjustPrewarmedContainer(init = true, scheduled = false)
 
   // check periodically, adjust prewarmed container(delete if unused for some time and create some increment containers)
   // add some random amount to this schedule to avoid a herd of container removal + creation
-  val interval = poolConfig.prewarmExpirationCheckInterval + poolConfig.prewarmExpirationCheckIntervalVariance
+  val interval: FiniteDuration = poolConfig.prewarmExpirationCheckInterval + poolConfig.prewarmExpirationCheckIntervalVariance
     .map(v =>
       Random
         .nextInt(v.toSeconds.toInt))
@@ -221,9 +224,13 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
             activationMap = activationMap + (r.msg.activationId -> actor)
 
             // We also log this into the run message
+
+            // for proxy, we can still post wait here, but we need to carry the port number
+            // since if we got parallelism, we need to reply to the src (remember which remote proxy addr for local)
+            // it needs extra logic
             val defaultAddresses = LibdAPIs.Transport.getDefaultTransport(r.action, useRdma)
             val fetchedAddresses = for {
-              runtime <- r.action.runtimeType
+              runtime <- r.action.porusParams.runtimeType
               if LibdAPIs.Transport.needWait(runtime)
               seq <- r.msg.siblings
             } yield seq.toSet.groupBy(LibdAPIs.Transport.getName).flatMap {
@@ -236,9 +243,21 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                   val impl = LibdAPIs.Transport.getImpl(ra, runtime)
                   val request = if (isPar) TransportRequest.configPar(name, par, impl, aid)
                                 else TransportRequest.config(name, impl, aid)
-                  addressBook
+
+                  if (poolConfig.useProxy) {
+                    proxyAddressBook.foreach { book =>
+                      val srcTransportName = if (isPar) s"$name@$par" else name
+                      val dstTransportName = "memory"
+                      book.prepareReply(
+                        src = ProxyAddress(aid,              srcTransportName),
+                        dst = ProxyAddress(ra.objActivation, dstTransportName))
+                    }
+                    // Return empty string for config.
+                    ""
+                  } else addressBook
                     .postWait(ra.objActivation, request)
                     .toFullString
+
                 }
             }
             val transports =
@@ -247,28 +266,36 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                 case s                  => Some(s)
               }
 
+            if (poolConfig.useProxy) {
+              // Send a GetMessage() request
+              actor ! TransportRequest.getMessage(r.msg.activationId)
+            }
+
             logging.debug(this, s"Get activation for ${r.msg.action} with id ${r.msg.activationId}: addresses ${transports}: run msg: $r")
             logging.debug(this, s"siblings ${r.msg.siblings} -> ${r.msg.siblings.map(_.map(_.objName))}")
             actor ! r.copy(corunningConfig = transports)
 
-            // Post run actions
-            for {
-              runtime <- r.action.runtimeType
-              if LibdAPIs.Transport.needSignal(runtime)
-              seq <- r.msg.siblings
-            } yield seq.map { ra =>
-              // Here we post self's name
-              val name = r.action.name.name
-              val port = LibdAPIs.Transport.getPort(ra)
+            // Only run this when we use containers as memory pool
+            if (!poolConfig.useProxy) {
+              for {
+                runtime <- r.action.porusParams.runtimeType
+                if LibdAPIs.Transport.needSignal(runtime)
+                seq <- r.msg.siblings
+              } yield seq.map { ra =>
+                // Here we post self's name
+                val name = r.action.name.name
+                val port = LibdAPIs.Transport.getPort(ra)
 
-              container.map(_.addr.host) match {
-                case None =>
-                  addressBook.prepareSignal(actor,
-                      r.msg.activationId, name, TransportAddress(port.toString))
-                  logging.debug(this, s"signal prepared, ${actor}")
-                case Some(containerIp) =>
-                  addressBook.signalReady(r.msg.activationId, name,
-                  TransportAddress.TCPTransport(containerIp, port.toString))
+                // check if the container already exists
+                container.map(_.addr.host) match {
+                  case None =>
+                    addressBook.prepareSignal(actor,
+                        r.msg.activationId, name, TransportAddress(port.toString))
+                    logging.debug(this, s"signal prepared, ${actor}")
+                  case Some(containerIp) =>
+                    addressBook.signalReady(r.msg.activationId, name,
+                    TransportAddress.TCPTransport(containerIp, port.toString))
+                }
               }
             }
 
@@ -278,7 +305,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
             // this can also happen if createContainer fails to start a new container, or
             // if a job is rescheduled but the container it was allocated to has not yet destroyed itself
             // (and a new container would over commit the pool)
-            val isErrorLogged = r.retryLogDeadline.map(_.isOverdue).getOrElse(true)
+            val isErrorLogged = r.retryLogDeadline.forall(_.isOverdue)
             val retryLogDeadline = if (isErrorLogged) {
               logging.warn(
                 this,
@@ -319,7 +346,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
         freePool = freePool + (sender() -> newData)
         if (busyPool.contains(sender())) {
           busyPool = busyPool - sender()
-          if (newData.action.limits.concurrency.maxConcurrent > 1) {
+          if (newData.maxConcurrent > 1) {
             logging.info(
               this,
               s"concurrent container ${newData.container} is no longer busy with ${newData.activeActivationCount} activations")
@@ -372,7 +399,11 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     // Handles end of objects
     case ObjectEnd(activationId) =>
       activationMap = activationMap - activationId
-      addressBook.remove(activationId)
+      if (poolConfig.useProxy)
+        // TODO: release the connection
+        proxyAddressBook.foreach { book => book.releaseAll(activationId) }
+      else
+        addressBook.remove(activationId)
 
     // This message is received for one of these reasons:
     // 1. Container errored while resuming a warm container, could not process the job, and sent the job back
@@ -391,6 +422,10 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     case warm: PrewarmContainer =>
       logging.debug(this, s"prewarming container ${warm.action.name} with TTL: ${warm.msg.ttlMs}ms")
       prewarmContainer(warm.action.exec, warm.msg.resources, Some(FiniteDuration(warm.msg.ttlMs, MILLISECONDS)))
+
+    // Forward Libd Messages
+    case request: LibdTransportConfig =>
+      activationMap.get(request.activationId).foreach { _ ! request }
   }
 
   /** Resend next item in the buffer, or trigger next item in the feed, if no items in the buffer. */
@@ -586,27 +621,34 @@ object ContainerPool {
    * @param idles a map of idle containers, awaiting work
    * @return a container if one found
    */
-  protected[containerpool] def schedule[A](action: ExecutableWhiskAction,
+  protected[containerpool] def
+  schedule[A](action: ExecutableWhiskAction,
                                            invocationNamespace: EntityName,
                                            idles: Map[A, ContainerData]): Option[(A, ContainerData)] = {
-    val x = idles
-      .find {
-        case (_, c @ WarmedData(_, `invocationNamespace`, `action`, _, _, _)) if c.hasCapacity() => true
-        case _                                                                                   => false
+    idles.find {
+      case (_, c@WarmedData(_, `invocationNamespace`, inits, _, _, _)) if c.hasCapacity() && inits.contains(action) => true
+      case _ => false
+    } orElse {
+      idles.find {
+        case (_, c@WarmingData(_, `invocationNamespace`, inits, _, _)) if c.hasCapacity() && inits.contains(action) => true
+        case _ => false
       }
-      .orElse {
-        idles.find {
-          case (_, c @ WarmingData(_, `invocationNamespace`, `action`, _, _)) if c.hasCapacity() => true
-          case _                                                                                 => false
-        }
+    } orElse {
+      idles.find {
+        case (_, c@WarmingColdData(`invocationNamespace`, inits, _, _)) if c.hasCapacity() && inits.contains(action) => true
+        case _ => false
       }
-      .orElse {
-        idles.find {
-          case (_, c @ WarmingColdData(`invocationNamespace`, `action`, _, _)) if c.hasCapacity() => true
-          case _                                                                                  => false
-        }
+    } orElse {
+      idles.find {
+//        case (_, c@WarmedData(_, `invocationNamespace`, _, _, _, _)) if c.hasCapacity() => true
+        case _ => false
       }
-    x
+    } orElse {
+      idles.find {
+//        case (_, c@WarmingData(_, `invocationNamespace`, _, _, _)) if c.hasCapacity() => true
+        case _ => false
+      }
+    }
   }
 
   /**
@@ -782,8 +824,10 @@ object ContainerPool {
   def props(factory: ActorRefFactory => ActorRef,
             poolConfig: ContainerPoolConfig,
             feed: ActorRef,
-            prewarmConfig: List[PrewarmingConfig] = List.empty)(implicit logging: Logging) =
-    Props(new ContainerPool(factory, feed, prewarmConfig, poolConfig))
+            prewarmConfig: List[PrewarmingConfig] = List.empty,
+            proxyAddressBook: Option[ActorProxyAddressBook] = None,
+           )(implicit logging: Logging) =
+    Props(new ContainerPool(factory, feed, prewarmConfig, poolConfig, proxyAddressBook))
 }
 
 /** Contains settings needed to perform container prewarming. */

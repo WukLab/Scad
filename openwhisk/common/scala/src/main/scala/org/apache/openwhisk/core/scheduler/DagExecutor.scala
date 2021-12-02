@@ -36,7 +36,7 @@ object DagExecutor {
       val objMap: Map[WhiskEntityReference, WhiskActionMetaData] = objs.map(o => o.getReference() -> o).toMap
       val startingObjs = objMap.keySet.to[collection.mutable.Set]
       objMap.values.foreach { o =>
-        o.relationships map { r =>
+        o.porusParams.relationships map { r =>
           startingObjs --= r.dependents
         }
       }

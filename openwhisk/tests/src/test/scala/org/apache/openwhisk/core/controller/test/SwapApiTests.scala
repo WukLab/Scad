@@ -6,10 +6,10 @@ import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport.sprayJsonMarsha
 import spray.json.DefaultJsonProtocol._
 import org.apache.openwhisk.common.TransactionId
 import org.apache.openwhisk.core.containerpool.RuntimeResources
+import org.apache.openwhisk.core.swap.SwapObject
 import org.apache.openwhisk.core.controller.SwapApi
 import org.apache.openwhisk.core.database.UserContext
 import org.apache.openwhisk.core.entity.{ActivationId, ByteSize, ControllerInstanceId, EntityPath, Identity, InvokerInstanceId, TopSchedInstanceId}
-import org.apache.openwhisk.core.topbalancer.SwapObject
 import org.junit.runner.RunWith
 import org.scalatestplus.junit.JUnitRunner
 
@@ -29,7 +29,7 @@ class SwapApiTests extends ControllerTestCommon with SwapApi {
   it should "return empty list when no actions exist" in {
     implicit val tid: TransactionId = transid()
 
-    val swap = SwapObject("test/action", InvokerInstanceId(0, None, None, RuntimeResources.none()), ActivationId.generate(), ActivationId.generate(), ByteSize.fromString("512M"))
+    val swap = SwapObject("test/action", InvokerInstanceId(0, None, None, RuntimeResources.none()), ActivationId.generate(), ActivationId.generate(), ByteSize.fromString("512M"), creds)
     val content = SwapObject.serdes.write(swap).asJsObject
 
     Put(basePath + "/aaaa", content) ~> Route.seal(routes(creds)) ~> check {

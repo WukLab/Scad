@@ -375,7 +375,7 @@ class RulesApiTests extends ControllerTestCommon with WhiskRulesApi {
       FullyQualifiedEntityName(namespace, aname()),
       FullyQualifiedEntityName(namespace, aname()))
     val trigger = WhiskTrigger(rule.trigger.path, rule.trigger.name)
-    val action = WhiskAction(rule.action.path, rule.action.name, jsDefault("??"))
+    val action = WhiskAction(rule.action.path, rule.action.name, jsDefault("??"), PorusParams())
     val content = WhiskRulePut(Some(rule.trigger), Some(rule.action))
 
     put(entityStore, trigger, false)
@@ -402,7 +402,7 @@ class RulesApiTests extends ControllerTestCommon with WhiskRulesApi {
       FullyQualifiedEntityName(namespace, aname()),
       FullyQualifiedEntityName(namespace, aname()))
     val trigger = WhiskTrigger(rule.trigger.path, rule.trigger.name)
-    val action = WhiskAction(rule.action.path, rule.action.name, jsDefault("??"))
+    val action = WhiskAction(rule.action.path, rule.action.name, jsDefault("??"), PorusParams())
     val content = JsObject(
       "trigger" -> JsString(s"/_/${trigger.name.asString}"),
       "action" -> JsString(s"/_/${action.name.asString}"))
@@ -431,7 +431,7 @@ class RulesApiTests extends ControllerTestCommon with WhiskRulesApi {
       FullyQualifiedEntityName(namespace, aname()),
       FullyQualifiedEntityName(namespace, aname()))
     val trigger = WhiskTrigger(rule.trigger.path, rule.trigger.name)
-    val action = WhiskAction(rule.action.path, rule.action.name, jsDefault("??"))
+    val action = WhiskAction(rule.action.path, rule.action.name, jsDefault("??"), PorusParams())
     val contentT =
       JsObject("trigger" -> trigger.name.toJson, "action" -> action.fullyQualifiedName(false).toDocId.toJson)
     val contentA =
@@ -452,7 +452,7 @@ class RulesApiTests extends ControllerTestCommon with WhiskRulesApi {
     implicit val tid = transid()
 
     val provider = WhiskPackage(namespace, aname(), publish = true)
-    val action = WhiskAction(provider.fullPath, aname(), jsDefault("??"))
+    val action = WhiskAction(provider.fullPath, aname(), jsDefault("??"), PorusParams())
     val trigger = WhiskTrigger(namespace, aname())
     val rule = WhiskRule(namespace, aname(), trigger.fullyQualifiedName(false), action.fullyQualifiedName(false))
     val content = WhiskRulePut(Some(rule.trigger), Some(rule.action))
@@ -478,7 +478,7 @@ class RulesApiTests extends ControllerTestCommon with WhiskRulesApi {
 
     val provider = WhiskPackage(namespace, aname(), publish = true)
     val reference = WhiskPackage(namespace, aname(), provider.bind)
-    val action = WhiskAction(provider.fullPath, aname(), jsDefault("??"))
+    val action = WhiskAction(provider.fullPath, aname(), jsDefault("??"), PorusParams())
     val trigger = WhiskTrigger(namespace, aname())
     val actionReference = reference.binding.map(b => b.namespace.addPath(b.name)).get
     val rule = WhiskRule(
@@ -509,7 +509,7 @@ class RulesApiTests extends ControllerTestCommon with WhiskRulesApi {
     implicit val tid = transid()
 
     val trigger = WhiskTrigger(namespace, aname())
-    val action = WhiskAction(namespace, aname(), jsDefault("??"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
 
     val keys: List[Long] =
       List.range(Math.pow(10, 9) toLong, (Parameters.sizeLimit.toBytes / 20 + Math.pow(10, 9) + 2) toLong)
@@ -537,7 +537,7 @@ class RulesApiTests extends ControllerTestCommon with WhiskRulesApi {
     implicit val tid = transid()
 
     val trigger = WhiskTrigger(namespace, aname())
-    val action = WhiskAction(namespace, aname(), jsDefault("??"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     val rule = WhiskRule(namespace, aname(), trigger.fullyQualifiedName(false), action.fullyQualifiedName(false))
 
     val keys: List[Long] =
@@ -580,7 +580,7 @@ class RulesApiTests extends ControllerTestCommon with WhiskRulesApi {
   it should "reject rule if trigger does not exist" in {
     implicit val tid = transid()
 
-    val action = WhiskAction(namespace, aname(), jsDefault("??"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     val content = WhiskRulePut(Some(afullname(namespace, "bogus trigger")), Some(action.fullyQualifiedName(false)))
 
     put(entityStore, action)
@@ -606,7 +606,7 @@ class RulesApiTests extends ControllerTestCommon with WhiskRulesApi {
     implicit val tid = transid()
 
     val trigger = WhiskTrigger(namespace, aname())
-    val action = WhiskAction(namespace, aname(), jsDefault("??"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     val rule =
       WhiskRule(namespace, aname(), afullname(namespace, "bogus trigger"), afullname(namespace, "bogus action"))
     val content = WhiskRulePut(Some(trigger.fullyQualifiedName(false)), Some(action.fullyQualifiedName(false)))
@@ -641,7 +641,7 @@ class RulesApiTests extends ControllerTestCommon with WhiskRulesApi {
     implicit val tid = transid()
 
     val trigger = WhiskTrigger(namespace, aname())
-    val action = WhiskAction(namespace, aname(), jsDefault("??"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     val rule = WhiskRule(namespace, aname(), trigger.fullyQualifiedName(false), afullname(namespace, "bogus action"))
     val content = WhiskRulePut(Some(trigger.fullyQualifiedName(false)), Some(action.fullyQualifiedName(false)))
 
@@ -674,7 +674,7 @@ class RulesApiTests extends ControllerTestCommon with WhiskRulesApi {
     implicit val tid = transid()
 
     val trigger = WhiskTrigger(namespace, aname())
-    val action = WhiskAction(namespace, aname(), jsDefault("??"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     val rule = WhiskRule(namespace, aname(), trigger.fullyQualifiedName(false), afullname(namespace, "bogus action"))
     val content = WhiskRulePut(action = Some(action.fullyQualifiedName(false)))
 
@@ -707,7 +707,7 @@ class RulesApiTests extends ControllerTestCommon with WhiskRulesApi {
     implicit val tid = transid()
 
     val trigger = WhiskTrigger(namespace, aname())
-    val action = WhiskAction(namespace, aname(), jsDefault("??"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     val rule = WhiskRule(namespace, aname(), trigger.fullyQualifiedName(false), action.fullyQualifiedName(false))
     val content = WhiskRulePut(trigger = Some(trigger.fullyQualifiedName(false)))
 
@@ -739,7 +739,7 @@ class RulesApiTests extends ControllerTestCommon with WhiskRulesApi {
   it should "update rule when no new content is provided" in {
     implicit val tid = transid()
     val trigger = WhiskTrigger(namespace, aname())
-    val action = WhiskAction(namespace, aname(), jsDefault("??"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     val rule = WhiskRule(namespace, aname(), trigger.fullyQualifiedName(false), action.fullyQualifiedName(false))
     val content = WhiskRulePut(None, None, None, None, None)
 
@@ -769,7 +769,7 @@ class RulesApiTests extends ControllerTestCommon with WhiskRulesApi {
   it should "reject update rule if trigger does not exist" in {
     implicit val tid = transid()
 
-    val action = WhiskAction(namespace, aname(), jsDefault("??"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     val rule = WhiskRule(namespace, aname(), afullname(namespace, "bogus trigger"), action.fullyQualifiedName(false))
     val content = WhiskRulePut(action = Some(action.fullyQualifiedName(false)))
 
@@ -822,7 +822,7 @@ class RulesApiTests extends ControllerTestCommon with WhiskRulesApi {
     val trigger = WhiskTrigger(namespace, rule.trigger.name, rules = Some {
       Map(rule.fullyQualifiedName(false) -> ReducedRule(rule.action, Status.ACTIVE))
     })
-    val action = WhiskAction(namespace, aname(), jsDefault("??"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     val content = WhiskRulePut(Some(trigger.fullyQualifiedName(false)), Some(action.fullyQualifiedName(false)))
 
     put(entityStore, trigger, false)
@@ -1002,7 +1002,7 @@ class RulesApiTests extends ControllerTestCommon with WhiskRulesApi {
     val rule = WhiskRule(namespace, aname(), afullname(namespace, aname().name), afullname(namespace, aname().name))
     val trigger = OldWhiskTrigger(namespace, rule.trigger.name)
 
-    val action = WhiskAction(namespace, rule.action.name, jsDefault("??"))
+    val action = WhiskAction(namespace, rule.action.name, jsDefault("??"), PorusParams())
     val content = WhiskRulePut(Some(rule.trigger), Some(rule.action))
 
     put(entityStore, trigger, false)
@@ -1085,7 +1085,7 @@ class RulesApiTests extends ControllerTestCommon with WhiskRulesApi {
     val aentity = BadEntity(namespace, aname())
     val rule = WhiskRule(namespace, aname(), afullname(namespace, aname().name), afullname(namespace, aname().name))
     val trigger = WhiskTrigger(namespace, rule.trigger.name)
-    val action = WhiskAction(namespace, rule.action.name, jsDefault("??"))
+    val action = WhiskAction(namespace, rule.action.name, jsDefault("??"), PorusParams())
 
     val contenta = WhiskRulePut(Some(tentity.fullyQualifiedName(false)), Some(aentity.fullyQualifiedName(false)))
     val contentb = WhiskRulePut(Some(trigger.fullyQualifiedName(false)), Some(aentity.fullyQualifiedName(false)))

@@ -121,6 +121,8 @@ case class RackSchedInstanceId(instance: Int,
   override val toJson: JsValue = RackSchedInstanceId.serdes.write(this)
 
   def healthTopic: String = rackSchedHealthTopic(instance)
+
+  def schedTopic = toString
 }
 
 object RackSchedInstanceId extends DefaultJsonProtocol {

@@ -561,24 +561,24 @@ class SchemaTests extends FlatSpec with BeforeAndAfter with ExecHelpers with Mat
   }
 
   it should "exclude undefined code in whisk action initializer" in {
-    ExecutableWhiskAction(EntityPath("a"), EntityName("b"), bb("container1")).containerInitializer() shouldBe {
+    ExecutableWhiskAction(EntityPath("a"), EntityName("b"), bb("container1"), PorusParams()).containerInitializer() shouldBe {
       JsObject("name" -> "b".toJson, "binary" -> false.toJson, "main" -> "main".toJson)
     }
-    ExecutableWhiskAction(EntityPath("a"), EntityName("b"), bb("container1", "xyz")).containerInitializer() shouldBe {
+    ExecutableWhiskAction(EntityPath("a"), EntityName("b"), bb("container1", "xyz"), PorusParams()).containerInitializer() shouldBe {
       JsObject("name" -> "b".toJson, "binary" -> false.toJson, "main" -> "main".toJson, "code" -> "xyz".toJson)
     }
-    ExecutableWhiskAction(EntityPath("a"), EntityName("b"), bb("container1", "", Some("naim")))
+    ExecutableWhiskAction(EntityPath("a"), EntityName("b"), bb("container1", "", Some("naim")), PorusParams())
       .containerInitializer() shouldBe {
       JsObject("name" -> "b".toJson, "binary" -> false.toJson, "main" -> "naim".toJson)
     }
   }
 
   it should "allow of main override in action initializer" in {
-    ExecutableWhiskAction(EntityPath("a"), EntityName("b"), jsDefault("")).containerInitializer() shouldBe {
+    ExecutableWhiskAction(EntityPath("a"), EntityName("b"), jsDefault(""), PorusParams()).containerInitializer() shouldBe {
       JsObject("name" -> "b".toJson, "binary" -> false.toJson, "code" -> JsString.empty, "main" -> "main".toJson)
     }
 
-    ExecutableWhiskAction(EntityPath("a"), EntityName("b"), jsDefault("", Some("bar")))
+    ExecutableWhiskAction(EntityPath("a"), EntityName("b"), jsDefault("", Some("bar")), PorusParams())
       .containerInitializer() shouldBe {
       JsObject("name" -> "b".toJson, "binary" -> false.toJson, "code" -> JsString.empty, "main" -> "bar".toJson)
     }
@@ -593,7 +593,7 @@ class SchemaTests extends FlatSpec with BeforeAndAfter with ExecHelpers with Mat
       "E" -> JsArray(JsString("a")),
       "F" -> JsObject("a" -> JsFalse))
 
-    ExecutableWhiskAction(EntityPath("a"), EntityName("b"), bb("container1")).containerInitializer(env) shouldBe {
+    ExecutableWhiskAction(EntityPath("a"), EntityName("b"), bb("container1"), PorusParams()).containerInitializer(env) shouldBe {
       JsObject(
         "name" -> "b".toJson,
         "binary" -> false.toJson,
@@ -610,7 +610,7 @@ class SchemaTests extends FlatSpec with BeforeAndAfter with ExecHelpers with Mat
 
   it should "compare as equal two actions even if their revision does not match" in {
     val exec = CodeExecAsString(RuntimeManifest("actionKind", ImageName("testImage")), "testCode", None)
-    val actionA = WhiskAction(EntityPath("actionSpace"), EntityName("actionName"), exec)
+    val actionA = WhiskAction(EntityPath("actionSpace"), EntityName("actionName"), exec, PorusParams())
     val actionB = actionA.copy()
     val actionC = actionA.copy()
     actionC.revision(DocRevision("2"))
@@ -620,7 +620,7 @@ class SchemaTests extends FlatSpec with BeforeAndAfter with ExecHelpers with Mat
 
   it should "compare as equal two executable actions even if their revision does not match" in {
     val exec = CodeExecAsString(RuntimeManifest("actionKind", ImageName("testImage")), "testCode", None)
-    val actionA = ExecutableWhiskAction(EntityPath("actionSpace"), EntityName("actionName"), exec)
+    val actionA = ExecutableWhiskAction(EntityPath("actionSpace"), EntityName("actionName"), exec, PorusParams())
     val actionB = actionA.copy()
     val actionC = actionA.copy()
     actionC.revision(DocRevision("2"))

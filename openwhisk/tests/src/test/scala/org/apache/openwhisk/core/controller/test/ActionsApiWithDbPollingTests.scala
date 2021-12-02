@@ -65,7 +65,7 @@ class ActionsApiWithDbPollingTests extends ControllerTestCommon with WhiskAction
 
   it should "invoke a blocking action and retrieve result via db polling" in {
     implicit val tid = transid()
-    val action = WhiskAction(namespace, aname(), jsDefault("??"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     val activation = WhiskActivation(
       action.namespace,
       action.name,
@@ -101,7 +101,7 @@ class ActionsApiWithDbPollingTests extends ControllerTestCommon with WhiskAction
 
   it should "invoke a blocking action and return error response when activation fails" in {
     implicit val tid = transid()
-    val action = WhiskAction(namespace, aname(), jsDefault("??"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     val activation = WhiskActivation(
       action.namespace,
       action.name,

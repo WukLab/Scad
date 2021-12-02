@@ -231,31 +231,33 @@ class RackSimpleBalancer(config: WhiskConfig,
   }))
 
   val maxPeek = 128
-  private val scheduleConsumer = messagingProvider.getConsumer(config, rackschedInstance.toString,
-      rackschedInstance.toString, maxPeek, maxPollInterval = TimeLimit.MAX_DURATION + 1.minute)
+  private val scheduleConsumer = messagingProvider.getConsumer(config, rackschedInstance.schedTopic,
+      rackschedInstance.schedTopic, maxPeek, maxPollInterval = TimeLimit.MAX_DURATION + 1.minute)
 
   private val activationFeed = actorSystem.actorOf(Props {
-    new MessageFeed("racktivation", logging, scheduleConsumer, maxPeek, 1.second, processSchedulingMessage)
+    new MessageFeed("racktivation", logging, scheduleConsumer, maxPeek, 1.second, parseActivationMessage)
   })
 
   /** 4. Get the ack message and parse it */
-  protected[RackSimpleBalancer] def processSchedulingMessage(bytes: Array[Byte]): Future[Unit] = Future {
+  protected[RackSimpleBalancer] def parseActivationMessage(bytes: Array[Byte]): Future[Unit] = Future {
     val raw = new String(bytes, StandardCharsets.UTF_8)
     Future.fromTry(ActivationMessage.parse(raw))
       .andThen {
         case _ => activationFeed ! MessageFeed.Processed
-      }.map { activation =>
-      implicit val transid: TransactionId = activation.transid
-      val fin = transid.started(this, LoggingMarkers.RACKSCHED_SCHED_BEGIN)
-      WhiskActionMetaData.resolveActionAndMergeParameters(entityStore, activation.action, activation.appActivationId) onComplete {
-        case Success(metadata) =>
-          publish(metadata.toExecutableWhiskAction.get, activation)
-            .onComplete(_ => transid.finished(this, fin, "finished scheduling"))
-        case Failure(exception) =>
-          logging.error(this, s"Failed to publish rack activation: $exception")
-      }
-    }.recover {
+      }.map(processSchedulingMessage).recover {
       case t => logging.error(this, s"failed processing top level scheduler message: $raw")
+    }
+  }
+
+  protected[RackSimpleBalancer] def processSchedulingMessage(activation: ActivationMessage): Unit = {
+    implicit val transid: TransactionId = activation.transid
+    val fin = transid.started(this, LoggingMarkers.RACKSCHED_SCHED_BEGIN)
+    WhiskActionMetaData.resolveActionAndMergeParameters(entityStore, activation.action, activation.appActivationId) onComplete {
+      case Success(metadata) =>
+        publish(metadata.toExecutableWhiskAction.get, activation)
+          .onComplete(_ => transid.finished(this, fin, "finished scheduling"))
+      case Failure(exception) =>
+        logging.error(this, s"Failed to publish rack activation: $exception")
     }
   }
 

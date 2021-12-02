@@ -344,11 +344,12 @@ class PackagesApiTests extends ControllerTestCommon with WhiskPackagesApi {
   it should "get package with its actions and feeds" in {
     implicit val tid = transid()
     val provider = WhiskPackage(namespace, aname())
-    val action = WhiskAction(provider.namespace.addPath(provider.name), aname(), jsDefault("??"))
+    val action = WhiskAction(provider.namespace.addPath(provider.name), aname(), jsDefault("??"), PorusParams())
     val feed = WhiskAction(
       provider.namespace.addPath(provider.name),
       aname(),
       jsDefault("??"),
+      PorusParams(),
       annotations = Parameters(Parameters.Feed, "true"))
     put(entityStore, provider)
     put(entityStore, action)
@@ -371,11 +372,12 @@ class PackagesApiTests extends ControllerTestCommon with WhiskPackagesApi {
     implicit val tid = transid()
     val provider = WhiskPackage(namespace, aname())
     val reference = WhiskPackage(namespace, aname(), provider.bind)
-    val action = WhiskAction(provider.namespace.addPath(provider.name), aname(), jsDefault("??"))
+    val action = WhiskAction(provider.namespace.addPath(provider.name), aname(), jsDefault("??"), PorusParams())
     val feed = WhiskAction(
       provider.namespace.addPath(provider.name),
       aname(),
       jsDefault("??"),
+      PorusParams(),
       annotations = Parameters(Parameters.Feed, "true"))
 
     put(entityStore, provider)
@@ -404,11 +406,12 @@ class PackagesApiTests extends ControllerTestCommon with WhiskPackagesApi {
     val privateNamespace = EntityPath(privateCreds.subject.asString)
     val provider = WhiskPackage(privateNamespace, aname())
     val reference = WhiskPackage(namespace, aname(), provider.bind)
-    val action = WhiskAction(provider.namespace.addPath(provider.name), aname(), jsDefault("??"))
+    val action = WhiskAction(provider.namespace.addPath(provider.name), aname(), jsDefault("??"), PorusParams())
     val feed = WhiskAction(
       provider.namespace.addPath(provider.name),
       aname(),
       jsDefault("??"),
+      PorusParams(),
       annotations = Parameters(Parameters.Feed, "true"))
     put(entityStore, provider)
     put(entityStore, reference)
@@ -800,7 +803,7 @@ class PackagesApiTests extends ControllerTestCommon with WhiskPackagesApi {
   it should "delete package and its actions if force flag is set to true" in {
     implicit val tid = transid()
     val provider = WhiskPackage(namespace, aname())
-    val action = WhiskAction(provider.namespace.addPath(provider.name), aname(), jsDefault("??"))
+    val action = WhiskAction(provider.namespace.addPath(provider.name), aname(), jsDefault("??"), PorusParams())
     put(entityStore, provider)
     put(entityStore, action)
     org.apache.openwhisk.utils.retry {
@@ -821,7 +824,7 @@ class PackagesApiTests extends ControllerTestCommon with WhiskPackagesApi {
   it should "reject delete non-empty package if force flag is not set" in {
     implicit val tid = transid()
     val provider = WhiskPackage(namespace, aname())
-    val action = WhiskAction(provider.namespace.addPath(provider.name), aname(), jsDefault("??"))
+    val action = WhiskAction(provider.namespace.addPath(provider.name), aname(), jsDefault("??"), PorusParams())
     put(entityStore, provider)
     put(entityStore, action)
     org.apache.openwhisk.utils.retry {
@@ -862,7 +865,7 @@ class PackagesApiTests extends ControllerTestCommon with WhiskPackagesApi {
 
   it should "reject bind to non-package" in {
     implicit val tid = transid()
-    val action = WhiskAction(namespace, aname(), jsDefault("??"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     val reference = WhiskPackage(namespace, aname(), Some(Binding(action.namespace.root, action.name)))
     val content = WhiskPackagePut(reference.binding)
 

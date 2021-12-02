@@ -21,27 +21,10 @@ import org.junit.runner.RunWith
 import org.scalatest.FlatSpec
 import org.scalatest.Matchers
 import org.scalatest.junit.JUnitRunner
-import org.apache.openwhisk.core.entity.EntityPath
-import org.apache.openwhisk.core.entity.EntityName
-import org.apache.openwhisk.core.entity.WhiskAction
-import org.apache.openwhisk.core.entity.DocRevision
-import org.apache.openwhisk.core.entity.Parameters
-import org.apache.openwhisk.core.entity.FullyQualifiedEntityName
-import org.apache.openwhisk.core.entity.SequenceExec
-import org.apache.openwhisk.core.entity.WhiskPackage
-import org.apache.openwhisk.core.entity.WhiskActivation
-import org.apache.openwhisk.core.entity.Subject
-import org.apache.openwhisk.core.entity.ActivationId
-import org.apache.openwhisk.core.entity.WhiskDocumentReader
-import java.time.Instant
+import org.apache.openwhisk.core.entity.{ActivationId, ActivationLogs, DocRevision, EntityName, EntityPath, FullyQualifiedEntityName, Parameters, PorusParams, ReducedRule, SequenceExec, Status, Subject, WhiskAction, WhiskActivation, WhiskDocumentReader, WhiskEntity, WhiskPackage, WhiskRule, WhiskTrigger}
 
+import java.time.Instant
 import spray.json._
-import org.apache.openwhisk.core.entity.ActivationLogs
-import org.apache.openwhisk.core.entity.WhiskTrigger
-import org.apache.openwhisk.core.entity.ReducedRule
-import org.apache.openwhisk.core.entity.Status
-import org.apache.openwhisk.core.entity.WhiskEntity
-import org.apache.openwhisk.core.entity.WhiskRule
 import org.apache.openwhisk.core.database.DocumentTypeMismatchException
 
 @RunWith(classOf[JUnitRunner])
@@ -55,7 +38,7 @@ class WhiskEntityTests extends FlatSpec with ExecHelpers with Matchers {
 
   it should "correctly inherit parameters and preserve revision through the process" in {
     def withParameters(p: Parameters) =
-      WhiskAction(namespace, name, jsDefault("js1"), parameters = p).revision[WhiskAction](revision)
+      WhiskAction(namespace, name, jsDefault("js1"), PorusParams(), parameters = p).revision[WhiskAction](revision)
 
     val toInherit = Parameters("testParam", "testValue")
     Seq(Parameters(), Parameters("testParam2", "testValue"), Parameters("testParam", "testValue2")).foreach { params =>
@@ -69,7 +52,7 @@ class WhiskEntityTests extends FlatSpec with ExecHelpers with Matchers {
   it should "correctly resolve default namespace and preserve its revision through the process" in {
     val user = "testuser"
     val sequenceAction = FullyQualifiedEntityName(EntityPath("_"), EntityName("testaction"))
-    val action = WhiskAction(namespace, name, sequence(Vector(sequenceAction))).revision[WhiskAction](revision)
+    val action = WhiskAction(namespace, name, sequence(Vector(sequenceAction)), PorusParams()).revision[WhiskAction](revision)
 
     val resolved = action.resolve(EntityName(user))
     resolved.exec.asInstanceOf[SequenceExec].components.head shouldBe sequenceAction.copy(path = EntityPath(user))
@@ -145,7 +128,7 @@ class WhiskEntityTests extends FlatSpec with ExecHelpers with Matchers {
 
   it should "define the entityType property in its json representation" in {
 
-    val action = WhiskAction(namespace, name, jsDefault("code"), Parameters())
+    val action = WhiskAction(namespace, name, jsDefault("code"), PorusParams(), Parameters())
     assertType(action, "action")
 
     val activation = WhiskActivation(namespace, name, Subject(), ActivationId.generate(), Instant.now(), Instant.now())

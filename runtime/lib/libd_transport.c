@@ -2,6 +2,8 @@
 #include <errno.h>
 #include <stdatomic.h>
 
+#include <glib.h>
+
 #include "libd.h"
 #include "libd_transport.h"
 
@@ -58,11 +60,22 @@ int libd_transport_recover   (struct libd_transport * trans) {
     return -ENOSYS;
 }
 
+int libd_transport_query     (struct libd_transport * trans) {
+    return trans->tstate->state;
+}
+
 int libd_transport_terminate (struct libd_transport * trans) {
     if ((trans->_impl->terminate(trans)) < 0)
         return 0;
 
     trans->tstate->state = LIBD_TRANS_STATE_TERMINATED;
     return 0;
+}
+
+char * libd_transport_get_message (struct libd_transport * trans, int * msg_size) {
+    *msg_size = trans->tstate->msg_size;
+    // clear after read
+    trans->tstate->msg_size = 0;
+    return trans->tstate->msg;
 }
 

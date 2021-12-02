@@ -41,11 +41,11 @@ int create_qp(struct rdma_conn *conn) {
         dprintf("create qp fail\n");
         return -1;
     }
+    return 0;
 }
 
 int create_mr(struct rdma_conn *conn, size_t size, int access,
               void * buffer) {
-    int ret;
     struct ibv_mr *mr;
 
     if (buffer == NULL)
@@ -160,6 +160,32 @@ int extract_info(struct rdma_conn *conn, void **buf) {
     int info_size = sizeof(struct conn_info) + conn->num_mr * sizeof(struct ibv_mr);
     *buf = calloc(1, info_size);
     struct conn_info *info = (struct conn_info*) *buf;
+
+    if (conn->gid != RDMA_PROTOCOL_IB) {
+        union ibv_gid gids;
+        ibv_query_gid(conn->context, conn->port, conn->gid, &gids);
+        info->gid = gids;
+    } else {
+        struct ibv_port_attr port_attr;
+        ibv_query_port(conn->context, conn->port, &port_attr);
+        info->local_id = port_attr.lid;
+    }
+
+    info->port = conn->port;
+    info->qp_number = conn->qp->qp_num;
+    info->num_mr = conn->num_mr;
+    if (conn->num_mr != 0) 
+        memcpy(&info->mr, conn->mr, conn->num_mr * sizeof(struct ibv_mr));
+
+    return info_size;
+}
+
+int extract_info_inplace(struct rdma_conn *conn, void *buf, size_t size) {
+
+    int info_size = sizeof(struct conn_info) + conn->num_mr * sizeof(struct ibv_mr);
+    if (info_size > size)
+        return -1;
+    struct conn_info *info = (struct conn_info*)buf;
 
     if (conn->gid != RDMA_PROTOCOL_IB) {
         union ibv_gid gids;

@@ -57,6 +57,8 @@ case class ContainerPoolConfig(resources: RuntimeResources,
 
   require(prewarmExpirationCheckInterval.toSeconds > 0, "prewarmExpirationCheckInterval must be > 0")
 
+  val useProxy : Boolean = true
+
   /**
    * The shareFactor indicates the number of containers that would share a single core, on average.
    * cpuShare is a docker option (-c) whereby a container's CPU access is limited.

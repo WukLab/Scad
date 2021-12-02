@@ -215,13 +215,13 @@ class ViewTests
     def now = Instant.now(Clock.systemUTC())
 
     implicit val entities = Seq(
-      WhiskAction(namespace1, aname(), exec),
-      WhiskAction(namespace1, aname(), exec),
-      WhiskAction(namespace1.addPath(aname()), aname(), exec),
-      WhiskAction(namespace1.addPath(aname()), aname(), exec),
-      WhiskAction(pkgname1, aname(), exec),
-      WhiskAction(pkgname1, aname(), exec),
-      WhiskAction(pkgname1, actionName, exec),
+      WhiskAction(namespace1, aname(), exec, PorusParams()),
+      WhiskAction(namespace1, aname(), exec, PorusParams()),
+      WhiskAction(namespace1.addPath(aname()), aname(), exec, PorusParams()),
+      WhiskAction(namespace1.addPath(aname()), aname(), exec, PorusParams()),
+      WhiskAction(pkgname1, aname(), exec, PorusParams()),
+      WhiskAction(pkgname1, aname(), exec, PorusParams()),
+      WhiskAction(pkgname1, actionName, exec, PorusParams()),
       WhiskTrigger(namespace1, aname()),
       WhiskTrigger(namespace1, aname()),
       WhiskRule(namespace1, aname(), trigger = afullname(namespace1), action = afullname(namespace1)),
@@ -230,12 +230,12 @@ class ViewTests
       WhiskPackage(namespace1, aname()),
       WhiskPackage(namespace1, aname(), Some(Binding(namespace2.root, aname()))),
       WhiskPackage(namespace1, aname(), Some(Binding(namespace2.root, aname()))),
-      WhiskAction(namespace2, aname(), exec),
-      WhiskAction(namespace2, aname(), exec),
-      WhiskAction(namespace2.addPath(aname()), aname(), exec),
-      WhiskAction(namespace2.addPath(aname()), aname(), exec),
-      WhiskAction(pkgname2, aname(), exec),
-      WhiskAction(pkgname2, aname(), exec),
+      WhiskAction(namespace2, aname(), exec, PorusParams()),
+      WhiskAction(namespace2, aname(), exec, PorusParams()),
+      WhiskAction(namespace2.addPath(aname()), aname(), exec, PorusParams()),
+      WhiskAction(namespace2.addPath(aname()), aname(), exec, PorusParams()),
+      WhiskAction(pkgname2, aname(), exec, PorusParams()),
+      WhiskAction(pkgname2, aname(), exec, PorusParams()),
       WhiskTrigger(namespace2, aname()),
       WhiskTrigger(namespace2, aname()),
       WhiskRule(namespace2, aname(), trigger = afullname(namespace2), action = afullname(namespace2)),
@@ -411,7 +411,7 @@ class ViewTests
     val actionName = aname()
     val now = Instant.now(Clock.systemUTC())
     implicit val entities =
-      Seq(WhiskAction(namespace1, aname(), jsDefault("??")), WhiskAction(namespace1, aname(), jsDefault("??")))
+      Seq(WhiskAction(namespace1, aname(), jsDefault("??"), PorusParams()), WhiskAction(namespace1, aname(), jsDefault("??"), PorusParams()))
 
     entities foreach { put(entityStore, _) }
     waitOnView(entityStore, namespace1.root, 2, WhiskAction.view)

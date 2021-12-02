@@ -70,6 +70,7 @@ class ActionsApiWithoutDbPollingTests extends ControllerTestCommon with WhiskAct
       namespace,
       aname(),
       jsDefault("??"),
+      PorusParams(),
       limits = ActionLimits(
         TimeLimit(controllerActivationConfig.maxWaitForBlockingActivation - 1.second),
         ResourceLimit(),
@@ -96,7 +97,7 @@ class ActionsApiWithoutDbPollingTests extends ControllerTestCommon with WhiskAct
 
   it should "invoke a blocking action which completes with an activation id only" in {
     implicit val tid = transid()
-    val action = WhiskAction(namespace, aname(), jsDefault("??"))
+    val action = WhiskAction(namespace, aname(), jsDefault("??"), PorusParams())
     put(entityStore, action)
 
     try {

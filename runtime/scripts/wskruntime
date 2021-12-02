@@ -8,6 +8,19 @@ import configparser
 import re
 import random
 
+CONFIG_FILE = "/tmp/wskaction.config"
+
+def save_config(config):
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(config, f)
+
+def load_config():
+    try:
+        with open(CONFIG_FILE) as f:
+            return json.load(f)
+    except:
+        return {}
+
 def build_init(name, code, main, binary = False):
     return { 'value': locals() }
 def build_config(name, durl):
@@ -19,8 +32,9 @@ def build_run(activation_id, namespace = 'default', value = {}, transports = [])
 def call_host(host, path, body, method='POST'):
     url = requests.compat.urljoin(host, path)
     print('calling host {} with {}'.format(url, json.dumps(body)))
-    requests.request(method, url, data = json.dumps(body))
+    r = requests.request(method, url, data = json.dumps(body))
     print('success')
+    return r
 
 def get_container_address(name):
     command = [ 'docker',
@@ -41,7 +55,7 @@ def reset_container(name):
             pass
     _execute(['docker', 'stop', name])
     _execute(['docker', 'rm', name])
-    _execute('docker run --cap-add=IPC_LOCK --device=/dev/infiniband/uverbs1 --name={} -d whisk/actionloop-python-v3.7:latest'.format(name).split())
+    _execute('docker run --cap-add=IPC_LOCK --device=/dev/infiniband/uverbs0 --name={} -d whisk/actionloop-python-v3.7:latest'.format(name).split())
     print('reset container {} success'.format(name))
 
 def gen_activationid(length):
@@ -60,16 +74,7 @@ def get_name(args):
 if __name__ == '__main__':
 
     # Helper functions
-    actions = ['init', 'run', 'reset', 'config']
-    CONFIG_FILE = '/tmp/wskruntime_config'
-    def load_config(args):
-        config = configparser.ConfigParser()
-        if os.path.exists(CONFIG_FILE):
-            config.read(CONFIG_FILE)
-
-    def save_config(config):
-        with open(CONFIG_FILE, 'w') as configfile:
-            config.write(configfile)
+    actions = ['init', 'run', 'reset', 'config', 'message']
 
     # Argument parser
     parser = argparse.ArgumentParser(description='Util for test openwhisk runtime dockers.')
@@ -104,18 +109,32 @@ if __name__ == '__main__':
 
         elif action == 'run':
             host = get_container_address(args.container)
-            aid = gen_activationid(32)
+            aid = args.aid
+            if aid is None:
+                aid = gen_activationid(32) 
             body = build_run(aid, transports = args.transport)
             if args.transport is None:
                 del body['transports']
+            save_config({'aid': aid})
             call_host(host, '/run', body)
 
         elif action == 'reset':
             reset_container(args.container)
 
+        elif action == 'message':
+            host = get_container_address(args.container)
+            aid = load_config().get('aid', args.aid)
+            if aid is None:
+                parser.error("requrie aid to be attached")
+            r = call_host(host,
+                      '/action/{}/messages'.format(aid),
+                      {}, method = 'GET')
+            print(r.text)
+
         elif action == 'config':
             host = get_container_address(args.container)
-            if args.aid is None:
+            aid = load_config().get('aid', args.aid)
+            if aid is None:
                 parser.error("requrie aid to be attached")
             if args.transport is None or len(args.transport) != 1:
                 parser.error("require --transport to be used with single config")
@@ -124,7 +143,6 @@ if __name__ == '__main__':
 
             body = build_config(trans, config)
             call_host(host,
-                      '/action/{}/transport/{}'.format(args.aid, trans),
+                      '/action/{}/transport/{}'.format(aid, trans),
                       body, method = 'PUT')
-
     

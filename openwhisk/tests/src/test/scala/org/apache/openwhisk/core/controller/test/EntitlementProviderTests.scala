@@ -335,7 +335,7 @@ class EntitlementProviderTests extends ControllerTestCommon with ScalaFutures {
       (REJECT, guestUser, Right(false)))
 
     // this forces a doc mismatch error
-    val action = WhiskAction(someUser.namespace.name.toPath, MakeName.next(), jsDefault(""))
+    val action = WhiskAction(someUser.namespace.name.toPath, MakeName.next(), jsDefault(""), PorusParams())
     put(entityStore, action)
     paths foreach {
       case (priv, who, expected) =>
@@ -536,7 +536,7 @@ class EntitlementProviderTests extends ControllerTestCommon with ScalaFutures {
       (REJECT, guestUser, Right(false)))
 
     val provider = WhiskPackage(someUser.namespace.name.toPath, MakeName.next(), None, publish = true)
-    val action = WhiskAction(provider.fullPath, MakeName.next(), jsDefault(""))
+    val action = WhiskAction(provider.fullPath, MakeName.next(), jsDefault(""), PorusParams())
     put(entityStore, provider)
     put(entityStore, action)
 
@@ -556,7 +556,7 @@ class EntitlementProviderTests extends ControllerTestCommon with ScalaFutures {
     implicit val ep = entitlementProvider
 
     val provider = WhiskPackage(someUser.namespace.name.toPath, MakeName.next(), None, publish = false)
-    val action = WhiskAction(provider.fullPath, MakeName.next(), jsDefault(""))
+    val action = WhiskAction(provider.fullPath, MakeName.next(), jsDefault(""), PorusParams())
     put(entityStore, provider)
     put(entityStore, action)
 
@@ -591,7 +591,7 @@ class EntitlementProviderTests extends ControllerTestCommon with ScalaFutures {
 
     val provider = WhiskPackage(someUser.namespace.name.toPath, MakeName.next(), None, publish = true)
     val binding = WhiskPackage(guestUser.namespace.name.toPath, MakeName.next(), provider.bind)
-    val action = WhiskAction(binding.fullPath, MakeName.next(), jsDefault(""))
+    val action = WhiskAction(binding.fullPath, MakeName.next(), jsDefault(""), PorusParams())
     put(entityStore, provider)
     put(entityStore, binding)
     put(entityStore, action)
@@ -627,8 +627,8 @@ class EntitlementProviderTests extends ControllerTestCommon with ScalaFutures {
 
     val provider = WhiskPackage(someUser.namespace.name.toPath, MakeName.next(), None, publish = false)
     val binding = WhiskPackage(guestUser.namespace.name.toPath, MakeName.next(), provider.bind)
-    val action = WhiskAction(binding.fullPath, MakeName.next(), jsDefault(""))
-    put(entityStore, provider)
+    val action = WhiskAction(binding.fullPath, MakeName.next(), jsDefault(""), PorusParams())
+      put(entityStore, provider)
     put(entityStore, binding)
     put(entityStore, action)
 
@@ -673,7 +673,7 @@ class EntitlementProviderTests extends ControllerTestCommon with ScalaFutures {
       (ACTIVATE, guestUser, Right(false)),
       (REJECT, guestUser, Right(false)))
 
-    val action = WhiskAction(someUser.namespace.name.toPath, MakeName.next(), jsDefault(""))
+    val action = WhiskAction(someUser.namespace.name.toPath, MakeName.next(), jsDefault(""), PorusParams())
     put(entityStore, action)
 
     paths foreach {

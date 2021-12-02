@@ -18,7 +18,7 @@
 package org.apache.openwhisk.core.invoker
 
 import akka.Done
-import akka.actor.{ActorSystem, CoordinatedShutdown}
+import akka.actor.{ActorRef, ActorSystem, CoordinatedShutdown}
 import akka.stream.ActorMaterializer
 import com.typesafe.config.ConfigValueFactory
 import kamon.Kamon
@@ -26,7 +26,7 @@ import org.apache.openwhisk.common.Https.HttpsConfig
 import org.apache.openwhisk.common._
 import org.apache.openwhisk.core.WhiskConfig._
 import org.apache.openwhisk.core.connector.{MessageProducer, MessagingProvider}
-import org.apache.openwhisk.core.containerpool.{Container, ContainerPoolConfig}
+import org.apache.openwhisk.core.containerpool.{ActorProxyAddressBook, Container, ContainerPoolConfig}
 import org.apache.openwhisk.core.database.ArtifactStore
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size._
@@ -216,7 +216,7 @@ object Invoker {
     implicit val entityStore: ArtifactStore[WhiskEntity] = WhiskEntityStore.datastore()
     implicit val authStore: ArtifactStore[WhiskAuth] = WhiskAuthStore.datastore()
 
-    val invokerRuntimeServer = new InvokerRuntimeServer()
+    val invokerRuntimeServer = new InvokerRuntimeServer(config, msgProvider, invoker.addressBook, invoker.pool)
     BasicHttpService.startHttpService(invokerRuntimeServer.route, runtimePort, httpsConfig)(
       actorSystem,
       ActorMaterializer.create(actorSystem), logger)
@@ -235,7 +235,10 @@ trait InvokerProvider extends Spi {
 }
 
 // this trait can be used to add common implementation
-trait InvokerCore {}
+trait InvokerCore {
+  val addressBook : Option[ActorProxyAddressBook]
+  val pool : ActorRef
+}
 
 /**
  * An Spi for providing RestAPI implementation for invoker.

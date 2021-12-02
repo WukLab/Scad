@@ -27,42 +27,133 @@ import sys, os, json, traceback, warnings
 
 from disagg import LibdAction
 import threading, struct, os
+from multiprocessing import Pipe
 
 def debug(*args):
     print(*args, file=stderr)
     stderr.flush()
-# class LibdRequest:
-#     def __init__(self, aid, serverUrl):
-#         self.aid = aid
-#         self.surl = serverUrl
-#     def __ep(self, api, data):
-#         url = "{}/activation/{}/{}".format(self.surl, self.aid, api)
-#         return requests.post(api, json.dumps(data))
-#     def dependency(target = null, value = null, parallelism = null, dependency = null, functionActivationId = null, appActivationId = null):
-#         data = {}
+
+# Params: a list of strings. Body: the body of http request
+# TODO: consider adding lock here
+
+# start libd monitor thread, this will keep up for one initd function
+FIFO_IN_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "../fifoIn")
+FIFO_OUT_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "../fifoOut")
+
+# TODO: why use a FD 3 here?
+out = fdopen(3, "wb")
+
+fifoIn  = os.open(FIFO_IN_FILE, os.O_RDONLY)
+fifoOut = os.open(FIFO_OUT_FILE, os.O_WRONLY)
+
+def _act_msgs       (runtime, params, body = None):
+    msgs = {}
+    action = runtime.get_action (params[0])
+    for name, t in action.raw_transports.items():
+        size, msg = t.get_msg()
+        if size > 0:
+            msgs[name] = msg
+    rep = json.dumps({'ok': True, 'messages': msgs})
+    os.write(fifoOut, struct.pack("<I", len(rep)))
+    os.write(fifoOut, rep.encode('ascii'))
+    debug('send message', rep)
+def _act_add        (runtime, params, body):
+    runtime.create_action(params[0])
+def _trans_add      (runtime, params, body):
+    runtime.get_action(params[0]).add_transport(**body)
+    _act_msgs(runtime, params)
+def _trans_config   (runtime, params, body):
+    action = runtime.get_action(params[0])
+    action.config_transport(params[1], body['durl'])
+    debug('finish config', params, body)
+
+cmd_funcs = {
+    # create action
+    'ACTADD'    : _act_add,
+    'TRANSADD'  : _trans_add,
+    'TRANSCONF' : _trans_config,
+    'ACTMSGS' : _act_msgs
+}
+
+def _proxy_send(cmd):
+    def send(pconn, params, body = None):
+        pconn.send([cmd, params, body])
+    return send
+def _proxy_act_msgs(pconn, params, body = None):
+    pconn.send(['ACTMSGS', params, body])
+    msgs = pconn.recv()
+    rep = json.dumps({'ok': True, 'messages': msgs})
+    os.write(fifoOut, struct.pack("<I", len(rep)))
+    os.write(fifoOut, rep.encode('ascii'))
+    debug('send message', rep)
+
+proxy_funcs = {
+    # create action
+    'ACTADD'    : _proxy_send('ACTADD'),
+    'TRANSADD'  : _proxy_send('TRANSADD'),
+    'TRANSCONF' : _proxy_send('TRANSCONF'),
+    'ACTMSGS' : _proxy_act_msgs
+}
 
 class LibdRuntime:
     def __init__(self):
         self.actions = {}
+        self.action_funcs = {}
         self.stash_msgs = {}
         self.server_url = os.getenv('__OW_INVOKER_API_URL', 'localhost')
         self.cv = threading.Condition()
-    def stash(self,aid,func,*args):
-        print("stash request", aid, func, args, file=stderr)
-        stderr.flush()
-        self.stash_msgs.setdefault(aid, []).append((func, args))
+        self.fifo = fifoOut
+
+        self.action_args = {"post_url":'http://172.17.0.1:2400'}
+
+    # runtime services
+    def stash(self,aid,cmd,args):
+        debug("stash request", aid, cmd, args)
+        self.stash_msgs.setdefault(aid, []).append((cmd, args))
     def unstash(self, aid):
-        print("unstash request", aid, file=stderr)
-        stderr.flush()
+        debug("unstash request", aid)
+        action = self.actions[aid]
         if aid in self.stash_msgs:
-            for func,args in self.stash_msgs[aid]:
-                func(self, *args)
+            for cmd,args in self.stash_msgs[aid]:
+                self.action_funcs[aid][cmd](aid, *args)
             del self.stash_msgs[aid]
-    def create_action(self, aid):
-        args = {"post_url":'http://172.17.0.1:2400'}
-        action = LibdAction(self.cv, aid, **args)
+    def execute(self,aid,cmd,*args):
+        debug("execute requests", aid,cmd,args)
+        if aid in self.actions:
+            self.action_funcs[aid][cmd](self.actions[aid], *args)
+        else:
+            self.stash(aid,cmd,args)
+
+    # all those functions will write a message
+    def _create_action(self, aid, transports):
+        action = LibdAction(self.cv, aid, **self.action_args)
+        action.runtime = self
         self.actions[aid] = action
+        # add transports
+        for t in transports:
+            action.add_transport(t)
+        # unstash messages
+        self.action_funcs[aid] = cmd_funcs
+        self.unstash(aid)
         return action
+    def _create_proxy(self, aid, transports):
+        pconn, cconn = Pipe()
+        pconn.send(['ACTADD', [aid, transports], None])
+        self.actions[aid] = pconn
+
+        self.action_funcs[aid] = proxy_funcs
+        self.unstash(aid)
+        return pconn
+    def create_action(self, aid, transports, merged, **_args):
+        if not merged:
+            return _self._create_action(aid, transports)
+        else:
+            return _self._create_proxy(aid, transports)
+
     def get_action(self, aid):
         return self.actions[aid]
     def terminate_action(self, name):
@@ -70,51 +161,27 @@ class LibdRuntime:
         action.terminate()
         del self.actions[name]
 
-# Params: a list of strings. Body: the body of http request
-def _act_add        (runtime, params, body):
-    runtime.create_action(params['activation_id'])
-def _trans_add      (runtime, params, body):
-    runtime.get_action(params[0]).add_transport(**body)
-def _trans_config   (runtime, params, body):
-    debug('try to config', params, body)
-    if params[0] in runtime.actions:
-        action = runtime.get_action(params[0])
-        action.config_transport(params[1], body['durl'])
-        debug('finish config', params, body)
-    else:
-        runtime.stash(params[0], _trans_config, params, body)
-
-cmd_funcs = {
-    # create action
-    'ACTADD'    : _act_add,
-    'TRANSADD'  : _trans_add,
-    'TRANSCONF' : _trans_config
-}
-
-def handle_message(fifoName, runtime):
+def handle_message(fifoIn, runtime):
     try:
-        fifo = os.open(fifoName, os.O_RDONLY)
         while True:
-            stderr.write('Listen on fifo file ' + fifoName + '\n')
-            stderr.flush()
+            debug('Listen on input FIFO')
             # parse message from FIFO
-            size = struct.unpack("<I", os.read(fifo, 4))[0]
-            content = os.read(fifo, size).decode('ascii')
+            size = struct.unpack("<I", os.read(fifoIn, 4))[0]
+            content = os.read(fifoIn, size).decode('ascii')
             msg = json.loads(content)
             body = json.loads(msg.get('body', "{}"))
             params = msg.get('params', [])
-            debug('get cmd', params, body)
-            cmd_funcs[msg['cmd']](runtime, params, body)
-    finally:
-        print('Error happens in FIFO thread', file=stderr)
-        stderr.flush()
+            debug('get cmd', msg['cmd'], params, body)
 
-# start libd monitor thread, this will keep up for one initd function
-FIFO_FILE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "../fifo")
+            runtime.execute(params[0], msg['cmd'], params, body)
+    finally:
+        debug('Error happens in FIFO thread')
+
 _runtime = LibdRuntime()
-threading.Thread(target=handle_message, args=(FIFO_FILE, _runtime)).start()
+threading.Thread(target=handle_message, args=(fifoIn, _runtime)).start()
+
+# Open FIFOs
+
 ####################
 # END   libd runtime
 ####################
@@ -139,7 +206,6 @@ except Exception:
 # now import the action as process input/output
 from main__ import main as main
 
-out = fdopen(3, "wb")
 if os.getenv("__OW_WAIT_FOR_ACK", "") != "":
     out.write(json.dumps({"ok": True}, ensure_ascii=False).encode('utf-8'))
     out.write(b'\n')
@@ -155,21 +221,20 @@ while True:
   action = None
   aid = None
   transports = []
+  merged = False
   for key in args:
     stderr.flush()
     if key == "value":
       payload = args["value"]
     elif key == 'activation_id':
       aid = args['activation_id']
-      action = _runtime.create_action(args['activation_id'])
     elif key == 'transports':
       transports = args['transports']
+    elif key == 'merged':
+      merged = True
     else:
       env["__OW_%s" % key.upper()]= args[key]
-  if action != None and transports != None:
-    for trans in transports:
-      action.add_transport(trans)
-    _runtime.unstash(aid)
+  action = _runtime.create_action(aid, transports, merged)
 
   res = {}
   # Here the funciton is in the same thread

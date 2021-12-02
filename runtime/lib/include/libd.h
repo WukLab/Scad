@@ -3,7 +3,6 @@
 
 #include <pthread.h>
 #include <stdint.h>
-#include <stdatomic.h>
 #include "map.h"
 
 #ifdef DEBUG
@@ -13,6 +12,10 @@
 #else
     #define dprintf(...)
 #endif /* DEBUG */
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
 
 /* Plugin */
 // user functions
@@ -79,16 +82,6 @@ enum {
     LIBD_TRANS_STATE_TERMINATED
 };
 
-struct libd_tstate {
-    map_of(string,string) config;
-
-    struct libd_counters counters;
-    struct libd_plugin_callback callback;
-
-    char *name, *impl;
-    atomic_int state;
-};
-
 struct libd_transport {
     struct libd_tstate * tstate;
     const struct libd_t * _impl;
@@ -109,10 +102,14 @@ struct libd_t {
 // void * libd_transport_modify (struct libd_transport, int target, void ** args);
 // State machine
 
+int libd_transport_query     (struct libd_transport * trans); 
+
 int libd_transport_init      (struct libd_transport * trans); 
 int libd_transport_connect   (struct libd_transport * trans);
 int libd_transport_recover   (struct libd_transport * trans); // error -> init
 int libd_transport_terminate (struct libd_transport * trans); // any -> terminate
+
+char * libd_transport_get_message(struct libd_transport * trans, int * msg_size);
 
 #define transport_handler(IMPL,t,HNDL) (((struct IMPL *)((t)->_impl))->HNDL)
 
@@ -135,3 +132,7 @@ int libd_action_config_transport(struct libd_action * action, char *name, char *
 struct libd_transport * libd_action_get_transport(struct libd_action * action, char * name);
 
 #endif
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */

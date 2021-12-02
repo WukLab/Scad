@@ -53,7 +53,8 @@ type ActionProxy struct {
 	errFile *os.File
 
 	// Fifo file
-	fifoFile *os.File
+	fifoInFile  *os.File
+	fifoOutFile *os.File
 
 	// environment
 	env map[string]string
@@ -70,6 +71,7 @@ func NewActionProxy(baseDir string, compiler string, outFile *os.File, errFile *
 		nil,
 		outFile,
 		errFile,
+		nil,
 		nil,
 		map[string]string{},
 	}
@@ -150,15 +152,24 @@ func (ap *ActionProxy) StartLatestAction() error {
 	// create a fifo file in the directory
 	// The filename is defined as a protocol, do not need to pass the filename
 	// This fifo file will also be deleted when we remove the whole process
-	fifoFile := fmt.Sprintf("%s/%d/fifo", ap.baseDir, highestDir)
-	Debug("preparing FIFO for %s at %s", executable, fifoFile)
-	err := syscall.Mkfifo(fifoFile, 0666)
+	fifoInFile := fmt.Sprintf("%s/%d/fifoIn", ap.baseDir, highestDir)
+	Debug("preparing FIFO for %s at %s", executable, fifoInFile)
+	err := syscall.Mkfifo(fifoInFile, 0666)
 	if err != nil {
 		// TODO: check this
-		Debug("cannot create fifo file")
+		Debug("cannot create fifoIn file")
 	}
-	// TODO: why this open is strange?
-	ap.fifoFile, err = os.OpenFile(fifoFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0777)
+	fifoOutFile := fmt.Sprintf("%s/%d/fifoOut", ap.baseDir, highestDir)
+	Debug("preparing FIFO for %s at %s", executable, fifoOutFile)
+	err = syscall.Mkfifo(fifoOutFile, 0666)
+	if err != nil {
+		// TODO: check this
+		Debug("cannot create fifoOut file")
+	}
+	// TODO: why this open use all permissions?
+	ap.fifoInFile, err = os.OpenFile(fifoInFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0777)
+	ap.fifoOutFile, err = os.OpenFile(fifoOutFile, os.O_RDWR|os.O_CREATE, 0777)
+
 	if err != nil {
 		// TODO: check this
 		Debug("Cannot open FIFO file")
@@ -182,8 +193,11 @@ cleanup:
 	// and leaving the current executor running
 	if !Debugging {
 		// cleanup fifo file
-		if ap.fifoFile != nil {
-			ap.fifoFile.Close()
+		if ap.fifoInFile != nil {
+			ap.fifoInFile.Close()
+		}
+		if ap.fifoOutFile != nil {
+			ap.fifoOutFile.Close()
 		}
 
 		exeDir := fmt.Sprintf("./action/%d/", highestDir)

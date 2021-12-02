@@ -8,6 +8,19 @@
 	#include "libd.h"
 #endif
 
+struct libd_tstate {
+    map_of(string,string) config;
+
+    struct libd_counters counters;
+    struct libd_plugin_callback callback;
+
+    char *name, *impl;
+    atomic_int state;
+
+    char * msg;
+    int msg_size;
+};
+
 // utils
 char * tstate_config_get (struct libd_tstate * state, char * config);
 int libd_transport_modify(struct libd_transport * trans, int from, int to);

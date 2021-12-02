@@ -2,9 +2,15 @@
 #define _RDMA_UVERBS_H
 
 #include "libd.h"
+#include "libd_transport.h"
 #include <infiniband/verbs.h>
 
 #define RDMA_PROTOCOL_IB (0)
+
+// if roce, run on host, use GID 3, else GID 0
+#define RDMA_DEVICE_NAME "mlx5_0"
+#define RDMA_GID (3)
+#define RDMA_PORT (1)
 
 struct rdma_conn {
     // Those fields should be static
@@ -53,6 +59,7 @@ struct uverbs_rdma_state {
     int cq_size;
 
     size_t size;
+    const char * peerinfo;
 };
 
 // Functions for rdma_common.c
@@ -66,6 +73,7 @@ int qp_stm_init_to_rtr(struct rdma_conn *conn);
 int qp_stm_rtr_to_rts(struct rdma_conn *conn);
 
 int extract_info(struct rdma_conn *conn, void **buf);
+int extract_info_inplace(struct rdma_conn *conn, void *buf, size_t size);
 
 #endif
 

@@ -76,7 +76,7 @@ class ConductorsApiTests extends ControllerTestCommon with WhiskActionsApi {
 
   it should "invoke a conductor action with no dynamic steps" in {
     implicit val tid = transid()
-    put(entityStore, WhiskAction(namespace, echo, jsDefault("??"), annotations = Parameters("conductor", "true")))
+    put(entityStore, WhiskAction(namespace, echo, jsDefault("??"), PorusParams(),  annotations = Parameters("conductor", "true")))
 
     // a normal result
     Post(s"$collectionPath/${echo}?blocking=true", JsObject("payload" -> testString.toJson)) ~> Route.seal(
@@ -136,9 +136,9 @@ class ConductorsApiTests extends ControllerTestCommon with WhiskActionsApi {
 
   it should "invoke a conductor action with dynamic steps" in {
     implicit val tid = transid()
-    put(entityStore, WhiskAction(namespace, conductor, jsDefault("??"), annotations = Parameters("conductor", "true")))
-    put(entityStore, WhiskAction(namespace, step, jsDefault("??")))
-    put(entityStore, WhiskAction(alternateNamespace, step, jsDefault("??"))) // forbidden action
+    put(entityStore, WhiskAction(namespace, conductor, jsDefault("??"), PorusParams(), annotations = Parameters("conductor", "true")))
+    put(entityStore, WhiskAction(namespace, step, jsDefault("??"), PorusParams()))
+    put(entityStore, WhiskAction(alternateNamespace, step, jsDefault("??"), PorusParams())) // forbidden action
     val forbidden = s"/$alternateNamespace/$step" // forbidden action name
 
     // dynamically invoke step action
@@ -245,8 +245,8 @@ class ConductorsApiTests extends ControllerTestCommon with WhiskActionsApi {
 
   it should "abort if composition is too long" in {
     implicit val tid = transid()
-    put(entityStore, WhiskAction(namespace, conductor, jsDefault("??"), annotations = Parameters("conductor", "true")))
-    put(entityStore, WhiskAction(namespace, step, jsDefault("??")))
+    put(entityStore, WhiskAction(namespace, conductor, jsDefault("??"), PorusParams(), annotations = Parameters("conductor", "true")))
+    put(entityStore, WhiskAction(namespace, step, jsDefault("??"), PorusParams()))
 
     // stay just below limit
     var params = Map[String, JsValue]()

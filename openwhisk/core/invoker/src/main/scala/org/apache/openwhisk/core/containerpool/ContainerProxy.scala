@@ -17,13 +17,10 @@
 
 package org.apache.openwhisk.core.containerpool
 
-import akka.actor.Actor
-import akka.actor.ActorRef
-import akka.actor.Cancellable
+import akka.actor.{Actor, ActorRef, ActorSystem, Cancellable, FSM, Props, Stash}
 
 import java.time.Instant
 import akka.actor.Status.{Failure => FailureMessage}
-import akka.actor.{FSM, Props, Stash}
 import akka.event.Logging.InfoLevel
 import akka.io.IO
 import akka.io.Tcp
@@ -59,7 +56,7 @@ import org.apache.openwhisk.core.scheduler.FinishActivation
 import org.apache.openwhisk.http.Messages
 
 import scala.collection.immutable.Queue
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContextExecutor, Future}
 import scala.concurrent.duration._
 import scala.util.{Failure, Success}
 
@@ -121,12 +118,19 @@ sealed abstract class ContainerStarted(val container: Container,
   override def getContainer = Some(container)
 }
 
+object ActionUtils {
+  def resourceLimits(actions: Set[ExecutableWhiskAction]): RuntimeResources = {
+    actions.map(_.limits.resources.limits).reduceLeft(_ + _)
+  }
+}
+
 /** trait representing a container that is in use and (potentially) usable by subsequent or concurrent activations */
 sealed abstract trait ContainerInUse {
   val activeActivationCount: Int
-  val action: ExecutableWhiskAction
+  val actions: Set[ExecutableWhiskAction]
+  def maxConcurrent = actions.map(a => a.limits.concurrency.maxConcurrent).sum
   def hasCapacity() =
-    activeActivationCount < action.limits.concurrency.maxConcurrent
+    activeActivationCount < maxConcurrent
 }
 
 /** trait representing a container that is NOT in use and is usable by subsequent activation(s) */
@@ -138,14 +142,14 @@ sealed abstract trait ContainerNotInUse {
 case class NoData(override val activeActivationCount: Int = 0)
     extends ContainerNotStarted(Instant.EPOCH, UserFunctionSpec, new RuntimeResources(0, 0.B,0.B), activeActivationCount)
     with ContainerNotInUse {
-  override def nextRun(r: Run) = WarmingColdData(r.msg.user.namespace.name, r.action, Instant.now, 1)
+  override def nextRun(r: Run) = WarmingColdData(r.msg.user.namespace.name, Set(r.action), Instant.now, 1)
 }
 
 /** type representing a cold (not running) container with specific resource allocation */
 case class ResourceData(override val resources: RuntimeResources, override val activeActivationCount: Int = 0)
     extends ContainerNotStarted(Instant.EPOCH, UserFunctionSpec, resources, activeActivationCount)
     with ContainerNotInUse {
-  override def nextRun(r: Run) = WarmingColdData(r.msg.user.namespace.name, r.action, Instant.now, 1)
+  override def nextRun(r: Run) = WarmingColdData(r.msg.user.namespace.name, Set(r.action), Instant.now, 1)
 }
 
 /** type representing a prewarmed (running, but unused) container (with a specific resource allocation) */
@@ -158,44 +162,44 @@ case class PreWarmedData(override val container: Container,
     with ContainerNotInUse {
   override val initingState = "prewarmed"
   override def nextRun(r: Run) =
-    WarmingData(container, r.msg.user.namespace.name, r.action, Instant.now, 1)
+    WarmingData(container, r.msg.user.namespace.name, Set(r.action), Instant.now, 1)
   def isExpired(): Boolean = expires.exists(_.isOverdue())
 }
 
 /** type representing a prewarm (running, but not used) container that is being initialized (for a specific action + invocation namespace) */
 case class WarmingData(override val container: Container,
                        invocationNamespace: EntityName,
-                       action: ExecutableWhiskAction,
+                       actions: Set[ExecutableWhiskAction],
                        override val lastUsed: Instant,
                        override val activeActivationCount: Int = 0)
-    extends ContainerStarted(container, lastUsed, UserFunctionSpec, action.limits.resources.limits, activeActivationCount)
+    extends ContainerStarted(container, lastUsed, UserFunctionSpec, ActionUtils.resourceLimits(actions), activeActivationCount)
     with ContainerInUse {
   override val initingState = "warming"
-  override def nextRun(r: Run) = copy(lastUsed = Instant.now, activeActivationCount = activeActivationCount + 1)
+  override def nextRun(r: Run) = copy(actions = actions + r.action, lastUsed = Instant.now, activeActivationCount = activeActivationCount + 1)
 }
 
 /** type representing a cold (not yet running) container that is being initialized (for a specific action + invocation namespace) */
 case class WarmingColdData(invocationNamespace: EntityName,
-                           action: ExecutableWhiskAction,
+                           actions: Set[ExecutableWhiskAction],
                            override val lastUsed: Instant,
                            override val activeActivationCount: Int = 0)
-    extends ContainerNotStarted(lastUsed, UserFunctionSpec, action.limits.resources.limits, activeActivationCount)
+    extends ContainerNotStarted(lastUsed, UserFunctionSpec, ActionUtils.resourceLimits(actions), activeActivationCount)
     with ContainerInUse {
   override val initingState = "warmingCold"
-  override def nextRun(r: Run) = copy(lastUsed = Instant.now, activeActivationCount = activeActivationCount + 1)
+  override def nextRun(r: Run) = copy(actions = actions + r.action, lastUsed = Instant.now, activeActivationCount = activeActivationCount + 1)
 }
 
 /** type representing a warm container that has already been in use (for a specific action + invocation namespace) */
 case class WarmedData(override val container: Container,
                       invocationNamespace: EntityName,
-                      action: ExecutableWhiskAction,
+                      actions: Set[ExecutableWhiskAction],
                       override val lastUsed: Instant,
                       override val activeActivationCount: Int = 0,
                       resumeRun: Option[Run] = None)
-    extends ContainerStarted(container, lastUsed, UserFunctionSpec, action.limits.resources.limits, activeActivationCount)
+    extends ContainerStarted(container, lastUsed, UserFunctionSpec, ActionUtils.resourceLimits(actions), activeActivationCount)
     with ContainerInUse {
   override val initingState = "warmed"
-  override def nextRun(r: Run) = copy(lastUsed = Instant.now, activeActivationCount = activeActivationCount + 1)
+  override def nextRun(r: Run) = copy(actions = actions + r.action, lastUsed = Instant.now, activeActivationCount = activeActivationCount + 1)
   //track the resuming run for easily referring to the action being resumed (it may fail and be resent)
   def withoutResumeRun() = this.copy(resumeRun = None)
   def withResumeRun(job: Run) = this.copy(resumeRun = Some(job))
@@ -280,19 +284,20 @@ class ContainerProxy(factory: (TransactionId,
                      prewarmDeadlineCache: ActorRef,
                      testTcp: Option[ActorRef],
                      resultWaiter: Option[ActorRef],
+                     addressBook: Option[ActorProxyAddressBook]
                     )
     extends FSM[ContainerState, ContainerData]
     with Stash {
-  implicit val ec = context.system.dispatcher
-  implicit val logging = new AkkaLogging(context.system.log)
-  implicit val ac = context.system
-  implicit val materializer = ActorMaterializer()
+  implicit val ec: ExecutionContextExecutor = context.system.dispatcher
+  implicit val logging: AkkaLogging = new AkkaLogging(context.system.log)
+  implicit val ac: ActorSystem = context.system
+  implicit val materializer: ActorMaterializer = ActorMaterializer()
   var rescheduleJob = false // true iff actor receives a job but cannot process it because actor will destroy itself
-  var runBuffer = immutable.Queue.empty[Run] //does not retain order, but does manage jobs that would have pushed past action concurrency limit
+  var runBuffer: Queue[Run] = immutable.Queue.empty[Run] //does not retain order, but does manage jobs that would have pushed past action concurrency limit
   //track buffer processing state to avoid extra transitions near end of buffer - this provides a pseudo-state between Running and Ready
   var bufferProcessing = false
 
-  var configBuffer = immutable.Queue.empty[LibdTransportConfig] //does not retain order, but does manage jobs that would have pushed past action concurrency limit
+  var configBuffer: Queue[LibdTransportConfig] = immutable.Queue.empty[LibdTransportConfig] //does not retain order, but does manage jobs that would have pushed past action concurrency limit
 
   //keep a separate count to avoid confusion with ContainerState.activeActivationCount that is tracked/modified only in ContainerPool
   var activeCount = 0;
@@ -407,12 +412,12 @@ class ContainerProxy(factory: (TransactionId,
         .pipeTo(self)
       goto(Running) using PreWarmedData(data.container, data.kind, data.resources, 1, data.expires)
 
-    case Event(Remove, data: PreWarmedData) => destroyContainer(data, false)
+    case Event(Remove, data: PreWarmedData) => destroyContainer(data, replacePrewarm = false)
 
     // prewarm container failed
     case Event(_: FailureMessage, data: PreWarmedData) =>
       MetricEmitter.emitCounterMetric(LoggingMarkers.INVOKER_CONTAINER_HEALTH_FAILED_PREWARM)
-      destroyContainer(data, true)
+      destroyContainer(data, replacePrewarm = true)
   }
 
   when(Running) {
@@ -425,16 +430,16 @@ class ContainerProxy(factory: (TransactionId,
 
     // Run during prewarm init (for concurrent > 1)
     case Event(job: Run, data: PreWarmedData) =>
+      implicit val transid: TransactionId = job.msg.transid
       logging.debug(this, s"CALL 2")
-      implicit val transid = job.msg.transid
       logging.info(this, s"buffering for warming container ${data.container}; ${activeCount} activations in flight")
       runBuffer = runBuffer.enqueue(job)
       stay()
 
     // Run during cold init (for concurrent > 1)
     case Event(job: Run, _: NoData) =>
+      implicit val transid: TransactionId = job.msg.transid
       logging.debug(this, s"CALL 3")
-      implicit val transid = job.msg.transid
       logging.info(this, s"buffering for cold warming container ${activeCount} activations in flight")
       runBuffer = runBuffer.enqueue(job)
       stay()
@@ -452,13 +457,14 @@ class ContainerProxy(factory: (TransactionId,
       stay()
 
     // Init was successful
+    // Try to "Pop Add Transport" here
     case Event(completed: InitCompleted, data : PreWarmedData) =>
       logging.debug(this, s"CALL 4")
       // Its safe to dump all user config to container
       configBuffer.foreach (sendConfig(_, data.container))
       configBuffer = Queue.empty
 
-      processBuffer(completed.data.action, completed.data)
+      processBuffer(completed.data, completed.data)
       stay using completed.data
 
     // Init was successful
@@ -480,14 +486,14 @@ class ContainerProxy(factory: (TransactionId,
         goto(Ready) using newData
       }
     case Event(job: Run, data: WarmedData)
-        if activeCount >= data.action.limits.concurrency.maxConcurrent && !rescheduleJob => //if we are over concurrency limit, and not a failure on resume
+        if activeCount >= data.maxConcurrent && !rescheduleJob => //if we are over concurrency limit, and not a failure on resume
       logging.debug(this, s"CALL 7")
       implicit val transid = job.msg.transid
       logging.warn(this, s"buffering for maxed warm container ${data.container}; ${activeCount} activations in flight")
       runBuffer = runBuffer.enqueue(job)
       stay()
     case Event(job: Run, data: WarmedData)
-        if activeCount < data.action.limits.concurrency.maxConcurrent && !rescheduleJob => //if there was a delay, and not a failure on resume, skip the run
+        if activeCount < data.maxConcurrent && !rescheduleJob => //if there was a delay, and not a failure on resume, skip the run
       logging.debug(this, s"CALL 8")
       activeCount += 1
       implicit val transid = job.msg.transid
@@ -627,7 +633,7 @@ class ContainerProxy(factory: (TransactionId,
       val newData = data.withoutResumeRun()
       //if there are items in runbuffer, process them if there is capacity, and stay; otherwise if we have any pending activations, also stay
       if (activeCount == 0) {
-        destroyContainer(newData, true)
+        destroyContainer(newData, replacePrewarm = true)
       } else {
         stay using newData
       }
@@ -638,7 +644,7 @@ class ContainerProxy(factory: (TransactionId,
       activeCount -= 1
       val newData = data.withoutResumeRun()
       if (activeCount == 0) {
-        destroyContainer(newData, true)
+        destroyContainer(newData, replacePrewarm = true)
       } else {
         stay using newData
       }
@@ -684,12 +690,12 @@ class ContainerProxy(factory: (TransactionId,
   /** Either process runbuffer or signal parent to send work; return true if runbuffer is being processed */
   def requestWork(newData: WarmedData): Boolean = {
     //if there is concurrency capacity, process runbuffer, signal NeedWork, or both
-    if (activeCount < newData.action.limits.concurrency.maxConcurrent) {
+    if (activeCount < newData.maxConcurrent) {
       if (runBuffer.nonEmpty) {
         //only request work once, if available larger than runbuffer
-        val available = newData.action.limits.concurrency.maxConcurrent - activeCount
+        val available = newData.maxConcurrent - activeCount
         val needWork: Boolean = available > runBuffer.size
-        processBuffer(newData.action, newData)
+        processBuffer(newData, newData)
         if (needWork) {
           //after buffer processing, then send NeedWork
           context.parent ! NeedWork(newData)
@@ -708,16 +714,48 @@ class ContainerProxy(factory: (TransactionId,
     case LibdTransportConfig(activationId, request, result) =>
       val address = request.address + result
       logging.debug(this, s"transport config: sending ${address} to ${container}")
-      if (request.create)
-        container.addTransport(activationId, address.toFullString)
-      else
-        container.configTransport(activationId, request.name, address.toConfigString)
+
+      config.request.operation match {
+        case TransportRequest.Create =>
+          container.addTransport(activationId, address.toFullString)
+        case TransportRequest.Config =>
+          container.configTransport(activationId, request.name, address.toConfigString)
+        case TransportRequest.GetMessage =>
+          // TODO: change the create parameter
+          container.getMessages(activationId).map {
+            _.foreach { resp =>
+              resp
+                .entity
+                .parseJson
+                .asJsObject
+                .fields
+                .get("messages")
+                .foreach {
+                  _.asInstanceOf[JsArray]
+                   .elements
+                   .foreach { transMsg =>
+                     val msg = transMsg.asJsObject
+                                       .convertTo[Map[String,String]]
+                     for {
+                       name <- msg.get("t")
+                       info <- msg.get("d")
+                       ab <- addressBook
+                     } {
+                       val srcAddr = ProxyAddress(activationId, name)
+                       ab.finishReply(self, srcAddr, TransportAddress.ProxyTransport(info))
+                     }
+                   }
+                }
+            }
+          }
+          /* end case */
+      }
   }
 
   /** Process buffered items up to the capacity of action concurrency config */
-  def processBuffer(action: ExecutableWhiskAction, newData: ContainerData) = {
+  def processBuffer(completed: WarmedData, newData: ContainerData): Unit = {
     //send as many buffered as possible
-    val available = action.limits.concurrency.maxConcurrent - activeCount
+    val available = completed.maxConcurrent - activeCount
     logging.info(this, s"resending up to ${available} from ${runBuffer.length} buffered jobs")
     1 to available foreach { _ =>
       runBuffer.dequeueOption match {
@@ -731,7 +769,7 @@ class ContainerProxy(factory: (TransactionId,
   }
 
   /** Delays all incoming messages until unstashAll() is called */
-  def delay = {
+  def delay: State = {
     stash()
     stay
   }
@@ -901,7 +939,7 @@ class ContainerProxy(factory: (TransactionId,
       .flatMap { initInterval =>
         //immediately setup warmedData for use (before first execution) so that concurrent actions can use it asap
         if (initInterval.isDefined) {
-          self ! InitCompleted(WarmedData(container, job.msg.user.namespace.name, job.action, Instant.now, 1))
+          self ! InitCompleted(WarmedData(container, job.msg.user.namespace.name, Set(job.action), Instant.now, 1))
         }
 
         val env = authEnvironment ++ environment ++ Map(
@@ -925,7 +963,7 @@ class ContainerProxy(factory: (TransactionId,
                 .map(i => Interval(runInterval.start.minusMillis(i.duration.toMillis), runInterval.end))
                 .getOrElse(runInterval)
               job.msg.appActivationId map { appId =>
-                job.action.relationships map { rel =>
+                job.action.porusParams.relationships map { rel =>
                   if (rel.dependents.isEmpty) {
                     msgProducer.send("topsched", FinishActivation(appId, response, ActivationLogs(), SemVer(), Parameters()), 8)
                   }
@@ -1091,6 +1129,7 @@ object ContainerProxy {
             prewarmDeadlineCache: ActorRef = PrewarmDeadlineCache().self,
             tcp: Option[ActorRef] = None,
             resultWaiter: Option[ActorRef] = None,
+            addressBook: Option[ActorProxyAddressBook] = None,
            ) =
     Props(
       new ContainerProxy(
@@ -1108,6 +1147,7 @@ object ContainerProxy {
         prewarmDeadlineCache,
         tcp,
         resultWaiter,
+        addressBook,
       ))
 
   // Needs to be thread-safe as it's used by multiple proxies concurrently.

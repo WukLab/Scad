@@ -16,9 +16,9 @@ OBJECTS    := libd.o libd_plugin.o libd_plugins.o libd_transport.o libd_transpor
 TARGETS    := libd.so
 
 LD       := gcc
-INCLUDES := -I./include
-LIBS     := -lnanomsg -lcurl -lpthread -libverbs
-CFLAGS   := -fPIC -O2 -g -std=c11 -Wall $(INCLUDES) # -DDEBUG
+INCLUDES := -I./include $(shell pkg-config --cflags glib-2.0)
+LIBS     := -lnanomsg -lcurl -lpthread -libverbs -lrt $(shell pkg-config --libs glib-2.0)
+CFLAGS   := -fPIC -O2 -g -std=c11 -Wall $(INCLUDES) -DDEBUG
 LD_FLAGS := $(LD_FLAGS) $(if $(USE_RDMA),-fuse-ld=lld,)
 
 .PNONY: all install clean ext_python ext_npjoin ext_npjoin_install tests
@@ -42,6 +42,8 @@ ext_npjoin_install: ext_npjoin
 	pip install ext/np_join
 
 memory_server: ext/host/memory_server.o $(OBJECTS)
+	$(LD) $(LDFLAGS) -o $@ $^ $(LIBS)
+memory_pool: ext/pool/memory_pool.o $(OBJECTS)
 	$(LD) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 tests:

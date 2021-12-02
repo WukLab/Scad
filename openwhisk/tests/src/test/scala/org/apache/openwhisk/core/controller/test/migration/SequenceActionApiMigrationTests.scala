@@ -60,7 +60,7 @@ class SequenceActionApiMigrationTests
     implicit val tid = transid()
     val components = Vector("/_/a", "/_/x/b", "/n/a", "/n/x/c").map(stringToFullyQualifiedName(_))
     val actions = (1 to 2).map { i =>
-      WhiskAction(namespace, aname(), sequence(components))
+      WhiskAction(namespace, aname(), sequence(components), PorusParams())
     }.toList
     actions foreach { put(entityStore, _) }
     waitOnView(entityStore, WhiskAction, namespace, 2)
@@ -75,7 +75,7 @@ class SequenceActionApiMigrationTests
   it should "get old-style sequence action by name in default namespace" in {
     implicit val tid = transid()
     val components = Vector("/_/a", "/_/x/b", "/n/a", "/n/x/c").map(stringToFullyQualifiedName(_))
-    val action = WhiskAction(namespace, aname(), sequence(components))
+    val action = WhiskAction(namespace, aname(), sequence(components), PorusParams())
     put(entityStore, action)
     Get(s"$collectionPath/${action.name}") ~> Route.seal(routes(creds)) ~> check {
       status should be(OK)
@@ -89,8 +89,8 @@ class SequenceActionApiMigrationTests
     implicit val tid = transid()
     val components = Vector("/_/a", "/_/x/b", "/n/a", "/n/x/c")
     val seqComponents = components.map(stringToFullyQualifiedName(_))
-    val action = WhiskAction(namespace, aname(), sequence(seqComponents), seqParameters(components))
-    val content = WhiskActionPut(Some(jsDefault("")), parameters = Some(Parameters("a", "A")))
+    val action = WhiskAction(namespace, aname(), sequence(seqComponents), PorusParams(), seqParameters(components))
+    val content = WhiskActionPut(Some(jsDefault("")), Some(PorusParamsPut()), parameters = Some(Parameters("a", "A")))
     put(entityStore, action, false)
 
     // create an action sequence
@@ -108,8 +108,8 @@ class SequenceActionApiMigrationTests
     implicit val tid = transid()
     val components = Vector("/_/a", "/_/x/b", "/n/a", "/n/x/c")
     val seqComponents = components.map(stringToFullyQualifiedName(_))
-    val action = WhiskAction(namespace, aname(), sequence(seqComponents), seqParameters(components))
-    val content = WhiskActionPut(Some(jsDefault("")))
+    val action = WhiskAction(namespace, aname(), sequence(seqComponents), PorusParams(), seqParameters(components))
+    val content = WhiskActionPut(Some(jsDefault("")), None)
     put(entityStore, action, false)
 
     // create an action sequence
@@ -126,7 +126,7 @@ class SequenceActionApiMigrationTests
     implicit val tid = transid()
     val components = Vector("/_/a", "/_/x/b", "/n/a", "/n/x/c")
     val seqComponents = components.map(stringToFullyQualifiedName(_))
-    val action = WhiskAction(namespace, aname(), sequence(seqComponents))
+    val action = WhiskAction(namespace, aname(), sequence(seqComponents), PorusParams())
     val content = """{"annotations":[{"key":"old","value":"new"}]}""".parseJson.asJsObject
     put(entityStore, action, false)
 
@@ -150,7 +150,7 @@ class SequenceActionApiMigrationTests
     // old sequence
     val seqName = EntityName(s"${aname()}_new")
     val oldComponents = Vector("/_/a", "/_/x/b", "/n/a", "/n/x/c").map(stringToFullyQualifiedName(_))
-    val oldSequence = WhiskAction(namespace, seqName, sequence(oldComponents))
+    val oldSequence = WhiskAction(namespace, seqName, sequence(oldComponents), PorusParams())
     put(entityStore, oldSequence)
 
     // new sequence
@@ -158,11 +158,11 @@ class SequenceActionApiMigrationTests
     val bogus = s"${aname()}_bogus"
     val bogusActionName = s"/_/${bogus}" // test that default namespace gets properly replaced
     // put the action in the entity store so it exists
-    val bogusAction = WhiskAction(namespace, EntityName(bogus), jsDefault("??"), Parameters("x", "y"))
+    val bogusAction = WhiskAction(namespace, EntityName(bogus), jsDefault("??"), PorusParams(), Parameters("x", "y"))
     put(entityStore, bogusAction)
     val seqComponents = for (i <- 1 to limit) yield stringToFullyQualifiedName(bogusActionName)
-    val seqAction = WhiskAction(namespace, seqName, sequence(seqComponents.toVector))
-    val content = WhiskActionPut(Some(seqAction.exec), Some(Parameters()))
+    val seqAction = WhiskAction(namespace, seqName, sequence(seqComponents.toVector), PorusParams())
+    val content = WhiskActionPut(Some(seqAction.exec), None, Some(Parameters()))
 
     // update an action sequence
     Put(s"$collectionPath/${seqName}?overwrite=true", content) ~> Route.seal(routes(creds)) ~> check {

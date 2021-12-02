@@ -7,7 +7,9 @@ from functools import partial
 cdef class LibdAction:
     cdef clibd.libd_action * _c_action
     cdef public object transports
+    cdef public object raw_transports
     cdef public object cv
+    cdef public object runtime
 
     def __cinit__(self, cv, str aid, **kwargs):
         # prepare args for init call
@@ -34,7 +36,9 @@ cdef class LibdAction:
 
     # Python init part, I assume they have same objects
     def __init__(self, *args, **kwargs):
+        self.runtime = None
         self.transports = {}
+        self.raw_transports = {}
 
     # make sure action structure is freed.
     def __dealloc__(self):
@@ -51,9 +55,15 @@ cdef class LibdAction:
 
     # Member Functions
     def add_transport(self, durl):
-        # TODO: add ttype here
         c_durl = durl.encode('ascii')
-        return clibd.libd_action_add_transport(self._c_action, c_durl)
+        # cache the trans
+        name = durl.split(';')[0]
+        ret = clibd.libd_action_add_transport(self._c_action, c_durl)
+        if ret >= 0:
+            # cache the 
+            self.raw_transports[name] = LibdTransport(self, name)
+        return ret
+
 
     def config_transport(self, name, durl):
         ret = clibd.libd_action_config_transport(
@@ -68,7 +78,7 @@ cdef class LibdAction:
             # delay construct of object by function wrap
             trans = {
                 'rdma':        partial(LibdTransportRDMA,       self),
-                'rdma_server': partial(LibdTransportRDMAServer, self)
+                'rdma_server': partial(LibdTransportRDMAServer, self),
             }[ttype](name)
             self.transports[name] = trans
         # raise exception if name is not found
@@ -79,6 +89,7 @@ cdef class LibdAction:
 cdef class LibdTransport:
     cdef clibd.libd_transport * _c_trans
     cdef object action
+
     def __cinit__(self, LibdAction action, str name, *argv):
         self.action = action
         self._c_trans = clibd.libd_action_get_transport(
@@ -86,6 +97,16 @@ cdef class LibdTransport:
         # TODO: spin here if we cannot get a transport
         if self._c_trans is NULL:
             raise MemoryError()
+
+    # TODO: check this
+    def get_msg(self):
+        cdef int msg_size
+        if self._c_trans is NULL:
+            raise MemoryError()
+        msg = <bytes>clibd.libd_transport_get_message(
+                      self._c_trans, &msg_size)
+        return msg_size, msg.decode('ascii')
+        
     # we do not need to have __dealloc__ for all transports, clib will handle this
 
 cdef class LibdTransportRDMAServer(LibdTransport):

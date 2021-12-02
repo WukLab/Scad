@@ -3,6 +3,7 @@
 #include <errno.h>
 
 #include "libd.h"
+#include "libd_transport.h"
 #include "map.h"
 #include "durl.h"
 
