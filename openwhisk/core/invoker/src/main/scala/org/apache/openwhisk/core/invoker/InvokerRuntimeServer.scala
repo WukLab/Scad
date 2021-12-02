@@ -1,13 +1,13 @@
 package org.apache.openwhisk.core.invoker
 
-import akka.actor.ActorSystem
+import akka.actor.{ActorRef, ActorSystem}
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import org.apache.openwhisk.common.{Logging, TransactionId}
 import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
 import org.apache.openwhisk.core.connector.{ActivationMessage, MessagingProvider}
-import org.apache.openwhisk.core.containerpool.{ActorProxyAddressBook, ProxyAddress, RuntimeResources}
+import org.apache.openwhisk.core.containerpool.{ActorProxyAddressBook, LibdTransportConfig, ProxyAddress, RuntimeResources, TransportAddress, TransportRequest}
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.swap.SwapObject
 import pureconfig.loadConfigOrThrow
@@ -27,7 +27,9 @@ object RuntimeDependencyInvocation extends DefaultJsonProtocol with SprayJsonSup
 }
 
 class InvokerRuntimeServer(config: WhiskConfig, msgProvider: MessagingProvider,
-                           addressBook: Option[ActorProxyAddressBook])(
+                           addressBook: Option[ActorProxyAddressBook],
+                           containerPool: ActorRef
+                          )(
   implicit val actorSystem : ActorSystem,
   implicit val executionContext: ExecutionContext,
   implicit val logging: Logging
@@ -65,6 +67,7 @@ class InvokerRuntimeServer(config: WhiskConfig, msgProvider: MessagingProvider,
 
           /**
            * Ppst, create a new transport
+           * currently we use this path to create new memory objects
            */
           post {
             entity(as[LaunchCommand]) { cmd =>
@@ -81,7 +84,10 @@ class InvokerRuntimeServer(config: WhiskConfig, msgProvider: MessagingProvider,
                       val src = ProxyAddress(aid, _transport)
                       val dst = ProxyAddress(destAid, "memory")
                       book.prepareReply(src, dst)
-                      // TODO: message the "ACTMSGS"
+
+                      val request = TransportRequest.getMessage(aid)
+                      val configMsg = LibdTransportConfig(aid, request, TransportAddress.empty)
+                      containerPool ! configMsg
                     }
                   }
                   complete((200, "ok"))

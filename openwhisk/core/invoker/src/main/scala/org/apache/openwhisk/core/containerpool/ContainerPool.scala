@@ -419,6 +419,10 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       adjustPrewarmedContainer(false, true)
     case warm: PrewarmContainer =>
       prewarmContainer(warm.action.exec, warm.msg.resources, Some(FiniteDuration(warm.msg.ttlMs, MILLISECONDS)))
+
+    // Forward Libd Messages
+    case request: LibdTransportConfig =>
+      activationMap.get(request.activationId).foreach { _ ! request }
   }
 
   /** Resend next item in the buffer, or trigger next item in the feed, if no items in the buffer. */

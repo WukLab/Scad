@@ -88,6 +88,10 @@ class WhiskConfig(requiredProperties: Map[String, String],
   val triggerFirePerMinuteLimit = this(WhiskConfig.triggerFirePerMinuteLimit)
   val actionSequenceLimit = this(WhiskConfig.actionSequenceMaxLimit)
   val controllerSeedNodes = this(WhiskConfig.controllerSeedNodes)
+
+  val proxyNetworkPorts = 23333
+  val proxyNetworkRouting = Map.empty[String,(String,Int)]
+  val invokerMemoryPoolSock = "/tmp/memorypool.sock"
 }
 
 object WhiskConfig {

@@ -18,7 +18,7 @@
 package org.apache.openwhisk.core.invoker
 
 import akka.Done
-import akka.actor.{ActorSystem, CoordinatedShutdown}
+import akka.actor.{ActorRef, ActorSystem, CoordinatedShutdown}
 import akka.stream.ActorMaterializer
 import com.typesafe.config.ConfigValueFactory
 import kamon.Kamon
@@ -216,7 +216,7 @@ object Invoker {
     implicit val entityStore: ArtifactStore[WhiskEntity] = WhiskEntityStore.datastore()
     implicit val authStore: ArtifactStore[WhiskAuth] = WhiskAuthStore.datastore()
 
-    val invokerRuntimeServer = new InvokerRuntimeServer(config, msgProvider, invoker.addressBook)
+    val invokerRuntimeServer = new InvokerRuntimeServer(config, msgProvider, invoker.addressBook, invoker.pool)
     BasicHttpService.startHttpService(invokerRuntimeServer.route, runtimePort, httpsConfig)(
       actorSystem,
       ActorMaterializer.create(actorSystem), logger)
@@ -237,6 +237,7 @@ trait InvokerProvider extends Spi {
 // this trait can be used to add common implementation
 trait InvokerCore {
   val addressBook : Option[ActorProxyAddressBook]
+  val pool : ActorRef
 }
 
 /**
