@@ -71,6 +71,12 @@ class InvokerReactive(
   implicit val cfg: WhiskConfig = config
 
   private val rackId: RackSchedInstanceId = new RackSchedInstanceId(loadConfigOrThrow[Int](ConfigKeys.invokerRack), RuntimeResources.none())
+  private val proxyPort: Int = loadConfigOrThrow[Int](ConfigKeys.invokerProxyNetworkPort)
+  private val proxyRoutes: Map[String, (String, Int)] = config.proxyNetworkRouting.split(",").map({value =>
+      val split: Array[String] = value.split(":")
+      split(0) -> (split(0), split(1).toInt)
+  }).toMap
+
   private val rackHealthTopic = RackSchedInstanceId.rackSchedHealthTopic(rackId.toInt)
   logging.debug(this, s"rack health topic is ${rackHealthTopic}")
 
@@ -207,7 +213,7 @@ class InvokerReactive(
   }
 
   // TODO: change this to config
-  val proxyNode = new ProxyNode(config.proxyNetworkPorts, config.proxyNetworkRouting, "local")
+  val proxyNode = new ProxyNode(proxyPort, proxyRoutes, "local")
   val addressBook = poolConfig.useProxy match {
     case true  => Some(new ActorProxyAddressBook(proxyNode))
     case false => None
@@ -238,7 +244,8 @@ class InvokerReactive(
     actorSystem.actorOf(ContainerPool.props(childFactory, poolConfig, activationFeed, prewarmingConfigs, addressBook))
 
   //TODO: Zhiyuan: create a new pool here (or inside the container pool) to handle the messages
-  val memoryPool = new MemoryPoolEndPoint(config.invokerMemoryPoolSock, proxyNode, ack)
+  val sock: String = loadConfigOrThrow[String](ConfigKeys.invokerMemoryPoolSock)
+  val memoryPool = new MemoryPoolEndPoint(sock, proxyNode, ack)
 
    def handlePrewarmMessage(msg: ActivationMessage, partialConfig: PartialPrewarmConfig)(implicit transid: TransactionId): Unit = {
      // wait time before actually handling message. 10ms for kafka latency, 400 for cold start time, 5 as "epsilon", for

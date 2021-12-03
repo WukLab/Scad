@@ -89,9 +89,7 @@ class WhiskConfig(requiredProperties: Map[String, String],
   val actionSequenceLimit = this(WhiskConfig.actionSequenceMaxLimit)
   val controllerSeedNodes = this(WhiskConfig.controllerSeedNodes)
 
-  val proxyNetworkPorts = 23333
-  val proxyNetworkRouting = Map.empty[String,(String,Int)]
-  val invokerMemoryPoolSock = "/tmp/memorypool.sock"
+  val proxyNetworkRouting = this(WhiskConfig.invokerProxyNetworkRouting)
 }
 
 object WhiskConfig {
@@ -198,6 +196,8 @@ object WhiskConfig {
   val actionInvokeConcurrentLimit = "limits.actions.invokes.concurrent"
   val triggerFirePerMinuteLimit = "limits.triggers.fires.perMinute"
   val controllerSeedNodes = "akka.cluster.seed.nodes"
+
+  val invokerProxyNetworkRouting = "invoker.proxyNetworkRouting"
 }
 
 object ConfigKeys {
@@ -208,6 +208,8 @@ object ConfigKeys {
   val couchdb = "whisk.couchdb"
   val cosmosdb = "whisk.cosmosdb"
   val invokerRack = "whisk.invoker.rack"
+  val invokerProxyNetworkPort = "whisk.invoker-proxy-network-port"
+  val invokerMemoryPoolSock = "whisk.invoker-memory-pool-sock"
   val kafka = "whisk.kafka"
   val kafkaCommon = s"$kafka.common"
   val kafkaProducer = s"$kafka.producer"

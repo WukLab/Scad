@@ -65,6 +65,7 @@ invoker.container.network=bridge
 invoker.container.policy={{ invoker_container_policy_name | default()}}
 invoker.container.dns={{ invoker_container_network_dns_servers | default()}}
 invoker.useRunc={{ invoker.useRunc }}
+invoker.proxyNetworkRouting={{ groups["invokers"] | map('regex_replace', '$', ':23333') | list | join(",") }}
 
 main.docker.endpoint={{ hostvars[groups["controllers"]|first].ansible_host }}:{{ docker.port }}
 
