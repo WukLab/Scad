@@ -24,11 +24,6 @@ class Code:
         cur = code[cp]
         cp += 1
         return cur
-        
-    def __getitem__(self, key):
-        return self.code[key]
-    def __setitem__(self, key, value):
-        return self.code[key] = value
 
     def pos(self, n):
         if n > len(self.code):
@@ -56,9 +51,7 @@ class Code:
             if isinstance(p, CodePos):
                 p.shift(cur, p)
         # walk for nested datastructures
-        walk(self.tags, 
-        
-
+        # walk(self.tags,
 
     def tag(self, key, value = None):
         if value is not None:
@@ -89,7 +82,8 @@ class PythonCode(Code):
     def indent(self, n = 1):
         self.spaces += n * 4
     def deindent(self, n = 1):
-        self.space = min(self.spaces -= n * 4, 0)
+        pass
+        # self.space = min(self.spaces -= n * 4, 0)
         
 
 class CodeGenerator:
@@ -162,7 +156,7 @@ class ArrayTagCodeGen(CodeGenerator):
         super().__init__(60, requires = 'Main')
 
     def generate(self, code, phyiscal):
-        arrays = code.tag('remote_array'):
+        arrays = code.tag('remote_array')
         if arrays is not None:
             array_uses = { a: [] for a in arrays }
             compiled_regex = {

@@ -1,17 +1,9 @@
 from abc import *
+import re
 
 # classes for operating DAGs
 
 # abstract class of Code Block, which can be black box code generate by external compilers
-class Element:
-    pass
-
-class CodeOperator(ABC):
-    @abstractmethod
-    def getLine(self, n):
-        pass
-
-
 class ElementContent(ABC):
     def __init__(self, operator):
         self.op = operator
@@ -23,28 +15,48 @@ class ElementContent(ABC):
     def dumpWithMeta(self):
         pass
 
-class PythonElement(ElementContent):
-    def __inti__(self):
-        super().__init__(self, None)
-    
-    def dump(self):
-        return
-
-class FileOperator(CodeOperator):
-    def __init__(self, filename):
-        self.filename = filename
-
-    def toArray(self):
-        return MemoryOperator(self, code):
-
-    def copy(self):
+class CodeOperator:
+    @property
+    @abstractmethod
+    def fileType(self):
         pass
-        
+    @abstractmethod
+    def getCode(self):
+        pass
+    @abstractmethod
+    def metaLines(self, lines):
+        pass
+
+class LoadedCode(CodeOperator):
+    def __init__(self, lines):
+        self.lines = lines
+        self.focus = None
+    def regexDelete(self, pattern):
+        self.lines = [l for l in self.lines if re.match(pattern, l) is None]
+    def regexReplace(self, pattern, repl):
+        self.lines = [re.sub(l,pattern,repl) for l in self.lines]
+    # override
+    def getCode(self):
+        return self.lines
+
+class LoadedPythonCode(LoadedCode):
+    fileType = ".py"
+    def __init__(self, lines):
+        super().__init__(lines)
+
+    def removeImports(self):
+        self.regexDelete(r"import.*")
+        self.regexDelete(r"from.*import.*")
+    def renameFunction(self, oldname, newname):
+        self.regexReplace(rf'def ({oldname})\(.*\):', rf'{newname}')
+
+    def metaLines(self, lines):
+        return ['#@ ' + l for l in lines]
 
 # python code with 
 class MemoryOperator(CodeOperator):
     def __init__(self, codeList):
-        self.code = []
+        self.code = codeList
         self.tags = {}
         self.ext = ext
         self.cp = 0
@@ -58,11 +70,6 @@ class MemoryOperator(CodeOperator):
         cp += 1
         return cur
         
-    def __getitem__(self, key):
-        return self.code[key]
-    def __setitem__(self, key, value):
-        return self.code[key] = value
-
     def pos(self, n):
         if n > len(self.code):
             raise RuntimeError('Index to Longer Position')
@@ -89,7 +96,7 @@ class MemoryOperator(CodeOperator):
             if isinstance(p, CodePos):
                 p.shift(cur, p)
         # walk for nested datastructures
-        walk(self.tags, 
+        walk(self.tags)
 
     def tag(self, key, value = None):
         if value is not None:
@@ -99,6 +106,9 @@ class MemoryOperator(CodeOperator):
     def tagLine(self, key):
         return self.tag(key, CodePos(len(self.code)))
     
-# load folder from file
-def loadFolder():
-    pass
+
+def getCodeByType(elementType, codeType, code):
+    if elementType == 'compute':
+        if codeType == '.py':
+            return LoadedPythonCode(code)
+    return None
