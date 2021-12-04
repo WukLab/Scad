@@ -1,20 +1,31 @@
 from multiprocessing import Pipe, Process
+import threading 
 from disagg import LibdAction
 from libdruntime import LibdServices
 
 # ========================
 # Start of Tempalte
-{% for main in mains %}
-  {{ main.username }}
+# Generate main functions
+{% for batch in batches %}
+{% for main in batch %}
+{{ main.codeOp.getCode() | join '' }}
+{% endfor %}
 {% endfor %}
 
-mains = {{ main_names }}
+num_mains = {{ numMains }}
 transports = {{ transports }}
+batches = [
+    {% for batch in batches %}
+    [
+        {%for main in batch%}
+            {{main.name}},
+        {%endfor%}
+    ],
+    {% endfor %}
+]
 # End of Jinjia Template
 # ========================
 
-pipes = []
-executors = []
 
 class RuntimeSingle(LibdServices):
     def __init__(self, aid, pipe, args):
@@ -54,7 +65,7 @@ def main_wrapper(payload, main, pipe, aid, mainargs):
     runtime.terminate()
     pipe.send(ret)
 
-actions = []
+master_pipes = []
 def _handle_msgs(sendQ, recvQ):
     while True:
         msg = recvQ.get()
@@ -63,9 +74,9 @@ def _handle_msgs(sendQ, recvQ):
         if cmd == 'ACTMSGS':
             # pull all messages
             messages = {}
-            for p in pipes():
+            for p in master_pipes:
                 p.send(msg)
-            for p in pipes():
+            for p in master_pipes:
                 messages.update(p.recv())
             sendQ.put(messages)
         else:
@@ -79,7 +90,7 @@ def _handle_msgs(sendQ, recvQ):
             # forward the message
             for i, ts in enumerate(transports):
                 if name in ts:
-                    pipes[i].send(msg)
+                    master_pipes[i].send(msg)
 
 def main(payload, conn):
     # mini runtime
@@ -89,21 +100,35 @@ def main(payload, conn):
         return False
     # create wrappers
     aid, args = params
-    for m in mains:
+
+    slave_pipes = []
+    for m in range(num_mains):
         mp, sp = Pipe()
-        sub = Process(target=main_wrapper, args=(payload,m,sp,aid,args))
-        executors.append(sub)
-        pipes.append(mp)
+        master_pipes.append(mp)
+        slave_pipes.append(sp)
 
     # dispatch messages
     threading.Thread(target=_handle_msgs, args=(sendQ, recvQ)).start()
 
-    # join
-    for p in executors:
-        p.join()
-    res = []
-    for p in pipes:
-        res.append(p.recv())
-    # result will be a queue
-    return res
+    # execute in dependent batches
+    offset = 0
+    for batch in batches:
+        executors = []
+        for i,m in enumerate(batch):
+            sp = slave_pipes[offset+i]
+            sub = Process(target=main_wrapper, args=(payload,m,sp,aid,args))
+            executors.append(sub)
+
+        # join
+        for p in executors:
+            p.join()
+        res = []
+        for p in master_pipes:
+            res.append(p.recv())
+
+        # go to next batch
+        offset += len(batch)
+        payload = res
+    
+    return payload
 

@@ -44,7 +44,7 @@ class DAG:
                 if n not in cg:
                     cg.append(n)
             index += 1
-            if index > len(cg):
+            if index >= len(cg):
                 break
         # return a group containing node
         return cg
@@ -83,6 +83,28 @@ class DAG:
         # TODO: corunning?
         self.nodes = subConcat(self.nodes, node, newNodesDAG.nodes)
     # TODO: traverse dependent groups
+
+    def getLaunchGroupForGroup(self, nodes, unique = True):
+        g = nodes[:]
+        for n in nodes:
+            for cn in n.corunning:
+                if cn not in g:
+                    g.append(cn)
+        return g
+
+    # Assume DAG is a "corunning group" and get stages
+    def getLaunchGroups(self, unique = True):
+        index = 0
+        groups = [self.getLaunchGroupForGroup(self.getStarts())]
+        while True:
+            nodes = groups[index]
+            _, dependents = self.getRelationshipsForGroup(nodes)
+
+            if len(dependents) == 0:
+                break
+            groups.append(self.getLaunchGroupForGroup(dependents))
+            index += 1
+        return groups
 
     def __repr__(self) -> str:
         return f"({self.name} -> {','.join(map(str, self.nodes))})"
@@ -132,6 +154,10 @@ class DAGNode:
         meta['dependents'] = self.dependents
         meta['corunning'] = self.corunning
         meta['resources'] = self.resources
+        return meta
+
+    # Copmile Meta
+    def mergeCompileMetaFrom(self, nodes):
         return meta
 
     # Can be splited!
