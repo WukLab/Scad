@@ -1,0 +1,13 @@
+
+
+- name: shutdown mempool
+  shell: pkill memory_pool || true
+
+- name: delete /tmp/memorypool.sock
+  shell: rm -rf /tmp/memorypool.sock || true
+
+- name: build mempool
+  shell: cd /home/wuklab/projects/disagg-serverless/runtime/lib && USE_RDMA=1 make memory_pool
+
+- name: launch mempool
+  shell: nohup /home/wuklab/projects/disagg-serverless/runtime/lib/memory_pool "/tmp/memorypool.sock" mlx5_1 > /tmp/mempool.log &

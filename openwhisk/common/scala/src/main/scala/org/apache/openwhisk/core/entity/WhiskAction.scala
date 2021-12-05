@@ -382,7 +382,9 @@ case class PorusParams(runtimeType: Option[ElementType] = None,
                        relationships: Option[WhiskActionRelationship] = None,
                        parallelism: Option[Int] = None,
                        parentFunc: Option[WhiskEntityReference] = None,
-                       withMerged: Seq[MergedAction] = Seq.empty) {
+                       withMerged: Seq[MergedAction] = Seq.empty,
+                       transports: Option[Map[String, String]] = Some(Map.empty),
+                      ) {
   def toPorusParamsPut(): PorusParamsPut = {
     PorusParamsPut(runtimeType,
       relationships = relationships.map(_.toRelationshipPut()),
@@ -393,7 +395,7 @@ case class PorusParams(runtimeType: Option[ElementType] = None,
 }
 
 object PorusParams extends DefaultJsonProtocol {
-  implicit val serdes: RootJsonFormat[PorusParams] = jsonFormat5(PorusParams.apply)
+  implicit val serdes: RootJsonFormat[PorusParams] = jsonFormat6(PorusParams.apply)
 }
 
 case class PorusParamsPut(runtimeType: Option[ElementType] = None,

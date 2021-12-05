@@ -249,8 +249,9 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
     parameter(
       Symbol("blocking") ? false,
       Symbol("result") ? false,
+      Symbol("profile") ? false,
       Symbol("timeout").as[FiniteDuration] ? controllerActivationConfig.maxWaitForBlockingActivation) {
-      (blocking, result, waitOverride) =>
+      (blocking, result, profile, waitOverride) =>
         entity(as[Option[JsObject]]) { payload =>
          val ent = WhiskActionMetaData.resolveActionAndMergeParameters(entityStore, entityName)
           onComplete(ent) {
@@ -281,21 +282,21 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
                  }
              })
            case Failure(e: Throwable) =>
-             handleDag(transid, entityName, user, env, payload, blocking, waitOverride, result)
+             handleDag(transid, entityName, user, env, payload, blocking, waitOverride, result, profile)
           }
         }
     }
   }
 
   def handleDag(tid: TransactionId, entityName: FullyQualifiedEntityName, user: Identity, env: Option[Parameters],
-                payload: Option[JsObject], blocking: Boolean, waitOverride: FiniteDuration, result: Boolean): RequestContext => Future[RouteResult] = {
+                payload: Option[JsObject], blocking: Boolean, waitOverride: FiniteDuration, result: Boolean, profile: Boolean): RequestContext => Future[RouteResult] = {
     implicit val transid: TransactionId = childOf(tid)
     // separate transaction id for object from rest API request
     logging.debug(this, s"[GET] entity for whisk action metadata failed...attempting DAG application")
     val resolved = WhiskApplication.resolveApplication(entityStore, entityName)
     getEntity(resolved, Some { app: WhiskApplication =>
       val appWithMergedParams = env.map(app.inherit) getOrElse app
-      doDagInvoke(user, appWithMergedParams, payload, blocking, waitOverride, result, entityStore)
+      doDagInvoke(user, appWithMergedParams, payload, blocking, waitOverride, result, entityStore, profile)
     })
 
   }
@@ -306,10 +307,12 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
                           blocking: Boolean,
                           waitOverride: FiniteDuration,
                           result: Boolean,
-                          entityStore: EntityStore)(implicit transid: TransactionId): RequestContext => Future[RouteResult] = {
+                          entityStore: EntityStore,
+                          profile: Boolean
+                         )(implicit transid: TransactionId): RequestContext => Future[RouteResult] = {
 
     val waitForResponse = if (blocking) Some(waitOverride) else None
-    onComplete(invokeDag(user, actionWithMergedParams, payload, waitForResponse, entityStore, cause = None)) {
+    onComplete(invokeDag(user, actionWithMergedParams, payload, waitForResponse, entityStore, cause = None, profile)) {
       case Success(Left(activationId)) =>
         // non-blocking invoke or blocking invoke which got queued instead
         respondWithActivationIdHeader(activationId) {

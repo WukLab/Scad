@@ -348,10 +348,14 @@ object StandaloneOpenWhisk extends SLF4JLogging {
   private def startInvoker()(implicit actorSystem: ActorSystem, logger: Logging): Unit = {
     // needed to appease invoker even though we set the "--id" arg
     setConfigProp(WhiskConfig.zookeeperHostList, "dummyHost")
+    setConfigProp(WhiskConfig.servicePort, (preferredPgPort + 3).toString)
+    setConfigProp(WhiskConfig.wskApiPort,  (preferredPgPort + 3).toString)
     Invoker.start(Array("--id", 0.toString))
   }
 
   private def startRackSched()(implicit actorSystem: ActorSystem, logger: Logging): Unit = {
+    setConfigProp(WhiskConfig.servicePort, (preferredPgPort + 2).toString)
+    setConfigProp(WhiskConfig.wskApiPort,  (preferredPgPort + 2).toString)
     RackSched.start(Array("--id", Random.nextInt(1).toString))
   }
 
@@ -403,6 +407,7 @@ object StandaloneOpenWhisk extends SLF4JLogging {
     Option(System.getProperty(key)) match {
       case Some(x) if x != value =>
         log.info(s"Founding existing value for system property '$key'- Going to set '$value' , found '$x'")
+        System.setProperty(key, value)
       case _ =>
         System.setProperty(key, value)
     }

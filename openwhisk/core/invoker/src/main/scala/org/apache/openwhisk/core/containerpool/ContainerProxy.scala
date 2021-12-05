@@ -51,7 +51,7 @@ import org.apache.openwhisk.core.entity.ExecManifest.ImageName
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size._
 import org.apache.openwhisk.core.invoker.Invoker.LogsCollector
-import org.apache.openwhisk.core.invoker.{PrewarmDeadlineCache, ResultActivation, RunFinishedMessage}
+import org.apache.openwhisk.core.invoker.{PrewarmDeadlineCache, PrewarmDeadlineCacheActor, ResultActivation, RunFinishedMessage}
 import org.apache.openwhisk.core.scheduler.FinishActivation
 import org.apache.openwhisk.http.Messages
 
@@ -1126,7 +1126,7 @@ object ContainerProxy {
             unusedTimeout: FiniteDuration = timeouts.idleContainer,
             pauseGrace: FiniteDuration = timeouts.pauseGrace,
             msgProducer: MessageProducer,
-            prewarmDeadlineCache: ActorRef = PrewarmDeadlineCache().self,
+            prewarmDeadlineCache: ActorRef = PrewarmDeadlineCacheActor(PrewarmDeadlineCache()).self,
             tcp: Option[ActorRef] = None,
             resultWaiter: Option[ActorRef] = None,
             addressBook: Option[ActorProxyAddressBook] = None,

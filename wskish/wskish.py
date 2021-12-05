@@ -90,11 +90,11 @@ def do_get_activation(host, activation_id, auth, verbose=False):
     result_res = sr(result)
     return result_res
 
-def do_action_update(host, method, json_content, app_name, auth, verbose=False):
+def do_action_update(host, method, json_content, app_name, auth, verbose=False, profile=False):
     url = '{}/api/v1/namespaces/_/actions/{}'.format(host, app_name)
     req = requests.Request(url=url, data=json_content,
         method=method, headers={'Content-Type': 'application/json'},
-        params={'overwrite': 'true'}, auth=auth)
+        params={'overwrite': 'true', 'profile': profile}, auth=auth)
     return send_request(req, verbose=verbose)
 
 def main():
@@ -106,6 +106,7 @@ def main():
     parser.add_argument('--host', help='The openwhisk controller host. This should at minimum be a host name, but the http(s) protocol may also be specified along with a port', default=None)
     parser.add_argument('--auth', help='The auth string to use against the openwhisk API', default=None)
     parser.add_argument('-n', '--non-blocking', help='Make a POST request non-blocking. If set, only the activation ID is returned', action='store_true')
+    parser.add_argument('-p', '--profile', help="set flag to profile this activation", action='store_true')
     parser.add_argument('-t', '--timeout', help='timeout for blocking activation waiting for successful response', default=10)
     parser.add_argument('-v', '--verbose', help="enable to print debug logs", action='store_true')
 
@@ -126,7 +127,7 @@ def main():
 
     resp = None
     if method != 'GET':
-        resp = do_action_update(host, method, json_content, args.app, wskprops.auth, verbose=args.verbose)
+        resp = do_action_update(host, method, json_content, args.app, wskprops.auth, verbose=args.verbose, profile=args.profile)
     elif method == 'GET' and args.id is None:
         print("ERROR: Must provide activation ID when using 'get'")
         sys.exit(1)

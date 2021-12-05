@@ -159,7 +159,8 @@ protected[actions] trait PrimitiveActions {
     functionId: Option[ActivationId] = None,
     appId: Option[ActivationId] = None,
     corunning: Option[Seq[RunningActivation]] = None,
-    activationId: Option[ActivationId] = None)(implicit transid: TransactionId): Future[Either[ActivationId, WhiskActivation]] = {
+    activationId: Option[ActivationId] = None,
+    profile: Option[Boolean] = None)(implicit transid: TransactionId): Future[Either[ActivationId, WhiskActivation]] = {
 
     // merge package parameters with action (action parameters supersede), then merge in payload
     val args = action.parameters merge payload
@@ -188,7 +189,8 @@ protected[actions] trait PrimitiveActions {
       WhiskTracerProvider.tracer.getTraceContext(transid),
       siblings = corunning,
       functionActivationId = functionId,
-      appActivationId = appId)
+      appActivationId = appId,
+      profile = profile)
 
     val postedFuture = loadBalancer.publish(action, message)
 
@@ -703,7 +705,8 @@ protected[actions] trait PrimitiveActions {
                                        payload: Option[JsObject],
                                        waitForResponse: Option[FiniteDuration],
                                        entityStore: EntityStore,
-                                       cause: Option[ActivationId]
+                                       cause: Option[ActivationId],
+                                       profile: Boolean
                                      )(implicit transid: TransactionId): Future[Either[ActivationId, WhiskActivation]] = {
     application.lookupFunctions(entityStore) flatMap { funcs =>
         // The ID used to track the success of the entire sequence of DAG invocations. Each object underneath this
@@ -730,7 +733,8 @@ protected[actions] trait PrimitiveActions {
                 functionId = Some(funcid),
                 appId = Some(appActivationId),
                 corunning = Some(corunning),
-                activationId = Some(objId.objActivation))
+                activationId = Some(objId.objActivation),
+                Some(profile))
             },
             useRdma
           )

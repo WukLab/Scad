@@ -72,7 +72,7 @@ class InvokerReactive(
 
   private val rackId: RackSchedInstanceId = new RackSchedInstanceId(loadConfigOrThrow[Int](ConfigKeys.invokerRack), RuntimeResources.none())
   private val proxyPort: Int = loadConfigOrThrow[Int](ConfigKeys.invokerProxyNetworkPort)
-  private val proxyRoutes: Map[String, (String, Int)] = config.proxyNetworkRouting.split(",").map({value =>
+  private val proxyRoutes: Map[String, (String, Int)] = config.proxyNetworkRouting.split(",").filter(_.contains(":")).map({value =>
       val split: Array[String] = value.split(":")
       split(0) -> (split(0), split(1).toInt)
   }).toMap
@@ -168,6 +168,7 @@ class InvokerReactive(
   })
 
   private val prewarmDeadlineCache: PrewarmDeadlineCache = PrewarmDeadlineCache()
+  private val prewarmDeadlineCacheActor: ActorRef = actorSystem.actorOf(Props(PrewarmDeadlineCacheActor(prewarmDeadlineCache)))
 
   private val dependencyScheduler: ActorRef = actorSystem.actorOf(Props {
     // instance ID doesn't matter as current impl only supports one topscheduler. The topic is always the same.
@@ -212,8 +213,9 @@ class InvokerReactive(
     activationStore.storeAfterCheck(activation, isBlocking, None, context)(tid, notifier = None, logging)
   }
 
+  val memType: String = loadConfigOrThrow[String](ConfigKeys.invokerMemoryPoolType)
   // TODO: change this to config
-  val proxyNode = new ProxyNode(proxyPort, proxyRoutes, "local")
+  val proxyNode = new ProxyNode(proxyPort, proxyRoutes, memType)
   val addressBook = poolConfig.useProxy match {
     case true  => Some(new ActorProxyAddressBook(proxyNode))
     case false => None
@@ -228,7 +230,7 @@ class InvokerReactive(
           msgProducer = msgProducer,
           resultWaiter = Some(resultWaiter),
           addressBook = addressBook,
-          prewarmDeadlineCache = prewarmDeadlineCache.self
+          prewarmDeadlineCache = prewarmDeadlineCacheActor
         ))
 
   val prewarmingConfigs: List[PrewarmingConfig] = {
@@ -243,9 +245,11 @@ class InvokerReactive(
   val pool =
     actorSystem.actorOf(ContainerPool.props(childFactory, poolConfig, activationFeed, prewarmingConfigs, addressBook))
 
-  //TODO: Zhiyuan: create a new pool here (or inside the container pool) to handle the messages
   val sock: String = loadConfigOrThrow[String](ConfigKeys.invokerMemoryPoolSock)
-  val memoryPool = new MemoryPoolEndPoint(sock, proxyNode, ack)
+  var memoryPool: Option[MemoryPoolEndPoint] = None
+  if (poolConfig.useProxy) {
+    memoryPool = Some(new MemoryPoolEndPoint(sock, proxyNode, ack))
+  }
 
    def handlePrewarmMessage(msg: ActivationMessage, partialConfig: PartialPrewarmConfig)(implicit transid: TransactionId): Unit = {
      // wait time before actually handling message. 10ms for kafka latency, 400 for cold start time, 5 as "epsilon", for
@@ -301,7 +305,7 @@ class InvokerReactive(
             val run = Run(executable, msg)
             val isMemory = action.porusParams.runtimeType.getOrElse(ElementType.Compute) == ElementType.Memory
             if (poolConfig.useProxy && isMemory)
-              memoryPool.initRun(run)
+              memoryPool.get.initRun(run)
             else
               pool ! run
 

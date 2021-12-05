@@ -72,6 +72,9 @@ kafka:
 invoker:
 	$(ANSIBLE_SCRIPT) invoker.yml -e skip_pull_runtimes=true
 
+mempool:
+	$(ANSIBLE_SCRIPT) mempool.yml
+
 openwhisk:
 	$(ANSIBLE_SCRIPT) openwhisk.yml -e skip_pull_runtimes=true
 
@@ -120,7 +123,7 @@ run_test:
 setup:
 	$(ANSIBLE_SCRIPT) setup.yml
 
-start_all: build teardown couchdb wipe openwhisk apigw
+start_all: build teardown couchdb wipe mempool openwhisk apigw
 
 start_couchdb: setup
 	$(ANSIBLE_SCRIPT) couchdb.yml

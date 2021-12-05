@@ -51,7 +51,8 @@ class DepInvoker(invokerInstance: InvokerInstanceId, schedId: RackSchedInstanceI
             functionActivationId = functionActivationId,
             appActivationId = appActivationId,
             transactionId = invoke.transid,
-            corunning = invoke.siblings
+            corunning = invoke.siblings,
+            profile = invoke.profile,
           )
         }
       }
@@ -171,6 +172,7 @@ class DepInvoker(invokerInstance: InvokerInstanceId, schedId: RackSchedInstanceI
                 sendResultToInvoker = Some((invokerInstance, msg.activationId)),
                 waitForContent = Some(prevMsgs), // the number of input messages required to run this object
                 parallelismIdx = parallelismIndex,
+                profile = msg.profile,
               )
               transid.mark(this, LoggingMarkers.INVOKER_DEP_SCHED)
               DepInvoker.publishToTopBalancer(message, msgProducer, schedTopic)
@@ -211,6 +213,7 @@ object DepInvoker {
       relationships.dependents.map(ref => {
         WhiskActionMetaData.get(entityStore, ref.getDocId()) flatMap { nextObj =>
           Future.successful(nextObj.toExecutableWhiskAction map { nextAction: ExecutableWhiskActionMetaData =>
+
             val ppc = Some(PartialPrewarmConfig(prewarmTimeout.toMillis, nextObj.limits.resources.limits,
               prewarmDeadlineCache.getTimeMs(obj.fullyQualifiedName(false).asString)))
             implicit val tid: TransactionId = childOf(activationMessage.transid)

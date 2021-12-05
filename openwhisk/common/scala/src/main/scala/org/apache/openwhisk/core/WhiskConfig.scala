@@ -210,6 +210,7 @@ object ConfigKeys {
   val invokerRack = "whisk.invoker.rack"
   val invokerProxyNetworkPort = "whisk.invoker-proxy-network-port"
   val invokerMemoryPoolSock = "whisk.invoker-memory-pool-sock"
+  val invokerMemoryPoolType = "whisk.invoker-memory-pool-type"
   val kafka = "whisk.kafka"
   val kafkaCommon = s"$kafka.common"
   val kafkaProducer = s"$kafka.producer"

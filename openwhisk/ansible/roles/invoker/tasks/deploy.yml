@@ -190,7 +190,7 @@
 
 - name: prepare invoker ports
   set_fact:
-    invoker_ports_to_expose: ["{{ invoker.port + (invoker_index | int) }}:8080"]
+    invoker_ports_to_expose: ["{{ invoker.port + (invoker_index | int) }}:8080", "23333:23333", "8081:8081", "8082:8082"]
 
 - name: expose additional ports if jmxremote is enabled
   when: jmx.enabled
@@ -319,7 +319,8 @@
       {{ whisk_logs_dir }}/{{ invoker_name }}:/logs,\
       {{ invoker.confdir }}/{{ invoker_name }}:/conf,\
       {{ dockerInfo['DockerRootDir'] }}/containers/:/containers,\
-      {{ docker_sock | default('/var/run/docker.sock') }}:/var/run/docker.sock"
+      {{ docker_sock | default('/var/run/docker.sock') }}:/var/run/docker.sock,\
+      /tmp/memorypool.sock:/tmp/memorypool.sock"
 ###
 # The root runc directory varies based on the version of docker and runc.
 # When docker>=18.06 uses docker-runc the directory is /run/docker/runtime-runc/moby.

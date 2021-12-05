@@ -100,6 +100,7 @@ case class ActivationMessage(override val transid: TransactionId,
                              parallelismIdx: ParallelismInfo = ParallelismInfo(0, 1),
                              swapFrom: Option[InvokerInstanceId] = None,
                              rerouteFromRack: Option[RackSchedInstanceId] = None,
+                             profile: Option[Boolean] = None,
                             )
     extends Message {
 
@@ -218,7 +219,7 @@ object ActivationMessage extends DefaultJsonProtocol {
   def parse(msg: String) = Try(serdes.read(msg.parseJson))
 
   private implicit val fqnSerdes = FullyQualifiedEntityName.serdes
-  implicit val serdes: RootJsonFormat[ActivationMessage] = jsonFormat21(ActivationMessage.apply)
+  implicit val serdes: RootJsonFormat[ActivationMessage] = jsonFormat22(ActivationMessage.apply)
 }
 
 object CombinedCompletionAndResultMessage extends DefaultJsonProtocol {
@@ -504,6 +505,7 @@ case class DependencyInvocationMessage(action: String,
                                        appActivationId: ActivationId,
                                        transactionId: TransactionId,
                                        corunning: Option[Seq[RunningActivation]] = None,
+                                       profile: Option[Boolean] = None,
                                        )
     extends Message {
 
@@ -526,7 +528,8 @@ object DependencyInvocationMessage extends DefaultJsonProtocol {
   "functionActivationId",
   "appActivationId",
   "transid",
-  "corunning")
+  "corunning",
+  "profile")
 }
 
 // An connection for an object

@@ -50,14 +50,13 @@ case class ContainerPoolConfig(resources: RuntimeResources,
                                akkaClient: Boolean,
                                prewarmExpirationCheckInterval: FiniteDuration,
                                prewarmExpirationCheckIntervalVariance: Option[FiniteDuration],
-                               prewarmExpirationLimit: Int) {
+                               prewarmExpirationLimit: Int,
+                               useProxy: Boolean = false) {
   require(
     concurrentPeekFactor > 0 && concurrentPeekFactor <= 1.0,
     s"concurrentPeekFactor must be > 0 and <= 1.0; was $concurrentPeekFactor")
 
   require(prewarmExpirationCheckInterval.toSeconds > 0, "prewarmExpirationCheckInterval must be > 0")
-
-  val useProxy : Boolean = true
 
   /**
    * The shareFactor indicates the number of containers that would share a single core, on average.
