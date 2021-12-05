@@ -8,7 +8,7 @@
 #define RDMA_PROTOCOL_IB (0)
 
 // if roce, run on host, use GID 3, else GID 0
-#define RDMA_DEVICE_NAME "mlx5_0"
+#define RDMA_DEVICE_NAME "mlx5_1"
 #define RDMA_GID (3)
 #define RDMA_PORT (1)
 

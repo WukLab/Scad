@@ -42,9 +42,9 @@ ext_npjoin_install: ext_npjoin
 	pip install ext/np_join
 
 memory_server: ext/host/memory_server.o $(OBJECTS)
-	$(LD) $(LDFLAGS) -o $@ $^ $(LIBS)
+	$(LD) $(LD_FLAGS) -o $@ $^ $(LIBS)
 memory_pool: ext/pool/memory_pool.o $(OBJECTS)
-	$(LD) $(LDFLAGS) -o $@ $^ $(LIBS)
+	$(LD) $(LD_FLAGS) -o $@ $^ $(LIBS)
 
 tests:
 	make -C tests
