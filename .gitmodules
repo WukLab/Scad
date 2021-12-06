@@ -4,3 +4,6 @@
 [submodule "faas-profiler"]
 	path = faas-profiler
 	url = git@github.com:WukLab/faas-profiler.git
+[submodule "front-end/modules/policy"]
+	path = front-end/modules/policy
+	url = https://github.com/ubc-cirrus-lab/DAG-splitter-merger
