@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+
+from flask import Flask, request
+
+class ActivationInfo:
+    def __init__(self):
+        self.actions = {}
+    def parsePoint(self, pointName, pointData):
+        datas = pointData.split(',')
+        ts, cpu, mem = datas[:3]
+        dp = { 'timestamp': int(ts),
+                'cpu': float(cpu),
+                'memory': int(mem) }
+        network = {}
+        networkData = datas[3:]
+        for i in range(0, len(networkData), 3):
+            trans, rx, tx = networkData[i:i+3]
+            network[trans] = (int(rx), int(tx))
+        dp['network'] = network
+        return {'pointName': dp}
+    def submit(self, aid, points):
+        records = self.actions.setdefault(aid, [])
+        for name, data in points.items():
+            records.append(self.parsePoint(name, data))
+    def queryAction(self, aid):
+        return self.actions.get(aid, [])
+
+
+app = Flask(__name__)
+db = ActivationInfo()
+
+@app.route("/", methods=['POST'])
+def submit():
+    print("get reqest", str(request.form))
+    aid = request.form['object']
+    data = {k:v for k,v in request.form.items() if k != 'object'}
+    db.submit(aid, data)
+    return 'ok'
+
+@app.route("/action/<aid>")
+def queryAction(aid):
+    ret = db.queryAction(aid)
+    return { aid: ret }
+
+@app.route("/element/<name>")
+def queryElement(aid):
+    pass
+
+if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=8080, debug=True)

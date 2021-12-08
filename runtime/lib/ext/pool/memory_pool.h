@@ -2,7 +2,8 @@
 #define _MEMORY_POOL_H_
 
 #include <stdint.h>
-#include <glib.h>
+#include <stdlib.h>
+#include <string.h>
 #include "transports/rdma_uverbs.h"
 
 #define MPOOL_MSG_SIZE_LIMIT (4096)
@@ -33,6 +34,35 @@ enum {
 // normally we do not close this.
 // select<CLOSE, id> <-> select<id>
 
+typedef struct darray {
+    size_t len;
+    size_t elsize;
+    char * data;
+} darray;
+
+static inline darray* darray_new(size_t elsize, size_t n) {
+    darray * arr = (darray *)calloc(1, sizeof(darray));
+    arr->elsize = elsize;
+    if (n)
+        arr->data = (char *)calloc(n, elsize);
+    return arr;
+}
+
+static inline void darray_set_size(darray* arr, int size) {
+    size_t nsize = size * arr->elsize;
+    arr->data = realloc(arr->data, nsize);
+    memset(arr->data + arr->len * arr->elsize, arr->data + nsize, 0);
+    arr->len = size;
+}
+
+static inline void * darray_index(darray* arr, int n) {
+    return (void *)(arr->data + n * arr->elsize);
+}
+
+static inline void darray_free(darray* arr) {
+    free(arr->data);
+    free(arr);
+}
 
 struct mp_select {
     union {
@@ -48,7 +78,7 @@ struct mp_select {
 
 struct mp_element {
     uint16_t id;
-    GArray /* struct rdma_conns */ * conns;
+    darray /* struct rdma_conns */ * conns;
 };
 
 #define MPOOL_DATA_SIZE_LIMIT (4096 - sizeof(struct mp_select))

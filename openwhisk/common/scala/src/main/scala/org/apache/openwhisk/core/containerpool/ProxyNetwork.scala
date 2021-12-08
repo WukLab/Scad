@@ -73,6 +73,7 @@ class ProxyNode(serverPort: Int,
   // External Message -> local node
   val inBox = mutable.HashMap.empty[ProxyAddressMasked, (ProxyAddress, Message)]
 
+  // TODO: insert when call those "post" functions
   def postSend(src: ProxyAddress, dst: ProxyAddressMasked, message: Message) = {
     logging.debug(this, s"[MPT] send $message: $src -> $dst")
     // check routeTable
@@ -98,6 +99,8 @@ class ProxyNode(serverPort: Int,
     postRecv(src, client, id)
     postSend(src, dst, message)
   }
+  def postRecvSend[T](addr: ProxyAddress, client: ProxyClient[T], id: T, message: Message) =
+    postReply(addr, client, id, message)
   def postReply[T](addr: ProxyAddress, client: ProxyClient[T], id: T, message: Message) = {
     val mp = new MessagePair {
       override type Tag = T
@@ -111,6 +114,8 @@ class ProxyNode(serverPort: Int,
 
   // return: if success recv, return value and sender address
   def doRecv(addr: ProxyAddress, pair : MessagePair): Option[(ProxyAddress, Message)] = {
+    // Store all addresses into local
+    prependRoute(addr.masked(m3 = false), "local")
     val (client, id, _) = pair.c
     logging.debug(this, s"[MPT] recv from $addr <- ${pair.c}")
     inBox.find(_._1.maskMatch(addr))
@@ -136,10 +141,10 @@ class ProxyNode(serverPort: Int,
         // Match a local receive box
       case Some((k, mp)) =>
         val (client, id, reply) = mp.c
-        reply match {
-          case Some(msg) => postSend(src = k, dst = src.masked(), msg)
-          case None => client.proxyReceive(dest, message, id)
+        reply.foreach { msg =>
+          postSend(src = k, dst = src.masked(), msg)
         }
+        client.proxyReceive(dest, message, id)
         recvOutBox.remove(k)
         logging.debug(this, s"[MPT] inbound message forwarded")
       case None =>

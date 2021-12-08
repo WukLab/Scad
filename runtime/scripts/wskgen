@@ -97,7 +97,7 @@ def gen_obj(meta, source):
                 'parents': meta.get('parents', [])
             },
             'runtimeType': meta['type'],
-            'withMerged': meta['withMerged'],
+            'withMerged': meta.get('withMerged', []),
         },
         'version': "0.0.1"
     }

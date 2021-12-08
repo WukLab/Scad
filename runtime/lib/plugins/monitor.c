@@ -209,12 +209,19 @@ static int _terminate(struct libd_plugin *plugin) {
 static int _invoke(struct libd_plugin *plugin, int point, void * param) {
     // Currently, we only have the log point
     int bytes;
+    long ts;
+    struct timespec t;
+
     struct monitor_pstate *monitorp = 
         (struct monitor_pstate *)(plugin->pstate);
 
     dprintf("invoke: with point %d", point);
 
-    bytes = sprintf(monitorp->curbuf, "&point_%d=", point);
+    // get timestamp
+    clock_gettime(CLOCK_BOOTTIME, &t);
+    ts = t.tv_nsec / 1000000 + t.tv_sec * 1000;
+
+    bytes = sprintf(monitorp->curbuf, "&point_%d=%ld", point, ts);
     monitorp->curbuf += bytes;
 
     query_cpu_usage(&monitorp->curbuf, monitorp->procf_cpu, monitorp);

@@ -62,11 +62,10 @@ void conn_setup(struct rdma_conn * conn, struct rdma_conn * old) {
     }
 }
 
-static inline struct mp_element * get_by_id(GArray * elements, uint16_t id) {
+static inline struct mp_element * get_by_id(darray * elements, uint16_t id) {
     struct mp_element * melement;
     for (int i = 0; i < elements->len; i++) {
-        melement = &g_array_index(elements,
-                      struct mp_element, i);
+        melement = (struct mp_element *)darray_index(elements, i);
         if (melement->id == id)
             return melement;
     }
@@ -88,7 +87,7 @@ int main(int argc, char *argv[]) {
 
     struct mp_select *mselect;
 
-    /* struct mp_element */ GArray * elements; 
+    /* struct mp_element */ darray * elements; 
     struct mp_element *melement;
     struct rdma_conn *conn;
 
@@ -116,7 +115,7 @@ int main(int argc, char *argv[]) {
     _context = create_context(num_devices, device_name);
     _pd = ibv_alloc_pd(_context);
 
-    elements = g_array_new(FALSE, TRUE, sizeof(struct mp_element));
+    elements = darray_new(sizeof(struct mp_element), 0);
 
     // main serve loop
     for (;;) {
@@ -136,37 +135,34 @@ int main(int argc, char *argv[]) {
 
         switch (mselect->op_code) {
             case MPOOL_ALLOC:
-                dprintf("Get ALLOC, id %d, conn_id %d, size %lu",
-                        mselect->id, mselect->conn_id, mselect->size);
+                dprintf("Get ALLOC, id %d, conn_id %d, size %lu, total %d",
+                        mselect->id, mselect->conn_id, mselect->size, elements->len);
                 // allocates new elements
                 melement = get_by_id(elements, mselect->id);
                 if (melement == NULL) {
-                    g_array_set_size(elements, elements->len + 1);
-                    melement = &g_array_index(elements,
-                                  struct mp_element, mselect->id);
+                    cur_size = elements->len;
+                    darray_set_size(elements, cur_size + 1);
+                    melement = (struct mp_element *)darray_index(elements, cur_size);
                     melement->id = mselect->id;
-                    melement->conns =
-                        g_array_new(FALSE, TRUE, sizeof(struct rdma_conn));
+                    melement->conns = darray_new(sizeof(struct rdma_conn), 0);
                 }
 
                 // expend the size
                 cur_size = melement->conns->len;
-                g_array_set_size(melement->conns, cur_size + mselect->conn_id);
+                darray_set_size(melement->conns, cur_size + mselect->conn_id);
 
                 // get more connections
                 for (int i = cur_size; i < cur_size + mselect->conn_id; i++) {
-                    conn = &g_array_index(melement->conns,
-                                  struct rdma_conn, i);
+                    conn = (struct rdma_conn *)darray_index(melement->conns, i);
 
                     // create or copy mr info
                     if (i == 0) {
                         conn_setup(conn, NULL);
                         create_mr(conn, mselect->size, MR_ACCESS, NULL);
                     } else
-                        conn_setup(conn, &g_array_index(melement->conns,
-                                  struct rdma_conn, 0));
+                        conn_setup(conn,
+                                  (struct rdma_conn *)darray_index(melement->conns, 0));
 
-                    dprintf("before dump info");
                     // assamble message and reply
                     // extract mr info to message
                     mselect->msg_size =
@@ -192,8 +188,7 @@ int main(int argc, char *argv[]) {
 
                 // free the pool
                 // free MR
-                conn = &g_array_index(melement->conns, struct rdma_conn,
-                                      0);
+                conn = (struct rdma_conn *)darray_index(melement->conns, 0);
                 if (conn != NULL) {
                     for (int i = 0; i < conn->num_mr; i++) {
                         void * buf = conn->mr[i].addr;
@@ -204,8 +199,7 @@ int main(int argc, char *argv[]) {
 
                 // free memory inside conn
                 for (int i = 0; i < melement->conns->len; i++) {
-                    conn = &g_array_index(melement->conns,
-                            struct rdma_conn, i);
+                    conn = (struct rdma_conn *)darray_index(melement->conns, i);
                     if (conn->qp)
                         ibv_destroy_qp(conn->qp);
                     if (conn->cq)
@@ -213,7 +207,7 @@ int main(int argc, char *argv[]) {
                 }
 
                 // free garray
-                g_array_free(melement->conns, TRUE);
+                darray_free(melement->conns);
                 // but do not free melement, may change the index
                 break;
 
@@ -231,7 +225,7 @@ int main(int argc, char *argv[]) {
                     break;
                 }
 
-                conn = &g_array_index(melement->conns, struct rdma_conn,
+                conn = (struct rdma_conn *)darray_index(melement->conns,
                                       mselect->conn_id);
                 conn->peerinfo = (struct conn_info *)mselect->msg;
 
@@ -243,7 +237,8 @@ int main(int argc, char *argv[]) {
                 // we can safely change the code, since peerinfo is useless
                 mselect->status = MPOOL_STATUS_OK;
                 mselect->msg_size = 0;
-                send(fd, buf, sizeof(struct mp_select), 0);
+                // TODO: currently we do not send reply from OPEN
+                // send(fd, buf, sizeof(struct mp_select), 0);
                 break;
             case MPOOL_CLOSE:
                 goto cleanup;

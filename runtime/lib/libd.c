@@ -38,7 +38,7 @@ struct libd_action * libd_action_init(char * aid, int argc, char ** args) {
 
     for (int i = 0; i < argc; i++) {
         if (args[i][0] == '+') {
-            dprintf("setting option %s for action %s", args[i], aid);
+            dprintf("[%d:%d] setting option %s for action %s", i, argc, args[i], aid);
             // active plugins
             if (strcmp("+plugins", args[i]) == 0) {
                 for (++i; i < argc && args[i][0] != '+'; i++)

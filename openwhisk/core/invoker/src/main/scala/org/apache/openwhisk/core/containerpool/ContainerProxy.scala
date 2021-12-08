@@ -387,6 +387,12 @@ class ContainerProxy(factory: (TransactionId,
         .pipeTo(self)
 
       goto(Running)
+
+    // Get config before
+    case Event(config: LibdTransportConfig, _) =>
+      logging.debug(this, s"Get config uninit")
+      configBuffer = configBuffer.enqueue(config)
+      stay()
   }
 
   when(Starting) {
@@ -399,6 +405,12 @@ class ContainerProxy(factory: (TransactionId,
     case Event(_: FailureMessage, _) =>
       context.parent ! ContainerRemoved(true)
       stop()
+
+    // Get config before
+    case Event(config: LibdTransportConfig, _) =>
+      logging.debug(this, s"Get config starting")
+      configBuffer = configBuffer.enqueue(config)
+      stay()
 
     case _ => delay
   }
@@ -418,6 +430,11 @@ class ContainerProxy(factory: (TransactionId,
     case Event(_: FailureMessage, data: PreWarmedData) =>
       MetricEmitter.emitCounterMetric(LoggingMarkers.INVOKER_CONTAINER_HEALTH_FAILED_PREWARM)
       destroyContainer(data, replacePrewarm = true)
+
+    case Event(config: LibdTransportConfig, _) =>
+      logging.debug(this, s"Get config started")
+      configBuffer = configBuffer.enqueue(config)
+      stay()
   }
 
   when(Running) {
@@ -588,6 +605,12 @@ class ContainerProxy(factory: (TransactionId,
     // warm container failed
     case Event(_: FailureMessage, data: WarmedData) =>
       destroyContainer(data, true)
+
+      // Send message to runtime when ready
+    case Event(config: LibdTransportConfig, data : WarmedData) =>
+      logging.debug(this, s"Get config in ready")
+      val res = sendConfig(config, data.container)
+      stay()
   }
 
   when(Pausing) {
@@ -620,6 +643,11 @@ class ContainerProxy(factory: (TransactionId,
     case Event(StateTimeout | Remove, data: WarmedData) =>
       rescheduleJob = true // to supress sending message to the pool and not double count
       destroyContainer(data, true)
+
+    case Event(config: LibdTransportConfig, data : WarmedData) =>
+      logging.debug(this, s"Get config in Paused")
+      val res = sendConfig(config, data.container)
+      stay()
   }
 
   when(Removing) {
@@ -724,27 +752,18 @@ class ContainerProxy(factory: (TransactionId,
           // TODO: change the create parameter
           container.getMessages(activationId).map {
             _.foreach { resp =>
-              resp
+              val reply = resp
                 .entity
                 .parseJson
-                .asJsObject
-                .fields
-                .get("messages")
-                .foreach {
-                  _.asInstanceOf[JsArray]
-                   .elements
-                   .foreach { transMsg =>
-                     val msg = transMsg.asJsObject
-                                       .convertTo[Map[String,String]]
-                     for {
-                       name <- msg.get("t")
-                       info <- msg.get("d")
-                       ab <- addressBook
-                     } {
-                       val srcAddr = ProxyAddress(activationId, name)
-                       ab.finishReply(self, srcAddr, TransportAddress.ProxyTransport(info))
-                     }
-                   }
+                .convertTo[LibdMessagesReply]
+
+              reply
+                .messages
+                .foreach { case (trans, msg) =>
+                  val srcAddr = ProxyAddress(activationId, trans)
+                  addressBook
+                    .get
+                    .finishReply(self, srcAddr, TransportAddress.ProxyTransport(msg))
                 }
             }
           }
@@ -905,7 +924,6 @@ class ContainerProxy(factory: (TransactionId,
       "function_activation_id" -> job.msg.functionActivationId.toJson,
       "app_activation_id" -> job.msg.appActivationId.toJson,
       "transaction_id" -> job.msg.transid.id.toJson,
-      "invoker_id" -> instance.toJson.toString.toJson,
     )
 
     // if the action requests the api key to be injected into the action context, add it here;
@@ -948,7 +966,10 @@ class ContainerProxy(factory: (TransactionId,
           "deadline" -> (Instant.now.toEpochMilli + actionTimeout.toMillis).toString.toJson)
 
         val serverUrl = "8081"
-        val envMix = LibdAPIs.Action.mix(env)(serverUrl, job.msg.activationId.toString, job.corunningConfig)
+        // TODO: make this address configurable
+        val profileAddress = "http://172.17.0.1:8080/"
+        val envMix = LibdAPIs.Action.mix(env)(serverUrl, job.msg.activationId.toString, job.corunningConfig,
+          job.msg.profile.map(_ => profileAddress))
         container
           .run(
             parameters,

@@ -245,15 +245,16 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                                 else TransportRequest.config(name, impl, aid)
 
                   if (poolConfig.useProxy) {
+                    val srcTransportName = if (isPar) s"$name@$par" else name
+                    val dstTransportName = "memory"
                     proxyAddressBook.foreach { book =>
-                      val srcTransportName = if (isPar) s"$name@$par" else name
-                      val dstTransportName = "memory"
                       book.prepareReply(
                         src = ProxyAddress(aid,              srcTransportName),
                         dst = ProxyAddress(ra.objActivation, dstTransportName))
                     }
                     // Return empty string for config.
-                    ""
+                    // TODO: merge to libd
+                    s"${srcTransportName};rdma_uverbs_proxy;"
                   } else addressBook
                     .postWait(ra.objActivation, request)
                     .toFullString
@@ -267,9 +268,12 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
               }
 
             if (poolConfig.useProxy) {
-              // Send a GetMessage() request
-              actor ! TransportRequest.getMessage(r.msg.activationId)
+              // Send a GetMessage() request after run
+              val request = TransportRequest.getMessage(r.msg.activationId)
+              logging.debug(this, "[MPT] Sending Message Request...")
+              actor ! LibdTransportConfig(r.msg.activationId, request, TransportAddress.empty)
             }
+
 
             logging.debug(this, s"Get activation for ${r.msg.action} with id ${r.msg.activationId}: addresses ${transports}: run msg: $r")
             logging.debug(this, s"siblings ${r.msg.siblings} -> ${r.msg.siblings.map(_.map(_.objName))}")

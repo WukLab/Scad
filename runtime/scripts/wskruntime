@@ -74,7 +74,7 @@ def get_name(args):
 if __name__ == '__main__':
 
     # Helper functions
-    actions = ['init', 'run', 'reset', 'config', 'message']
+    actions = ['init', 'run', 'reset', 'config', 'message', 'fakerun']
 
     # Argument parser
     parser = argparse.ArgumentParser(description='Util for test openwhisk runtime dockers.')
@@ -115,6 +115,27 @@ if __name__ == '__main__':
             body = build_run(aid, transports = args.transport)
             if args.transport is None:
                 del body['transports']
+            save_config({'aid': aid})
+            call_host(host, '/run', body)
+
+        elif action == 'fakerun':
+            host = get_container_address(args.container)
+            aid = args.aid
+            if aid is None:
+                aid = gen_activationid(32) 
+            body = json.loads("""
+            {"action_name":"/whisk.system/test-action/corunning-1-node/compute1",
+             "action_version":"0.0.1","activation_id":"90635a75f9bb4367a35a75f9bbb367f9",
+             "app_activation_id":"d4af0f3ad94d47efaf0f3ad94db7ef26",
+             "deadline":"1638931828076",
+             "function_activation_id":"5a27974fbd104371a7974fbd10937123",
+             "name":"90635a75f9bb4367a35a75f9bbb367f9",
+             "namespace":"whisk.system",
+             "server_url":"8081",
+             "transaction_id":"80bo9NHZVFtVJbu7M86N1ePHO1sArtXn",
+             "transports":["mem1;rdma_uverbs_proxy;"],
+             "value":{}}
+            """)
             save_config({'aid': aid})
             call_host(host, '/run', body)
 

@@ -248,6 +248,7 @@ class InvokerReactive(
   val sock: String = loadConfigOrThrow[String](ConfigKeys.invokerMemoryPoolSock)
   var memoryPool: Option[MemoryPoolEndPoint] = None
   if (poolConfig.useProxy) {
+    logging.info(this, s"[MPT] initing MP with file ${sock}")
     memoryPool = Some(new MemoryPoolEndPoint(sock, proxyNode, ack))
   }
 

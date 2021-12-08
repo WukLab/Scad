@@ -173,10 +173,11 @@ class MemoryPoolClient(val proxy: ProxyNode, acker: MessagingActiveAck)(implicit
                             message: Serializable,
                             messageId: (Int, Int)): Unit = {
     val (elementId, connId) = messageId
+    logging.debug(this, s"[MPT] Getting Message $message, for $elementId . $connId")
 
     message match {
       case m: TransportAddress =>
-        val peerInfo = m.asInstanceOf[TransportAddress].config.get("peerinfo").get
+        val peerInfo = m.config.get("peerinfo").get
         open(Base64.getDecoder.decode(peerInfo), elementId, connId)
       case _: MemoryPoolEnd =>
         release(elementId)

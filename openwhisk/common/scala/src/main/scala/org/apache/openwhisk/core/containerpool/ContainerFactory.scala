@@ -51,7 +51,7 @@ case class ContainerPoolConfig(resources: RuntimeResources,
                                prewarmExpirationCheckInterval: FiniteDuration,
                                prewarmExpirationCheckIntervalVariance: Option[FiniteDuration],
                                prewarmExpirationLimit: Int,
-                               useProxy: Boolean = false) {
+                               useProxy: Boolean = true) {
   require(
     concurrentPeekFactor > 0 && concurrentPeekFactor <= 1.0,
     s"concurrentPeekFactor must be > 0 and <= 1.0; was $concurrentPeekFactor")

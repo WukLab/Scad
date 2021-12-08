@@ -104,6 +104,7 @@ class ActorProxyAddressBook(override val proxy: ProxyNode)(implicit logging: Log
     }
   }
   def releaseAll(aid: ActivationId) = {
+    logging.info(this, s"Release called for aid ${aid}")
     pendingRequests
       .filterKeys(_.aid == aid)
       .foreach { case (src, _) => release(src) }

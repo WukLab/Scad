@@ -8,6 +8,11 @@ import DefaultJsonProtocol._
 import org.apache.openwhisk.core.connector.RunningActivation
 import org.apache.openwhisk.core.entity.ElementType.ElementType
 
+case class LibdMessagesReply(ok: Boolean, messages: Map[String, String])
+object LibdMessagesReply extends DefaultJsonProtocol {
+  implicit val serdes: RootJsonFormat[LibdMessagesReply] = jsonFormat2(LibdMessagesReply.apply)
+}
+
 trait LibdAPIs[T <: Container] {
 
   self : T =>
@@ -44,7 +49,7 @@ trait LibdAPIs[T <: Container] {
   def getMessages(activationId: ActivationId)
                  (implicit transactionId: TransactionId = TransactionId.unknown) = {
     val body = JsObject()
-    callLibd(HttpMethods.POST, body, resourcePath = s"action/${activationId.toString}/transport")
+    callLibd(HttpMethods.POST, body, resourcePath = s"action/${activationId.toString}/messages")
   }
 
 }
@@ -55,12 +60,14 @@ object LibdAPIs {
     def mix(env: Map[String, JsValue])
                   (serverUrl: String,
                    actionName: String,
-                   transports: Option[Seq[String]]): Map[String, JsValue] = {
+                   transports: Option[Seq[String]],
+                   profile: Option[String]
+                  ): Map[String, JsValue] = {
       env ++ Map(
         "server_url" -> JsString(serverUrl),
         "name"       -> JsString(actionName),
-        "transports" -> transports.toJson
-      )
+        "transports" -> transports.toJson,
+      ) ++ profile.map(s => Map("profile" -> JsString(s))).getOrElse(Map.empty)
     }
 
     def getSize(actionLike: WhiskActionLike) = {
@@ -84,6 +91,7 @@ object LibdAPIs {
           case ElementType.Compute =>
             val mergedMem: Long = action.porusParams.withMerged.filter(p => p.elem.equals(ElementType.Memory)).map(_.resources.mem.toBytes).sum
             if (mergedMem > 0) {
+              // TODO: multiple merged mems?
               Some(Seq(s"memory;rdma_local;url,RDMA_LOCAL;size,${action.limits.resources.limits.mem.toBytes + mergedMem};"))
             } else {
               None

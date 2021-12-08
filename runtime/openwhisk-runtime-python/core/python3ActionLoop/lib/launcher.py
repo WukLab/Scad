@@ -50,9 +50,8 @@ out = fdopen(3, "wb")
 fifoIn  = os.open(FIFO_IN_FILE, os.O_RDONLY)
 fifoOut = os.open(FIFO_OUT_FILE, os.O_WRONLY)
 
-def _act_msgs       (runtime, params, body = None):
+def _act_msgs       (action, params, body = None):
     msgs = {}
-    action = runtime.get_action (params[0])
     for name, t in action.raw_transports.items():
         size, msg = t.get_msg()
         if size > 0:
@@ -61,13 +60,12 @@ def _act_msgs       (runtime, params, body = None):
     os.write(fifoOut, struct.pack("<I", len(rep)))
     os.write(fifoOut, rep.encode('ascii'))
     debug('send message', rep)
-def _act_add        (runtime, params, body):
+def _act_add        (action, params, body):
     runtime.create_action(params[0])
-def _trans_add      (runtime, params, body):
-    runtime.get_action(params[0]).add_transport(**body)
+def _trans_add      (action, params, body):
+    action.add_transport(**body)
     _act_msgs(runtime, params)
-def _trans_config   (runtime, params, body):
-    action = runtime.get_action(params[0])
+def _trans_config   (action, params, body):
     action.config_transport(params[1], body['durl'])
     debug('finish config', params, body)
 
@@ -107,8 +105,7 @@ class LibdRuntime:
         self.server_url = os.getenv('__OW_INVOKER_API_URL', 'localhost')
         self.cv = threading.Condition()
         self.fifo = fifoOut
-
-        self.action_args = {"post_url":'http://172.17.0.1:2400'}
+        # self.action_args = {"post_url":'http://172.17.0.1:2400'}
 
     # runtime services
     def stash(self,aid,cmd,args):
@@ -118,8 +115,9 @@ class LibdRuntime:
         debug("unstash request", aid)
         action = self.actions[aid]
         if aid in self.stash_msgs:
-            for cmd,args in self.stash_msgs[aid]:
-                self.action_funcs[aid][cmd](aid, *args)
+            for cmd,args in self.stash_msgs.get(aid, []):
+                debug("unstash command", cmd)
+                self.action_funcs[aid][cmd](action, *args)
             del self.stash_msgs[aid]
     def execute(self,aid,cmd,*args):
         debug("execute requests", aid,cmd,args)
@@ -129,8 +127,14 @@ class LibdRuntime:
             self.stash(aid,cmd,args)
 
     # all those functions will write a message
-    def _create_action(self, aid, transports):
-        action = LibdAction(self.cv, aid, **self.action_args)
+    def _create_action(self, aid, transports, config):
+        params = {}
+        if 'profile' in config:
+            params['post_url'] = config['profile']
+            params['plugins'] = 'monitor'
+        # prepare action params
+        debug("init action with config list" + str(params))
+        action = LibdAction(self.cv, aid, **params)
         action.runtime = self
         self.actions[aid] = action
         # add transports
@@ -140,7 +144,7 @@ class LibdRuntime:
         self.action_funcs[aid] = cmd_funcs
         self.unstash(aid)
         return action
-    def _create_proxy(self, aid, transports):
+    def _create_proxy(self, aid, transports, config):
         pconn, cconn = Pipe()
         pconn.send(['ACTADD', [aid, transports], None])
         self.actions[aid] = pconn
@@ -148,11 +152,11 @@ class LibdRuntime:
         self.action_funcs[aid] = proxy_funcs
         self.unstash(aid)
         return pconn
-    def create_action(self, aid, transports, merged, **_args):
-        if not merged:
-            return _self._create_action(aid, transports)
+    def create_action(self, aid, transports, config):
+        if not config['merged']:
+            return self._create_action(aid, transports, config)
         else:
-            return _self._create_proxy(aid, transports)
+            return self._create_proxy(aid, transports, config)
 
     def get_action(self, aid):
         return self.actions[aid]
@@ -221,7 +225,8 @@ while True:
   action = None
   aid = None
   transports = []
-  merged = False
+  config_keys = ['profile', 'merged']
+  config = {'merged': False}
   for key in args:
     stderr.flush()
     if key == "value":
@@ -230,11 +235,11 @@ while True:
       aid = args['activation_id']
     elif key == 'transports':
       transports = args['transports']
-    elif key == 'merged':
-      merged = True
+    elif key in config_keys:
+      config[key] = args[key]
     else:
       env["__OW_%s" % key.upper()]= args[key]
-  action = _runtime.create_action(aid, transports, merged)
+  action = _runtime.create_action(aid, transports, config)
 
   res = {}
   # Here the funciton is in the same thread

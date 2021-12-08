@@ -37,3 +37,5 @@ def main(args, action):
     print('API test int = {}, fetch = {}'.format(int_value, fetched_value),
             fetched_value == int_value)
 
+    return {}
+
