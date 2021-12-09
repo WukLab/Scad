@@ -28,6 +28,7 @@ import sys, os, json, traceback, warnings
 from disagg import LibdAction
 import threading, struct, os
 from multiprocessing import Pipe
+# for http requests
 
 def debug(*args):
     print(*args, file=stderr)
@@ -129,6 +130,8 @@ class LibdRuntime:
     # all those functions will write a message
     def _create_action(self, aid, transports, config):
         params = {}
+        if 'action_name' in config:
+            params['name'] = '/'.join(config['action_name'].split('/')[-2:])
         if 'profile' in config:
             params['post_url'] = config['profile']
             params['plugins'] = 'monitor'
@@ -225,7 +228,7 @@ while True:
   action = None
   aid = None
   transports = []
-  config_keys = ['profile', 'merged']
+  config_keys = ['profile', 'merged', 'action_name']
   config = {'merged': False}
   for key in args:
     stderr.flush()

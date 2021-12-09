@@ -39,11 +39,11 @@ struct monitor_pstate {
 };
 
 static void inline init_buf(
-    struct monitor_pstate * monitorp, const char * aid) {
+    struct monitor_pstate * monitorp, const char * aid, const char * name) {
 
     int bytes;
     monitorp->curbuf= monitorp->buf;
-    bytes = sprintf(monitorp->curbuf, "object=%s", aid);
+    bytes = sprintf(monitorp->curbuf, "object=%s&name=%s", aid, name);
     monitorp->curbuf += bytes;
 }
 
@@ -178,7 +178,7 @@ static int _init(struct libd_plugin *plugin) {
     // prepare first timestamp
     char * bufp = monitorp->buf;
     query_cpu_usage(&bufp, monitorp->procf_cpu, monitorp);
-    init_buf(monitorp, plugin->action->aid);
+    init_buf(monitorp, plugin->action->aid, plugin->action->name);
 
     curl_global_init(CURL_GLOBAL_ALL);
     dprintf("init: finish");
@@ -231,7 +231,7 @@ static int _invoke(struct libd_plugin *plugin, int point, void * param) {
     if (monitorp->curbuf - monitorp->buf >=
             BUFFER_SIZE - BUFFER_THRESHOLD) {
         post_stat(monitorp, plugin->action->post_url);
-        init_buf(monitorp, plugin->action->aid);
+        init_buf(monitorp, plugin->action->aid, plugin->action->name);
     }
 
     return 0;

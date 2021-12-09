@@ -119,7 +119,8 @@ class ProxyNode(serverPort: Int,
     val (client, id, _) = pair.c
     logging.debug(this, s"[MPT] recv from $addr <- ${pair.c}")
     inBox.find(_._1.maskMatch(addr))
-         .map { case (_, p@(a, m)) =>
+         .map { case (k, p@(a, m)) =>
+           inBox.remove(k)
            client.proxyReceive(a, m, id)
            logging.debug(this, s"[MPT] recv fordward")
            p
@@ -144,8 +145,8 @@ class ProxyNode(serverPort: Int,
         reply.foreach { msg =>
           postSend(src = k, dst = src.masked(), msg)
         }
-        client.proxyReceive(dest, message, id)
         recvOutBox.remove(k)
+        client.proxyReceive(dest, message, id)
         logging.debug(this, s"[MPT] inbound message forwarded")
       case None =>
         inBox += dest -> (src, message)

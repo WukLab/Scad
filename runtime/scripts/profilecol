@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 
 from flask import Flask, request
+import pickle
 
 class ActivationInfo:
     def __init__(self):
         self.actions = {}
+        self.elements = {}
     def parsePoint(self, pointName, pointData):
         datas = pointData.split(',')
         ts, cpu, mem = datas[:3]
@@ -17,24 +19,33 @@ class ActivationInfo:
             trans, rx, tx = networkData[i:i+3]
             network[trans] = (int(rx), int(tx))
         dp['network'] = network
-        return {'pointName': dp}
-    def submit(self, aid, points):
+        return {pointName: dp}
+    def submit(self, elementName, aid, points):
         records = self.actions.setdefault(aid, [])
         for name, data in points.items():
             records.append(self.parsePoint(name, data))
+        element = self.elements.setdefault(elementName, [])
+        element.append(aid)
     def queryAction(self, aid):
         return self.actions.get(aid, [])
+    def queryElement(self, element):
+        results = {}
+        for aid in self.elements.get(element, []):
+            results[aid] = self.actions[aid]
+        return results
 
-
+DB_FILENAME = "/tmp/serverless-prodile.pickle"
 app = Flask(__name__)
 db = ActivationInfo()
 
 @app.route("/", methods=['POST'])
 def submit():
     print("get reqest", str(request.form))
+    specials = ['object', 'name']
     aid = request.form['object']
-    data = {k:v for k,v in request.form.items() if k != 'object'}
-    db.submit(aid, data)
+    name = request.form['name']
+    data = {k:v for k,v in request.form.items() if k not in specials}
+    db.submit(name, aid, data)
     return 'ok'
 
 @app.route("/action/<aid>")
@@ -42,9 +53,26 @@ def queryAction(aid):
     ret = db.queryAction(aid)
     return { aid: ret }
 
-@app.route("/element/<name>")
-def queryElement(aid):
-    pass
+@app.route("/element/<func>/<name>")
+def queryElement(func,name):
+    element = f"{func}/{name}"
+    return { element: db.queryElement(element) }
+
+@app.route("/store")
+def store():
+    with open(DB_FILENAME, 'wb') as f:
+        pickle.dump(db, f)
+    return 'ok'
+
+@app.route("/load")
+def load():
+    global db
+    with open(DB_FILENAME, 'rb') as f:
+        db = pickle.load(f)
+    return 'ok'
 
 if __name__ == '__main__':
+    import atexit
+    atexit.register(store)
+    load()
     app.run(host="0.0.0.0", port=8080, debug=True)

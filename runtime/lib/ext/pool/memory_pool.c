@@ -79,7 +79,7 @@ int main(int argc, char *argv[]) {
     char * device_name;
 
     int ret;
-    int sfd, fd, bytes, cur_size;
+    int sfd, fd, bytes, cur_size, target_size;
     char buf[MPOOL_MSG_SIZE_LIMIT];
 
     struct sockaddr_un remote;
@@ -149,10 +149,12 @@ int main(int argc, char *argv[]) {
 
                 // expend the size
                 cur_size = melement->conns->len;
-                darray_set_size(melement->conns, cur_size + mselect->conn_id);
+                target_size = cur_size + mselect->conn_id;
+                darray_set_size(melement->conns, target_size);
+                dprintf("cursize %d, connid %d", cur_size, mselect->conn_id);
 
                 // get more connections
-                for (int i = cur_size; i < cur_size + mselect->conn_id; i++) {
+                for (int i = cur_size; i < target_size; i++) {
                     conn = (struct rdma_conn *)darray_index(melement->conns, i);
 
                     // create or copy mr info

@@ -117,6 +117,7 @@ char * libd_transport_get_message(struct libd_transport * trans, int * msg_size)
 // action
 struct libd_action {
     char aid[128];
+    char name[128];
     char server_url[256];
     char post_url[256];
 

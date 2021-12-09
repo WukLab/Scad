@@ -51,6 +51,9 @@ struct libd_action * libd_action_init(char * aid, int argc, char ** args) {
             else if (strcmp("+server_url", args[i]) == 0) {
                 strcpy(action->server_url, args[++i]);
             }
+            else if (strcmp("+name", args[i]) == 0) {
+                strcpy(action->name, args[++i]);
+            }
         }
     }
 
