@@ -14,6 +14,7 @@ import pureconfig.loadConfigOrThrow
 import spray.json._
 
 import scala.concurrent._
+import scala.util.{Failure, Success, Try}
 
 case class RuntimeDependencyInvocation(target: String,
                                        value: Option[JsObject],
@@ -26,7 +27,8 @@ object RuntimeDependencyInvocation extends DefaultJsonProtocol with SprayJsonSup
   implicit val serdes: RootJsonFormat[RuntimeDependencyInvocation] = jsonFormat6(RuntimeDependencyInvocation.apply)
 }
 
-class InvokerRuntimeServer(config: WhiskConfig, msgProvider: MessagingProvider,
+class InvokerRuntimeServer(id: InvokerInstanceId,
+                           config: WhiskConfig, msgProvider: MessagingProvider,
                            addressBook: Option[ActorProxyAddressBook],
                            containerPool: ActorRef
                           )(
@@ -40,64 +42,80 @@ class InvokerRuntimeServer(config: WhiskConfig, msgProvider: MessagingProvider,
 
   // compute is not yet implemented, type parameter will eventually change
   // only mem is currently supported
-  case class LaunchCommand(swap: Option[SwapObject], compute: Option[JsObject])
+  case class LaunchCommand(swap: Option[RuntimeMemRequest], compute: Option[JsObject])
 
   object LaunchCommand extends DefaultJsonProtocol with SprayJsonSupport {
     implicit val serdes: RootJsonFormat[LaunchCommand] = jsonFormat2(LaunchCommand.apply)
   }
 
+  case class RuntimeMemRequest(actionName: String, functionActivationId: ActivationId, appActivationId: ActivationId, mem: ByteSize)
+
+  object RuntimeMemRequest extends DefaultJsonProtocol {
+    implicit val serdes: RootJsonFormat[RuntimeMemRequest] = jsonFormat4(RuntimeMemRequest.apply)
+  }
+
   def route : Route =
     pathPrefix ("activation" / Segment ) { _activationId : String =>
       val activationId = ActivationId.parse(_activationId).toOption
-      concat {
-
+      concat(
         // Release a related memory segment
-        path ("transport" / Segment) { _transport : String =>
-          /**
-           * delete, remove a existing transport
-           */
-          delete {
-            val rep = for {
-              book <- addressBook
-              aid <- activationId
-            } yield book.release(ProxyAddress(aid, _transport))
+        pathPrefix ("transport" / Segment) { _transport : String =>
+          logging.debug(this, s"runtime invoker transport path: ${_transport}")
+          pathEnd {
+            concat(
+              /**
+               * delete, remove a existing transport
+               */
+              delete {
+                val rep = for {
+                  book <- addressBook
+                  aid <- activationId
+                } yield book.release(ProxyAddress(aid, _transport))
 
-            complete((200, "ok"))
-          }
-
-          /**
-           * Ppst, create a new transport
-           * currently we use this path to create new memory objects
-           */
-          post {
-            entity(as[LaunchCommand]) { cmd =>
-              cmd.swap.map({ obj =>
-                scheduleSwap(obj)
-              }) match {
-                case Some(value) =>
-                  // TODO option to future
-                  value.foreach { destAid =>
-                    for {
-                      book <- addressBook
-                      aid <- activationId
-                    } yield {
-                      val src = ProxyAddress(aid, _transport)
-                      val dst = ProxyAddress(destAid, "memory")
-                      book.prepareReply(src, dst)
-
-                      val request = TransportRequest.getMessage(aid)
-                      val configMsg = LibdTransportConfig(aid, request, TransportAddress.empty)
-                      containerPool ! configMsg
-                    }
+                complete((200, "ok"))
+              },
+              /**
+               * Post, create a new transport
+               * currently we use this path to create new memory objects
+               */
+              post {
+                entity(as[String]) { cmd =>
+                  Try {
+                    LaunchCommand.serdes.read(cmd.parseJson)
+                  } match {
+                    case Failure(exception) => logging.error(this, s"failure parsing: ${exception}")
+                    case Success(_) => logging.debug(this, "success parsing")
                   }
-                  complete((200, "ok"))
-                case None =>
-                  complete((500, "no swap"))
-              }
-            }
-          }
-        }
+                  val swap = LaunchCommand.serdes.read(cmd.parseJson)
+                  swap.swap.map({ obj =>
+                    val swapObject = SwapObject(obj.actionName, id, obj.functionActivationId, obj.appActivationId, obj.mem, SwapObject.swapObjectIdentity)
+                    scheduleSwap(swapObject)
+                  }) match {
+                    case Some(value) =>
+                      // TODO option to future
+                      value.foreach { destAid =>
+                        for {
+                          book <- addressBook
+                          aid <- activationId
+                        } yield {
+                          val src = ProxyAddress(aid, _transport)
+                          val dst = ProxyAddress(destAid, "memory")
+                          book.prepareReply(src, dst)
 
+                          val request = TransportRequest.getMessage(aid)
+                          val configMsg = LibdTransportConfig(aid, request, TransportAddress.empty)
+                          containerPool ! configMsg
+                        }
+                      }
+                      complete((200, "ok"))
+                    case None =>
+                      complete((500, "no swap"))
+                  }
+                }
+              }
+            )
+          }
+        },
         path ("dependency") {
           logging.debug(this, "Got dependency message!")
           post {
@@ -107,7 +125,7 @@ class InvokerRuntimeServer(config: WhiskConfig, msgProvider: MessagingProvider,
             }
           }
         }
-      }
+      )
     }
 
   protected def activationMsgFromObj(swap: SwapObject): ActivationMessage = {
