@@ -969,7 +969,10 @@ class ContainerProxy(factory: (TransactionId,
         // TODO: make this address configurable
         val profileAddress = "http://172.17.0.1:8080/"
         val envMix = LibdAPIs.Action.mix(env)(serverUrl, job.msg.activationId.toString, job.corunningConfig,
-          job.msg.profile.map(_ => profileAddress))
+          job.msg.profile.flatMap {
+            case true => Some(profileAddress)
+            case false => None
+          })
         container
           .run(
             parameters,

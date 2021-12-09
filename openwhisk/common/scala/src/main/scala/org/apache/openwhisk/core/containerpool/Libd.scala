@@ -66,7 +66,7 @@ object LibdAPIs {
       env ++ Map(
         "server_url" -> JsString(serverUrl),
         "name"       -> JsString(actionName),
-        "transports" -> transports.toJson,
+        "transports" -> transports.getOrElse(Seq.empty).toJson,
       ) ++ profile.map(s => Map("profile" -> JsString(s))).getOrElse(Map.empty)
     }
 

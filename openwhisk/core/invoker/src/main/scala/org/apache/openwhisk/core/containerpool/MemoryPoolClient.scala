@@ -114,6 +114,12 @@ class MemoryPoolClient(val proxy: ProxyNode, acker: MessagingActiveAck)(implicit
     ch.writeAndFlush(req)
     elementId
   }
+  def allocConn(elementId: Int, numConns: Int = 1) = {
+    val req = MPSelectMsg(op_code = MPOpCode.ALLOC, size = 0,
+      id = elementId, conn_id = numConns)
+    ch.writeAndFlush(req)
+    elementId
+  }
   def free() = ???
   def extend() = ???
   def open(rKey: RKey, elementId: Int, connId : Int) = {
@@ -179,6 +185,9 @@ class MemoryPoolClient(val proxy: ProxyNode, acker: MessagingActiveAck)(implicit
       case m: TransportAddress =>
         val peerInfo = m.config.get("peerinfo").get
         open(Base64.getDecoder.decode(peerInfo), elementId, connId)
+        // TODO: current logic is we do allocate extra QPs (for extra connections)
+        // TODO: stack later
+        allocConn(elementId)
       case _: MemoryPoolEnd =>
         release(elementId)
     }

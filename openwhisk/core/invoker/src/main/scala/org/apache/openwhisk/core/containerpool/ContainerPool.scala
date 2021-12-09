@@ -267,7 +267,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                 case s                  => Some(s)
               }
 
-            if (poolConfig.useProxy) {
+            if (poolConfig.useProxy && transports.isDefined) {
               // Send a GetMessage() request after run
               val request = TransportRequest.getMessage(r.msg.activationId)
               logging.debug(this, "[MPT] Sending Message Request...")
