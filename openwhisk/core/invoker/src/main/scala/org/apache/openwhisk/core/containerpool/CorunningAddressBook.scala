@@ -65,6 +65,7 @@ abstract class AddressBook(implicit logging: Logging) {
 class ActorProxyAddressBook(override val proxy: ProxyNode)(implicit logging: Logging)
   extends AddressBook with ProxyClient[(ActorRef, TransportRequest)] {
   val pendingRequests = mutable.Map.empty[ProxyAddress, ProxyAddress]
+  val pendingData = mutable.Map.empty[ProxyAddress, ((ActorRef, TransportRequest), TransportAddress)]
 
   override def proxyReceive(sender: ProxyAddressBase, message: Serializable,
                             messageId: (ActorRef, TransportRequest)) = {
@@ -77,7 +78,10 @@ class ActorProxyAddressBook(override val proxy: ProxyNode)(implicit logging: Log
 
   /* useless for a reply: reply do not need dest address */
   def prepareReply(src: ProxyAddress, dst: ProxyAddress) =
-    pendingRequests += src -> dst
+    pendingData.remove(src) match {
+      case Some((tag, info)) => postSendRecv(src, dst.masked(m3=false), tag, info)
+      case None => pendingRequests += src -> dst
+    }
 
   /**
    * After getting a communication channel, register a send and recv
@@ -87,8 +91,11 @@ class ActorProxyAddressBook(override val proxy: ProxyNode)(implicit logging: Log
    */
   def finishReply(actor: ActorRef, src: ProxyAddress, info: TransportAddress) = {
     val request = TransportRequest.config(src.transport,"rdma_uverbs_proxy",src.aid)
-    pendingRequests.get(src).foreach { dst =>
-      postSendRecv(src, dst.masked(m3 = false), (actor, request), info)
+    pendingRequests.get(src) match {
+      case Some(dst) =>
+        postSendRecv(src, dst.masked(m3 = false), (actor, request), info)
+      case None =>
+        pendingData += src -> ((actor, request), info)
     }
   }
 

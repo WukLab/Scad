@@ -84,7 +84,7 @@ class DockerContainerFactory(instance: InvokerInstanceId,
       cpuShares = cpuShares,
       // TODO: this is only for docker clients, more modifications?
       environment =
-        Map("__OW_API_HOST" -> config.wskApiHost, "__OW_INVOKER_API_PORT" -> (config.servicePort.toInt + 1).toString)
+        Map("__OW_INVOKER_API" -> s"http://172.17.0.1:${(config.servicePort.toInt + 1).toString}")
         ++ containerArgsConfig.extraEnvVarMap,
       network = containerArgsConfig.network,
       dnsServers = containerArgsConfig.dnsServers,

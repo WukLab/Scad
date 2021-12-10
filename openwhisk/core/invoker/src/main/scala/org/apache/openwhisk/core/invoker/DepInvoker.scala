@@ -8,7 +8,7 @@ import org.apache.openwhisk.common.tracing.WhiskTracerProvider
 import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.connector.{ActivationMessage, DependencyInvocationMessage, Message, MessageProducer, ParallelismInfo, PartialPrewarmConfig, RunningActivation}
 import org.apache.openwhisk.core.containerpool.{ContainerProxyTimeoutConfig, RuntimeResources}
-import org.apache.openwhisk.core.entity.{ActivationId, ActivationResponse, ExecutableWhiskAction, ExecutableWhiskActionMetaData, FullyQualifiedEntityName, Identity, InvokerInstanceId, RackSchedInstanceId, WhiskAction, WhiskActionMetaData, WhiskActionRelationship, WhiskActivation}
+import org.apache.openwhisk.core.entity.{ActivationId, ActivationResponse, ElementType, ExecutableWhiskAction, ExecutableWhiskActionMetaData, FullyQualifiedEntityName, Identity, InvokerInstanceId, RackSchedInstanceId, WhiskAction, WhiskActionMetaData, WhiskActionRelationship, WhiskActivation}
 import org.apache.openwhisk.core.entity.types.{AuthStore, EntityStore}
 import org.apache.openwhisk.core.scheduler.FinishActivation
 import pureconfig.loadConfigOrThrow
@@ -145,7 +145,7 @@ class DepInvoker(invokerInstance: InvokerInstanceId, schedId: RackSchedInstanceI
                     WhiskAction.get(entityStore, parent.toFQEN().toDocId)
                   }
                 ) flatMap { x =>
-                  val computeObjs = x.filter(a => a.porusParams.runtimeType.isDefined && a.porusParams.runtimeType.get.equals("compute"))
+                  val computeObjs = x.filter(a => a.porusParams.runtimeType.isDefined && a.porusParams.runtimeType.get.equals(ElementType.Compute))
                   val computeParallelism = computeObjs.map(o => o.porusParams.parallelism.getOrElse(1)).max
                   Future.successful(computeObjs.length * computeParallelism)
                 }

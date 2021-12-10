@@ -7,7 +7,7 @@ class ActivationInfo:
     def __init__(self):
         self.actions = {}
         self.elements = {}
-    def parsePoint(self, pointName, pointData):
+    def parsePoint(self, pointData):
         datas = pointData.split(',')
         ts, cpu, mem = datas[:3]
         dp = { 'timestamp': int(ts),
@@ -19,11 +19,11 @@ class ActivationInfo:
             trans, rx, tx = networkData[i:i+3]
             network[trans] = (int(rx), int(tx))
         dp['network'] = network
-        return {pointName: dp}
+        return dp
     def submit(self, elementName, aid, points):
-        records = self.actions.setdefault(aid, [])
+        records = self.actions.setdefault(aid, {})
         for name, data in points.items():
-            records.append(self.parsePoint(name, data))
+            records[name] = self.parsePoint(data)
         element = self.elements.setdefault(elementName, [])
         element.append(aid)
     def queryAction(self, aid):
@@ -56,7 +56,7 @@ def queryAction(aid):
 @app.route("/element/<func>/<name>")
 def queryElement(func,name):
     element = f"{func}/{name}"
-    return { element: db.queryElement(element) }
+    return db.queryElement(element)
 
 @app.route("/store")
 def store():

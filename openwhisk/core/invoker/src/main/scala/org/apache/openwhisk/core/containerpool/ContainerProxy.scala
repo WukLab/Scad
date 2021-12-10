@@ -965,10 +965,9 @@ class ContainerProxy(factory: (TransactionId,
           // but potentially under-estimates actual deadline
           "deadline" -> (Instant.now.toEpochMilli + actionTimeout.toMillis).toString.toJson)
 
-        val serverUrl = "8081"
         // TODO: make this address configurable
-        val profileAddress = "http://172.17.0.1:8080/"
-        val envMix = LibdAPIs.Action.mix(env)(serverUrl, job.msg.activationId.toString, job.corunningConfig,
+        val profileAddress = "http://wuklab-01.ucsd.edu:8080/"
+        val envMix = LibdAPIs.Action.mix(env)(job.msg.activationId.toString, job.corunningConfig,
           job.msg.profile.flatMap {
             case true => Some(profileAddress)
             case false => None

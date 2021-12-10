@@ -186,8 +186,8 @@ class MemoryPoolClient(val proxy: ProxyNode, acker: MessagingActiveAck)(implicit
         val peerInfo = m.config.get("peerinfo").get
         open(Base64.getDecoder.decode(peerInfo), elementId, connId)
         // TODO: current logic is we do allocate extra QPs (for extra connections)
-        // TODO: stack later
-        allocConn(elementId)
+        // TODO: check this. should be fine without parallelism
+        // allocConn(elementId)
       case _: MemoryPoolEnd =>
         release(elementId)
     }
@@ -207,11 +207,13 @@ class MemoryPoolClient(val proxy: ProxyNode, acker: MessagingActiveAck)(implicit
   // Public APIs
   // initialization and Run
   def initRun(act: ActivationMessage, trans: String, size: Long, parallelism: Int)(implicit transid: TransactionId) = {
+    // TODO: check this!
+    val numConns = if (parallelism > 0) parallelism else 1
     // alloc
-    val elementId = alloc(act, trans, size, parallelism)
+    val elementId = alloc(act, trans, size, numConns)
     // post release hooks
     val releaseTrans = s"${trans}@release"
-    (0 until parallelism).map {connId =>
+    (0 until numConns).map {connId =>
       val address = ProxyAddress(aid = act.activationId, transport = releaseTrans, port = connId)
       postRecv(address, (elementId, connId))
     }
