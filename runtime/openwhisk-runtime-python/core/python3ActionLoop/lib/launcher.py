@@ -29,6 +29,7 @@ from disagg import LibdAction
 import threading, struct, os
 from multiprocessing import Pipe
 # for http requests
+import requests
 
 def debug(*args):
     print(*args, file=stderr)
@@ -64,8 +65,7 @@ def _act_msgs       (action, params, body = None):
 def _act_add        (action, params, body):
     runtime.create_action(params[0])
 def _trans_add      (action, params, body):
-    action.add_transport(**body)
-    _act_msgs(runtime, params)
+    action.add_transport(body['durl'])
 def _trans_config   (action, params, body):
     action.config_transport(params[1], body['durl'])
     debug('finish config', params, body)
@@ -103,11 +103,29 @@ class LibdRuntime:
         self.actions = {}
         self.action_funcs = {}
         self.stash_msgs = {}
-        self.server_url = os.getenv('__OW_INVOKER_API_URL', 'localhost')
+        self.server_url = os.getenv('__OW_INVOKER_API', 'localhost')
         self.cv = threading.Condition()
         self.fifo = fifoOut
-        # self.action_args = {"post_url":'http://172.17.0.1:2400'}
 
+    def invokeMem(self,template,trans,memSize):
+        aid = os.getenv('__OW_AID')
+        action = self.actions[aid]
+        conf = {'durl': f"{trans};rdma_uverbs_proxy;"}
+        self.action_funcs[aid]['TRANSADD'](action, [], conf)
+        names = os.getenv('__OW_ACTION_NAME').split('/')
+        names[-1] = template
+        data = {
+                "swap": {
+                    "actionName": '/'.join(names),
+                    "functionActivationId": os.getenv('__OW_FUNCTION_ACTIVATION_ID'),
+                    "appActivationId": os.getenv('__OW_APP_ACTIVATION_ID'),
+                    "mem": memSize
+                    }
+                }
+        postUrl = f"{self.server_url}/activation/{aid}/transport/{trans}"
+        debug('invoke Mem', trans, 'url', postUrl)
+        requests.post(postUrl, json=data)
+        debug('invoke Mem Sent')
     # runtime services
     def stash(self,aid,cmd,args):
         debug("stash request", aid, cmd, args)
@@ -167,6 +185,7 @@ class LibdRuntime:
         # TODO: call of dealloc is not garenteed, use ternimate?
         action.terminate()
         del self.actions[name]
+        del self.action_funcs[name]
 
 def handle_message(fifoIn, runtime):
     try:
@@ -236,6 +255,7 @@ while True:
       payload = args["value"]
     elif key == 'activation_id':
       aid = args['activation_id']
+      env['__OW_AID'] = aid
     elif key == 'transports':
       transports = args['transports']
     elif key in config_keys:

@@ -58,13 +58,11 @@ object LibdAPIs {
 
   object Action {
     def mix(env: Map[String, JsValue])
-                  (serverUrl: String,
-                   actionName: String,
+                  ( actionName: String,
                    transports: Option[Seq[String]],
                    profile: Option[String]
                   ): Map[String, JsValue] = {
       env ++ Map(
-        "server_url" -> JsString(serverUrl),
         "name"       -> JsString(actionName),
         "transports" -> transports.getOrElse(Seq.empty).toJson,
       ) ++ profile.map(s => Map("profile" -> JsString(s))).getOrElse(Map.empty)
