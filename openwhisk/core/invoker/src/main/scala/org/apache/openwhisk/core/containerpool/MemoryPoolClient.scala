@@ -245,7 +245,7 @@ class MemoryPoolEndPoint(socketFile : String, proxy: ProxyNode, acker: Messaging
 
   // Hardcode for now
   def initRun(r: Run)(implicit transid: TransactionId) =
-    client.initRun(r.msg, "memory", LibdAPIs.Action.getSize(r.action), r.msg.siblings.size)
+    client.initRun(r.msg, "memory", LibdAPIs.Action.getSize(r.msg, r.action), r.msg.siblings.size)
 
   def initRunTest(parallelism: Int)(implicit transid: TransactionId) = {
     val aid = ActivationId.generate()

@@ -31,6 +31,7 @@ import org.apache.openwhisk.core.database.DocumentFactory
 import java.util.concurrent.TimeUnit
 import org.apache.openwhisk.core.entity.ActivationResponse.{ERROR_FIELD, statusForCode}
 import org.apache.openwhisk.core.entity.types.EntityStore
+import org.apache.openwhisk.core.swap.SwapObject
 import org.apache.openwhisk.utils.JsHelpers
 import spray.json.DefaultJsonProtocol.{IntJsonFormat, jsonFormat}
 
@@ -98,7 +99,7 @@ case class ActivationMessage(override val transid: TransactionId,
                              sendResultToInvoker: Option[(InvokerInstanceId, ActivationId)] = None,
                              waitForContent: Option[Int] = None,
                              parallelismIdx: ParallelismInfo = ParallelismInfo(0, 1),
-                             swapFrom: Option[InvokerInstanceId] = None,
+                             swapFrom: Option[SwapObject] = None,
                              rerouteFromRack: Option[RackSchedInstanceId] = None,
                              profile: Option[Boolean] = None,
                             )

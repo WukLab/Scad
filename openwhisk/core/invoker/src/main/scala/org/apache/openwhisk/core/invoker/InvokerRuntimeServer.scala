@@ -140,7 +140,7 @@ class InvokerRuntimeServer(id: InvokerInstanceId,
       content = None,
       functionActivationId = Some(swap.functionActivationId),
       appActivationId = Some(swap.appActivationId),
-      swapFrom = Some(swap.source)
+      swapFrom = Some(swap),
     )
   }
 

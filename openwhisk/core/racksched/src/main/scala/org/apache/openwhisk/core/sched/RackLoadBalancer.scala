@@ -289,7 +289,7 @@ class RackSimpleBalancer(config: WhiskConfig,
           action.limits.resources.limits,
           homeInvoker,
           stepSize,
-          swappingInvoker = msg.swapFrom) flatMap { v =>
+          swappingInvoker = msg.swapFrom.map(_.source)) flatMap { v =>
         // Add additional condition that if we already have a re-route and it's our rack, that we attempt to
         // schedule it anyways and make the assumption the top balancer could not find another rack for it.
         if (v._2 && msg.rerouteFromRack.forall(f => f.toInt != rackschedInstance.toInt)) {
