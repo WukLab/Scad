@@ -54,10 +54,10 @@ runtimes_enable_concurrency: true
 limit_action_concurrency_max: 500
 
 use_rdma: "true"
-invoker_container_network_name: poros
-container_network: poros
+invoker_container_network_name: bridge
+container_network: bridge
 cli_tag: "latest"
 db_host: wuklab-02.ucsd.edu
-dependency_prewarm: "true"
+dependency_prewarm: 4
 container_pool_prewarm_expirationCheckInterval: 5 seconds
 containerProxy_timeouts_idleContainer: 20 seconds
