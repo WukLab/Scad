@@ -18,7 +18,7 @@ TARGETS    := libd.so
 LD       := gcc
 INCLUDES := -I./include $(shell pkg-config --cflags glib-2.0)
 LIBS     := -lnanomsg -lcurl -lpthread -libverbs -lrt $(shell pkg-config --libs glib-2.0)
-CFLAGS   := -fPIC -O2 -g -std=c11 -Wall $(INCLUDES) -DDEBUG
+CFLAGS   := -fPIC -O2 -g -std=c11 -Wall $(INCLUDES) # -DDEBUG
 LD_FLAGS := $(LD_FLAGS) $(if $(USE_RDMA),-fuse-ld=lld,)
 
 .PNONY: all install clean ext_python ext_npjoin ext_npjoin_install tests

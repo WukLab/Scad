@@ -128,7 +128,7 @@ static void inline query_memory_usage(char ** bufp, int procf) {
     sscanf(iobuf, "%lu %lu %lu %lu %lu %lu %lu",
         &vmsize, &resident, &share, &text, &lib, &data, &dirty);
 
-    uint64_t mem_usage = vmsize;
+    uint64_t mem_usage = resident;
 
     bytes = sprintf(*bufp, ",%lu", mem_usage);
     (*bufp) += bytes;

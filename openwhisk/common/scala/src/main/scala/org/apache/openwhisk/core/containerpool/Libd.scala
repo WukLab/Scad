@@ -87,13 +87,12 @@ object LibdAPIs {
             val size = action.limits.resources.limits.mem.toBytes
             Some(Seq(s"${name};${impl};url,tcp://*:${port};size,${size};"))
           case ElementType.Compute =>
-            val mergedMem: Long = action.porusParams.withMerged.filter(p => p.elem.equals(ElementType.Memory)).map(_.resources.mem.toBytes).sum
-            if (mergedMem > 0) {
-              // TODO: multiple merged mems?
-              Some(Seq(s"memory;rdma_local;url,RDMA_LOCAL;size,${action.limits.resources.limits.mem.toBytes + mergedMem};"))
-            } else {
-              None
-            }
+            Option(action.porusParams.withMerged
+                  .filter(p => p.elem.equals(ElementType.Memory))
+                  .map { elem =>
+                    val memBytes = elem.resources.mem.toBytes
+                    s"${elem.action.name};rdma_local;size,${memBytes};"
+                  }).filter(_.nonEmpty)
           case _        => None
         }
 
