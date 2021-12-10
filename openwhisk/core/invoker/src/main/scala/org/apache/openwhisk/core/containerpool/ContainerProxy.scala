@@ -329,7 +329,7 @@ class ContainerProxy(factory: (TransactionId,
       activeCount += 1
       // create a new container
       val name = job.msg.swapFrom match {
-        case Some(value) =>
+        case Some(_) =>
           // This is a swap container, change name to activation ID
           job.msg.activationId.toString
         case None =>

@@ -5,7 +5,7 @@ import org.apache.openwhisk.common.TransactionId
 import org.apache.openwhisk.core.entity.{ActivationId, ElementType, WhiskActionLike}
 import spray.json._
 import DefaultJsonProtocol._
-import org.apache.openwhisk.core.connector.RunningActivation
+import org.apache.openwhisk.core.connector.{ActivationMessage, RunningActivation}
 import org.apache.openwhisk.core.entity.ElementType.ElementType
 
 case class LibdMessagesReply(ok: Boolean, messages: Map[String, String])
@@ -68,8 +68,8 @@ object LibdAPIs {
       ) ++ profile.map(s => Map("profile" -> JsString(s))).getOrElse(Map.empty)
     }
 
-    def getSize(actionLike: WhiskActionLike) = {
-      actionLike.limits.resources.limits.mem.toBytes
+    def getSize(msg: ActivationMessage, actionLike: WhiskActionLike): Long = {
+      msg.swapFrom.map(_.mem.toBytes).getOrElse(actionLike.limits.resources.limits.mem.toBytes)
     }
   }
 

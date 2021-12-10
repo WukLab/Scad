@@ -94,7 +94,7 @@ trait SwapApi extends Directives with AuthorizedRouteProvider with Authenticated
       content = None,
       functionActivationId = Some(swap.functionActivationId),
       appActivationId = Some(swap.appActivationId),
-      swapFrom = Some(swap.source)
+      swapFrom = Some(swap)
     )
   }
 

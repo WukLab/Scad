@@ -248,7 +248,7 @@ class InvokerReactive(
   val sock: String = loadConfigOrThrow[String](ConfigKeys.invokerMemoryPoolSock)
   var memoryPool: Option[MemoryPoolEndPoint] = None
   if (poolConfig.useProxy) {
-    logging.info(this, s"[MPT] initing MP with file ${sock}")
+    logging.debug(this, s"[MPT] initing MP with file ${sock}")
     memoryPool = Some(new MemoryPoolEndPoint(sock, proxyNode, ack))
   }
 
@@ -304,7 +304,7 @@ class InvokerReactive(
           case Some(executable) =>
             // If is memory, dispatch the element to memory pool; else, launch container
             val run = Run(executable, msg)
-            val isMemory = action.porusParams.runtimeType.getOrElse(ElementType.Compute) == ElementType.Memory
+            val isMemory = (action.porusParams.runtimeType.getOrElse(ElementType.Compute) == ElementType.Memory) || msg.swapFrom.isDefined
             if (poolConfig.useProxy && isMemory)
               memoryPool.get.initRun(run)
             else
