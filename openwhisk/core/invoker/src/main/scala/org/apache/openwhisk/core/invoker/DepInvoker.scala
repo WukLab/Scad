@@ -221,7 +221,7 @@ object DepInvoker {
               prewarmOnly = ppc, waitForContent = None, sendResultToInvoker = None)
             publishToScheduler(newMsg, msgProducer, schedTopic)
               .onComplete({
-                case Failure(exception) => logging.warn(this, s"failed to publish prewarm msg of ${activationMessage.activationId} to ${schedTopic}: ${exception}")
+                case Failure(exception) => logging.warn(this, s"failed to publish prewarm msg of ${activationMessage.activationId} to ${schedTopic}: ${exception}")(transid)
                 case Success(value) =>
                   prewarmNextLevelDeps(newMsg, nextAction, entityStore, msgProducer, schedTopic, prewarmTimeout, prewarmDeadlineCache, depth - 1)(transid, logging, ec)
               })
