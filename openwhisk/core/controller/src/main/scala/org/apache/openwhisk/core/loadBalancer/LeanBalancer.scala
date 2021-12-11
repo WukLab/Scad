@@ -56,7 +56,7 @@ class LeanBalancer(config: WhiskConfig,
 
   val poolConfig: ContainerPoolConfig = loadConfigOrThrow[ContainerPoolConfig](ConfigKeys.containerPool)
 
-  val invokerName = InvokerInstanceId(0, None, None, poolConfig.resources)
+  val invokerName = InvokerInstanceId(0, None, None, poolConfig.invokerPoolResources)
 
   /** 1. Publish a message to the loadbalancer */
   override def publish(action: ExecutableWhiskActionMetaData, msg: ActivationMessage)(

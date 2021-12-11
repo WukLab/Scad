@@ -36,7 +36,8 @@ import org.apache.openwhisk.core.connector._
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size.SizeLong
 import org.apache.openwhisk.common.LoggingMarkers._
-import org.apache.openwhisk.core.containerpool.RuntimeResources
+import org.apache.openwhisk.core.containerpool.InvokerPoolResourceType.InvokerPoolResourceType
+import org.apache.openwhisk.core.containerpool.{InvokerPoolResourceType, InvokerPoolResources, RuntimeResources}
 import org.apache.openwhisk.core.loadBalancer.InvokerState.{Healthy, Offline, Unhealthy, Unresponsive}
 import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
 import org.apache.openwhisk.spi.SpiLoader
@@ -173,7 +174,7 @@ class ShardingContainerPoolBalancer(
       INVOKER_TOTALMEM_BLACKBOX,
       schedulingState.blackboxInvokers.foldLeft(0L) { (total, curr) =>
         if (curr.status.isUsable) {
-          curr.id.resources.mem.toMB + total
+          curr.id.resources.sum.mem.toMB + total
         } else {
           total
         }
@@ -182,7 +183,7 @@ class ShardingContainerPoolBalancer(
       INVOKER_TOTALMEM_MANAGED,
       schedulingState.managedInvokers.foldLeft(0L) { (total, curr) =>
         if (curr.status.isUsable) {
-          curr.id.resources.mem.toMB + total
+          curr.id.resources.sum.mem.toMB + total
         } else {
           total
         }
@@ -274,7 +275,9 @@ class ShardingContainerPoolBalancer(
         schedulingState.invokerSlots,
         action.limits.resources.limits,
         homeInvoker,
-        stepSize)
+        stepSize,
+        iprt = InvokerPoolResourceType.poolFor(action),
+      )
       invoker.foreach {
         case (_, true) =>
           val metric =
@@ -328,7 +331,7 @@ class ShardingContainerPoolBalancer(
   override protected def releaseInvoker(invoker: InvokerInstanceId, entry: ActivationEntry) = {
     schedulingState.invokerSlots
       .lift(invoker.toInt)
-      .foreach(_.releaseConcurrent(entry.fullyQualifiedEntityName, entry.maxConcurrent, entry.resourceLimit))
+      .foreach(_.releaseConcurrent(entry.fullyQualifiedEntityName, entry.maxConcurrent, entry.resourceLimit, entry.iprt))
   }
 }
 
@@ -401,18 +404,19 @@ object ShardingContainerPoolBalancer extends LoadBalancerProvider {
     maxConcurrent: Int,
     fqn: FullyQualifiedEntityName,
     invokers: IndexedSeq[InvokerHealth],
-    dispatched: IndexedSeq[ResourcePermits],
+    dispatched: IndexedSeq[PoolResourcePermits],
     slots: RuntimeResources,
     index: Int,
     step: Int,
     stepsDone: Int = 0,
+    iprt: InvokerPoolResourceType,
     swappingInvoker: Option[InvokerInstanceId] = None)(implicit logging: Logging, transId: TransactionId): Option[(InvokerInstanceId, Boolean)] = {
     val numInvokers = invokers.size
 
     if (numInvokers > 0) {
       val invoker = invokers(index)
       //test this invoker - if this action supports concurrency, use the scheduleConcurrent function
-      if (invoker.status.isUsable && dispatched(invoker.id.toInt).tryAcquireConcurrent(fqn, maxConcurrent, slots)
+      if (invoker.status.isUsable && dispatched(invoker.id.toInt).tryAcquireConcurrent(fqn, maxConcurrent, slots, iprt)
       && !swappingInvoker.contains(invoker.id)) {
         Some(invoker.id, false)
       } else {
@@ -422,7 +426,7 @@ object ShardingContainerPoolBalancer extends LoadBalancerProvider {
           if (healthyInvokers.nonEmpty) {
             // Choose a healthy invoker randomly
             val random = healthyInvokers(ThreadLocalRandom.current().nextInt(healthyInvokers.size)).id
-            dispatched(random.toInt).forceAcquireConcurrent(fqn, maxConcurrent, slots)
+            dispatched(random.toInt).forceAcquireConcurrent(fqn, maxConcurrent, slots, iprt)
             logging.warn(this, s"system is overloaded. Chose invoker${random.toInt} by random assignment.")
             Some(random, true)
           } else {
@@ -430,7 +434,7 @@ object ShardingContainerPoolBalancer extends LoadBalancerProvider {
           }
         } else {
           val newIndex = (index + step) % numInvokers
-          schedule(maxConcurrent, fqn, invokers, dispatched, slots, newIndex, step, stepsDone + 1)
+          schedule(maxConcurrent, fqn, invokers, dispatched, slots, newIndex, step, stepsDone + 1, iprt)
         }
       }
     } else {
@@ -438,6 +442,40 @@ object ShardingContainerPoolBalancer extends LoadBalancerProvider {
     }
   }
 }
+
+case class PoolResourcePermits(compute: ResourcePermits, memory: ResourcePermits, balanced: ResourcePermits) {
+  def forElem(e: InvokerPoolResourceType): ResourcePermits = {
+    e match {
+      case org.apache.openwhisk.core.containerpool.InvokerPoolResourceType.Compute => compute
+      case org.apache.openwhisk.core.containerpool.InvokerPoolResourceType.Memory => memory
+      case org.apache.openwhisk.core.containerpool.InvokerPoolResourceType.Balanced => balanced
+    }
+  }
+
+  def tryAcquireConcurrent(actionid: FullyQualifiedEntityName, maxConcurrent: Int, resources: RuntimeResources, rt: InvokerPoolResourceType): Boolean = {
+    this.forElem(rt).tryAcquireConcurrent(actionid, maxConcurrent, resources)
+  }
+
+  def forceAcquireConcurrent(actionid: FullyQualifiedEntityName, maxConcurrent: Int, resources: RuntimeResources, rt: InvokerPoolResourceType): Unit = {
+    this.forElem(rt).forceAcquireConcurrent(actionid, maxConcurrent, resources)
+  }
+
+  def releaseConcurrent(actionid: FullyQualifiedEntityName, maxConcurrent: Int, resources: RuntimeResources, rt: InvokerPoolResourceType): Unit = {
+    this.forElem(rt).releaseConcurrent(actionid, maxConcurrent, resources)
+  }
+
+}
+
+object PoolResourcePermits {
+  def apply(v: InvokerPoolResources): PoolResourcePermits = {
+    PoolResourcePermits(
+      ResourcePermits(v.computePool),
+      ResourcePermits(v.memPool),
+      ResourcePermits(v.balancedPool),
+    )
+  }
+}
+
 
 case class ResourcePermits(cpu: NestedSemaphore[FullyQualifiedEntityName], mem: NestedSemaphore[FullyQualifiedEntityName], storage: NestedSemaphore[FullyQualifiedEntityName]) {
   def tryAcquireConcurrent(actionid: FullyQualifiedEntityName, maxConcurrent: Int, resources: RuntimeResources): Boolean = {
@@ -497,8 +535,8 @@ case class ShardingContainerPoolBalancerState(
   private var _blackboxInvokers: IndexedSeq[InvokerHealth] = IndexedSeq.empty[InvokerHealth],
   private var _managedStepSizes: Seq[Int] = ShardingContainerPoolBalancer.pairwiseCoprimeNumbersUntil(0),
   private var _blackboxStepSizes: Seq[Int] = ShardingContainerPoolBalancer.pairwiseCoprimeNumbersUntil(0),
-  protected[loadBalancer] var _invokerSlots: IndexedSeq[ResourcePermits] =
-    IndexedSeq.empty[ResourcePermits],
+  protected[loadBalancer] var _invokerSlots: IndexedSeq[PoolResourcePermits] =
+    IndexedSeq.empty[PoolResourcePermits],
   private var _clusterSize: Int = 1)(
   lbConfig: ShardingContainerPoolBalancerConfig =
     loadConfigOrThrow[ShardingContainerPoolBalancerConfig](ConfigKeys.loadbalancer))(implicit logging: Logging) {
@@ -520,14 +558,22 @@ case class ShardingContainerPoolBalancerState(
   def blackboxInvokers: IndexedSeq[InvokerHealth] = _blackboxInvokers
   def managedStepSizes: Seq[Int] = _managedStepSizes
   def blackboxStepSizes: Seq[Int] = _blackboxStepSizes
-  def invokerSlots: IndexedSeq[ResourcePermits] = _invokerSlots
+  def invokerSlots: IndexedSeq[PoolResourcePermits] = _invokerSlots
   def clusterSize: Int = _clusterSize
 
   /**
    * @param memory
    * @return calculated invoker slot
    */
-  private def getInvokerSlot(resources: RuntimeResources): RuntimeResources = {
+  private def getInvokerSlot(resources: InvokerPoolResources): InvokerPoolResources = {
+    InvokerPoolResources(
+      shardResourceSize(resources.computePool),
+      shardResourceSize(resources.memPool),
+      shardResourceSize(resources.balancedPool),
+    )
+  }
+
+  def shardResourceSize(resources: RuntimeResources): RuntimeResources = {
     val invokerShardResourceSize = resources / _clusterSize
     val newThreshold = if (invokerShardResourceSize < ResourceLimit.MIN_RESOURCES) {
       logging.error(
@@ -575,11 +621,11 @@ case class ShardingContainerPoolBalancerState(
         // Keeps the existing state..
         val onlyNewInvokers = _invokers.drop(_invokerSlots.length)
         _invokerSlots = _invokerSlots ++ onlyNewInvokers.map { invoker =>
-          ResourcePermits(getInvokerSlot(invoker.id.resources))
+          PoolResourcePermits(getInvokerSlot(invoker.id.resources))
         }
         val newInvokerDetails = onlyNewInvokers
           .map(i =>
-            s"${i.id.toString}: ${i.status} / ${getInvokerSlot(i.id.resources).mem.toMB.MB} of ${i.id.resources.mem.toMB.MB}")
+            s"${i.id.toString}: ${i.status} / ${getInvokerSlot(i.id.resources).sum.mem.toMB.MB} of ${i.id.resources.sum.mem.toMB.MB}")
           .mkString(", ")
         s"number of known invokers increased: new = $newSize, old = $oldSize. details: $newInvokerDetails."
       } else {
@@ -609,12 +655,12 @@ case class ShardingContainerPoolBalancerState(
       val oldSize = _clusterSize
       _clusterSize = actualSize
       _invokerSlots = _invokers.map { invoker =>
-        ResourcePermits(getInvokerSlot(invoker.id.resources))
+        PoolResourcePermits(getInvokerSlot(invoker.id.resources))
       }
       // Directly after startup, no invokers have registered yet. This needs to be handled gracefully.
       val invokerCount = _invokers.size
       val totalInvokerMemory =
-        _invokers.foldLeft(0L)((total, invoker) => total + getInvokerSlot(invoker.id.resources).mem.toMB).MB
+        _invokers.foldLeft(0L)((total, invoker) => total + getInvokerSlot(invoker.id.resources).sum.mem.toMB).MB
       val averageInvokerMemory =
         if (totalInvokerMemory.toMB > 0 && invokerCount > 0) {
           (totalInvokerMemory / invokerCount).toMB.MB
@@ -670,5 +716,6 @@ case class ActivationEntry(id: ActivationId,
                            maxConcurrent: Int,
                            fullyQualifiedEntityName: FullyQualifiedEntityName,
                            timeoutHandler: Cancellable,
+                           iprt: InvokerPoolResourceType,
                            isBlackbox: Boolean,
                            isBlocking: Boolean)

@@ -61,7 +61,7 @@ import org.apache.openwhisk.core.loadBalancer.InvokerState
 import org.apache.openwhisk.core.loadBalancer.InvokerHealth
 import org.apache.openwhisk.utils.retry
 import org.apache.openwhisk.core.connector.test.TestConnector
-import org.apache.openwhisk.core.containerpool.RuntimeResources
+import org.apache.openwhisk.core.containerpool.{InvokerPoolResources, RuntimeResources}
 import org.apache.openwhisk.core.entity.ControllerInstanceId
 
 @RunWith(classOf[JUnitRunner])
@@ -75,7 +75,8 @@ class InvokerSupervisionTests
     with StreamLogging {
 
   val config = new WhiskConfig(ExecManifest.requiredProperties)
-  val defaultUserMemory: RuntimeResources = RuntimeResources(0, 1024.MB, 0.B)
+  val defaultUserRtMemory: RuntimeResources = RuntimeResources(0, 1024.MB, 0.B)
+  val defaultUserMemory: InvokerPoolResources = InvokerPoolResources(defaultUserRtMemory, defaultUserRtMemory, defaultUserRtMemory)
 
   ExecManifest.initialize(config)
 

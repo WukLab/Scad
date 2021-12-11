@@ -149,7 +149,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
         }
         val createdContainer =
           // Is there enough space on the invoker for this action to be executed.
-          if (hasPoolSpaceFor(busyPool, r.action.limits.resources.limits)) {
+          if (hasPoolSpaceFor(busyPool, r.action)) {
             // Schedule a job to a warm container
             ContainerPool
               .schedule(r.action, r.msg.user.namespace.name, freePool)
@@ -158,7 +158,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                 // There was no warm/warming/warmingCold container. Try to take a prewarm container or a cold container.
 
                 // Is there enough space to create a new container or do other containers have to be removed?
-                if (hasPoolSpaceFor(busyPool ++ freePool, r.action.limits.resources.limits)) {
+                if (hasPoolSpaceFor(busyPool ++ freePool, r.action)) {
                   takePrewarmContainer(r.action)
                     .map(container => (container, "prewarmed"))
                     .orElse {
@@ -316,7 +316,9 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                 s"Rescheduling Run message, too many message in the pool, " +
                   s"freePoolSize: ${freePool.size} containers and resources: ${resourceConsumptionOf(freePool)}, " +
                   s"busyPoolSize: ${busyPool.size} containers and resources: ${resourceConsumptionOf(busyPool)}, " +
-                  s"maxContainersResources ${poolConfig.resources}, " +
+                  s"maxComputeContainersResources ${poolConfig.invokerPoolResources.computePool}, " +
+                  s"maxMemContainersResources ${poolConfig.invokerPoolResources.memPool}, " +
+                  s"maxBalancedContainersResources ${poolConfig.invokerPoolResources.balancedPool}, " +
                   s"userNamespace: ${r.msg.user.namespace.name}, action: ${r.action}, " +
                   s"needed resources: ${r.action.limits.resources.limits}, " +
                   s"waiting messages: ${runBuffer.size}")(r.msg.transid)
@@ -567,9 +569,9 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
    * @param pool The pool, that has to be checked, if there is enough free memory.
    * @return true, if there is enough space for the given amount of memory.
    */
-  def hasPoolSpaceFor[A](pool: Map[A, ContainerData], resources: RuntimeResources): Boolean = {
-    val usedResources: RuntimeResources = resourceConsumptionOf(pool) + resources
-    !usedResources.exceedsAnyOf(poolConfig.resources)
+  def hasPoolSpaceFor[A](pool: Map[A, ContainerData], action: ExecutableWhiskAction): Boolean = {
+    val usedResources: RuntimeResources = resourceConsumptionOf(pool) + action.limits.resources.limits
+    !usedResources.exceedsAnyOf(InvokerPoolResourceType.poolFor(action).ofResources(poolConfig.invokerPoolResources))
   }
 
   /**

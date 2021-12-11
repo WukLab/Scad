@@ -17,7 +17,7 @@
 
 package org.apache.openwhisk.core.entity.test
 
-import org.apache.openwhisk.core.containerpool.RuntimeResources
+import org.apache.openwhisk.core.containerpool.{InvokerPoolResources, RuntimeResources}
 import org.apache.openwhisk.core.entity.size.SizeInt
 import org.apache.openwhisk.core.entity.{InstanceId, InvokerInstanceId}
 import org.junit.runner.RunWith
@@ -32,7 +32,8 @@ class InvokerInstanceIdTests extends FlatSpec with Matchers {
 
   behavior of "InvokerInstanceIdTests"
 
-  val defaultUserMemory: RuntimeResources = RuntimeResources(0, 1024.MB, 0.B)
+  val defaultUserRtMemory: RuntimeResources = RuntimeResources(0, 1024.MB, 0.B)
+  val defaultUserMemory: InvokerPoolResources = InvokerPoolResources(defaultUserRtMemory, defaultUserRtMemory, defaultUserRtMemory)
   it should "serialize and deserialize InvokerInstanceId" in {
     val i = InvokerInstanceId(0, resources = defaultUserMemory)
     i.serialize shouldBe JsObject(

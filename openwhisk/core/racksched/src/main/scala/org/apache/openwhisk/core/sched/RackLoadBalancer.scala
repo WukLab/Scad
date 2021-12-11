@@ -28,7 +28,7 @@ import org.apache.openwhisk.core.WhiskConfig
 import org.apache.openwhisk.core.WhiskConfig.kafkaHosts
 import org.apache.openwhisk.core.WhiskConfig.wskApiHost
 import org.apache.openwhisk.core.connector.{AcknowledegmentMessage, ActivationMessage, MessageFeed, MessageProducer, MessagingProvider}
-import org.apache.openwhisk.core.containerpool.{ContainerPoolConfig, RuntimeResources}
+import org.apache.openwhisk.core.containerpool.{InvokerPoolResourceType, RuntimeResources}
 import org.apache.openwhisk.core.entity.{ActivationEntityLimit, ActivationId, ExecManifest, ExecutableWhiskActionMetaData, InstanceId, InvokerInstanceId, RackSchedInstanceId, TimeLimit, UUID, WhiskActionMetaData, WhiskActivation, WhiskEntityStore}
 import org.apache.openwhisk.core.loadBalancer.{ActivationEntry, FeedFactory, InvocationFinishedMessage, InvocationFinishedResult, InvokerHealth, ShardingContainerPoolBalancerConfig}
 import org.apache.openwhisk.spi.Spi
@@ -36,7 +36,6 @@ import org.apache.openwhisk.spi.SpiLoader
 import pureconfig.loadConfigOrThrow
 import pureconfig._
 import pureconfig.generic.auto._
-import org.apache.openwhisk.core.entity.size._
 import org.apache.openwhisk.core.entity.types.EntityStore
 import org.apache.openwhisk.core.invoker.SchedulingDecision
 import org.apache.openwhisk.core.loadBalancer.ClusterConfig
@@ -181,8 +180,6 @@ class RackSimpleBalancer(config: WhiskConfig,
   val lbConfig: ShardingContainerPoolBalancerConfig =
     loadConfigOrThrow[ShardingContainerPoolBalancerConfig](ConfigKeys.loadbalancer)
 
-  val poolConfig: ContainerPoolConfig = loadConfigOrThrow[ContainerPoolConfig](ConfigKeys.containerPool)
-
   /** Loadbalancer interface methods */
   def invokerHealth(): Future[IndexedSeq[InvokerHealth]] = Future.successful(IndexedSeq.empty[InvokerHealth])
   override def clusterSize: Int = 1
@@ -287,9 +284,10 @@ class RackSimpleBalancer(config: WhiskConfig,
           invokersToUse,
           schedulingState.invokerSlots,
           action.limits.resources.limits,
-          homeInvoker,
-          stepSize,
-          swappingInvoker = msg.swapFrom.map(_.source)) flatMap { v =>
+        homeInvoker,
+        stepSize,
+        iprt = InvokerPoolResourceType.poolFor(action),
+        swappingInvoker = msg.swapFrom.map(_.source)) flatMap { v =>
         // Add additional condition that if we already have a re-route and it's our rack, that we attempt to
         // schedule it anyways and make the assumption the top balancer could not find another rack for it.
         if (v._2 && msg.rerouteFromRack.forall(f => f.toInt != rackschedInstance.toInt)) {
@@ -472,6 +470,7 @@ class RackSimpleBalancer(config: WhiskConfig,
           action.limits.concurrency.maxConcurrent,
           action.fullyQualifiedName(true),
           timeoutHandler,
+          InvokerPoolResourceType.poolFor(action),
           isBlackboxInvocation,
           msg.blocking)
       })
@@ -689,7 +688,7 @@ class RackSimpleBalancer(config: WhiskConfig,
     // Currently do nothing
     schedulingState.invokerSlots
       .lift(invoker.toInt)
-      .foreach(_.releaseConcurrent(entry.fullyQualifiedEntityName, entry.maxConcurrent, entry.resourceLimit))
+      .foreach(_.releaseConcurrent(entry.fullyQualifiedEntityName, entry.maxConcurrent, entry.resourceLimit, entry.iprt))
   }
 
   /** Gets the number of in-flight activations for a specific user. */

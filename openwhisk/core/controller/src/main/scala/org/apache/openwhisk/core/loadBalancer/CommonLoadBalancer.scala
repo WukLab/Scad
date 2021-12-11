@@ -30,7 +30,7 @@ import pureconfig.generic.auto._
 import org.apache.openwhisk.common.LoggingMarkers._
 import org.apache.openwhisk.common._
 import org.apache.openwhisk.core.connector._
-import org.apache.openwhisk.core.containerpool.RuntimeResources
+import org.apache.openwhisk.core.containerpool.{InvokerPoolResourceType, RuntimeResources}
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
 
@@ -162,6 +162,7 @@ abstract class CommonLoadBalancer(config: WhiskConfig,
           action.limits.concurrency.maxConcurrent,
           action.fullyQualifiedName(true),
           timeoutHandler,
+          InvokerPoolResourceType.poolFor(action),
           isBlackboxInvocation,
           msg.blocking)
       })

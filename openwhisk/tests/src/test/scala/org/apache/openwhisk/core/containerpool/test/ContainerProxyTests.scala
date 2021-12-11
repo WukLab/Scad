@@ -68,7 +68,8 @@ class ContainerProxyTests
   val timeout = 5.seconds
   val pauseGrace = timeout + 1.minute
   val log = logging
-  val defaultUserResources: RuntimeResources = RuntimeResources(16.0, 1024.MB, 128.MB)
+  val defaultUserRtResources: RuntimeResources = RuntimeResources(16.0, 1024.MB, 128.MB)
+  val defaultUserResources: InvokerPoolResources = InvokerPoolResources(defaultUserRtResources, defaultUserRtResources, defaultUserRtResources)
 
   // Common entities to pass to the tests. We don't really care what's inside
   // those for the behavior testing here, as none of the contents will really
@@ -273,7 +274,8 @@ class ContainerProxyTests
     (transid: TransactionId, activation: WhiskActivation, isBlockingActivation: Boolean, context: UserContext) =>
       Future.successful(())
   }
-  val poolConfig = ContainerPoolConfig(RuntimeResources(128, 4096.MB, 4096.MB), 0.5, false, 1.minute, None, 100)
+  def defRs = RuntimeResources(128, 4096.MB, 4096.MB)
+  val poolConfig = ContainerPoolConfig(InvokerPoolResources(defRs, defRs, defRs), 0.5, false, 1.minute, None, 100)
   def healthchecksConfig(enabled: Boolean = false) = ContainerProxyHealthCheckConfig(enabled, 100.milliseconds, 2)
   val filterEnvVar = (k: String) => Character.isUpperCase(k.charAt(0))
 
