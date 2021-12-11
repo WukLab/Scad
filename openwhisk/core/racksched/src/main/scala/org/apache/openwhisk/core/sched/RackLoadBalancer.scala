@@ -28,7 +28,7 @@ import org.apache.openwhisk.core.WhiskConfig
 import org.apache.openwhisk.core.WhiskConfig.kafkaHosts
 import org.apache.openwhisk.core.WhiskConfig.wskApiHost
 import org.apache.openwhisk.core.connector.{AcknowledegmentMessage, ActivationMessage, MessageFeed, MessageProducer, MessagingProvider, PingRackMessage}
-import org.apache.openwhisk.core.containerpool.{InvokerPoolResourceType, RuntimeResources}
+import org.apache.openwhisk.core.containerpool.{InvokerPoolResourceType, InvokerPoolResources, RuntimeResources}
 import org.apache.openwhisk.core.entity.{ActivationEntityLimit, ActivationId, ExecManifest, ExecutableWhiskActionMetaData, InstanceId, InvokerInstanceId, RackSchedInstanceId, TimeLimit, UUID, WhiskActionMetaData, WhiskActivation, WhiskEntityStore}
 import org.apache.openwhisk.core.loadBalancer.{ActivationEntry, FeedFactory, InvocationFinishedMessage, InvocationFinishedResult, InvokerHealth, ShardingContainerPoolBalancerConfig}
 import org.apache.openwhisk.spi.Spi
@@ -189,7 +189,7 @@ class RackSimpleBalancer(config: WhiskConfig,
 
   val healthProducer = messagingProvider.getProducer(config)
   Scheduler.scheduleWaitAtMost(1.seconds)(() => {
-    val pools = schedulingState.invokerSlots.map(_.toInvokerPoolResources).reduce(_ + _)
+    val pools = schedulingState.invokerSlots.map(_.toInvokerPoolResources).foldLeft(InvokerPoolResources.none)(_ + _)
     healthProducer.send("rackHealth", PingRackMessage(rackschedInstance, pools))
   })
 

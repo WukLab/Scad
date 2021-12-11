@@ -322,7 +322,10 @@ case class PingRackMessage(instance: RackSchedInstanceId, invokerPoolResources: 
 
 object PingRackMessage extends DefaultJsonProtocol {
   def parse(msg: String) = Try(serdes.read(msg.parseJson))
-  implicit val serdes = jsonFormat2(PingRackMessage.apply)
+  implicit val serdes: RootJsonFormat[PingRackMessage] = jsonFormat(
+    PingRackMessage.apply,
+  "instance",
+  "invokerPoolResources")
 }
 
 trait EventMessageBody extends Message {
