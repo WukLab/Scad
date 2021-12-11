@@ -452,6 +452,14 @@ case class PoolResourcePermits(compute: ResourcePermits, memory: ResourcePermits
     }
   }
 
+  def toInvokerPoolResources: InvokerPoolResources = {
+    InvokerPoolResources(
+      compute.toResources,
+      memory.toResources,
+      balanced.toResources,
+    )
+  }
+
   def tryAcquireConcurrent(actionid: FullyQualifiedEntityName, maxConcurrent: Int, resources: RuntimeResources, rt: InvokerPoolResourceType): Boolean = {
     this.forElem(rt).tryAcquireConcurrent(actionid, maxConcurrent, resources)
   }
@@ -504,6 +512,14 @@ case class ResourcePermits(cpu: NestedSemaphore[FullyQualifiedEntityName], mem: 
     cpu.releaseConcurrent(actionid, maxConcurrent, resources.cpu.toInt)
     mem.releaseConcurrent(actionid, maxConcurrent, resources.mem.toMB.toInt)
     storage.releaseConcurrent(actionid, maxConcurrent, resources.storage.toMB.toInt)
+  }
+
+  def toResources: RuntimeResources = {
+    RuntimeResources(
+      cpu.availablePermits.toDouble,
+      mem.availablePermits.MB,
+      storage.availablePermits.MB,
+    )
   }
 }
 

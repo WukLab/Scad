@@ -92,7 +92,7 @@ object InvokerInstanceId extends DefaultJsonProtocol {
       val instance = fromField[Int](json, "instance")
       val uniqueName = fromField[Option[String]](json, "uniqueName")
       val displayedName = fromField[Option[String]](json, "displayedName")
-      val resources = InvokerPoolResources.serdes.read(json.asJsObject.fields(" "))
+      val resources = InvokerPoolResources.serdes.read(json.asJsObject.fields("resources"))
       val instanceType = fromField[String](json, "instanceType")
 
       if (instanceType == "invoker") {

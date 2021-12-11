@@ -25,7 +25,7 @@ import org.apache.openwhisk.core.entity._
 import scala.concurrent.duration._
 import akka.http.scaladsl.model.StatusCodes._
 import org.apache.openwhisk.core.connector.RunningActivation.serdes
-import org.apache.openwhisk.core.containerpool.RuntimeResources
+import org.apache.openwhisk.core.containerpool.{InvokerPoolResources, RuntimeResources}
 import org.apache.openwhisk.core.database.DocumentFactory
 
 import java.util.concurrent.TimeUnit
@@ -316,13 +316,13 @@ object PingMessage extends DefaultJsonProtocol {
   implicit val serdes = jsonFormat(PingMessage.apply _, "name")
 }
 
-case class PingRackMessage(instance: RackSchedInstanceId) extends Message {
+case class PingRackMessage(instance: RackSchedInstanceId, invokerPoolResources: InvokerPoolResources) extends Message {
   override def serialize = PingRackMessage.serdes.write(this).compactPrint
 }
 
 object PingRackMessage extends DefaultJsonProtocol {
   def parse(msg: String) = Try(serdes.read(msg.parseJson))
-  implicit val serdes = jsonFormat(PingRackMessage.apply _, "name")
+  implicit val serdes = jsonFormat2(PingRackMessage.apply)
 }
 
 trait EventMessageBody extends Message {

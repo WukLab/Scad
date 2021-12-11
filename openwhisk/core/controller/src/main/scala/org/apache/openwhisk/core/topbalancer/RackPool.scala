@@ -20,6 +20,7 @@ import org.apache.openwhisk.core.connector.MessageFeed
 import org.apache.openwhisk.core.connector.MessageProducer
 import org.apache.openwhisk.core.connector.MessagingProvider
 import org.apache.openwhisk.core.connector.PingRackMessage
+import org.apache.openwhisk.core.containerpool.InvokerPoolResources
 import org.apache.openwhisk.core.database.NoDocumentException
 import org.apache.openwhisk.core.entity.{ActionLimits, BasicAuthenticationAuthKey, CodeExecAsString, ControllerInstanceId, DocRevision, EntityName, ExecManifest, Identity, Namespace, PorusParams, RackSchedInstanceId, ResourceLimit, Secret, Subject, TopSchedInstanceId, UUID, WhiskAction}
 import org.apache.openwhisk.core.entity.ActivationId.ActivationIdGenerator
@@ -30,6 +31,7 @@ import org.apache.openwhisk.core.loadBalancer.InvocationFinishedResult
 import org.apache.openwhisk.core.loadBalancer.InvokerInfo
 import org.apache.openwhisk.core.loadBalancer.RackActivationRequest
 import org.apache.openwhisk.core.loadBalancer.Tick
+import org.apache.openwhisk.core.topbalancer.RackPool.LogResources
 import org.apache.openwhisk.core.topbalancer.RackState.Healthy
 import org.apache.openwhisk.core.topbalancer.RackState.Offline
 import org.apache.openwhisk.core.topbalancer.RackState.Unhealthy
@@ -82,11 +84,13 @@ class RackPool(childFactory: (ActorRefFactory, RackSchedInstanceId) => ActorRef,
   var instanceToRef = immutable.Map.empty[Int, ActorRef]
   var refToInstance = immutable.Map.empty[ActorRef, RackSchedInstanceId]
   var status = IndexedSeq[RackHealth]()
+  var resources = IndexedSeq[InvokerPoolResources]()
 
   def receive: Receive = {
     case p: PingRackMessage =>
       val rack = instanceToRef.getOrElse(p.instance.toInt, registerRack(p.instance))
       instanceToRef = instanceToRef.updated(p.instance.toInt, rack)
+      resources = resources.updated(p.instance.toInt, p.invokerPoolResources)
 
       // For the case when the rack scheduler was restarted and got a new displayed name
       val oldHealth = status(p.instance.toInt)
@@ -99,6 +103,8 @@ class RackPool(childFactory: (ActorRefFactory, RackSchedInstanceId) => ActorRef,
 
     case GetStatus => sender() ! status
 
+    case LogResources => logging.warn(this, s"rack resources: ${resources.foldLeft(InvokerPoolResources.none)(_ + _)}")
+
     case msg: InvocationFinishedMessage =>
       // Forward message to rack, if RackActor exists
       instanceToRef.get(msg.invokerInstance.toInt).foreach(_.forward(msg))
@@ -106,12 +112,19 @@ class RackPool(childFactory: (ActorRefFactory, RackSchedInstanceId) => ActorRef,
     case CurrentState(rack, currentState: RackState) =>
       refToInstance.get(rack).foreach { instance =>
         status = status.updated(instance.toInt, new RackHealth(instance, currentState))
+        if (!currentState.isUsable) {
+          resources = resources.updated(instance.toInt, InvokerPoolResources.none)
+        }
       }
+
       logStatus()
 
     case Transition(rack, oldState: RackState, newState: RackState) =>
       refToInstance.get(rack).foreach { instance =>
         status = status.updated(instance.toInt, new RackHealth(instance, newState))
+        if (!newState.isUsable) {
+          resources = resources.updated(instance.toInt, InvokerPoolResources.none)
+        }
       }
       logStatus()
 
@@ -165,6 +178,9 @@ class RackPool(childFactory: (ActorRefFactory, RackSchedInstanceId) => ActorRef,
       instanceId.toInt + 1,
       i => new RackHealth(new RackSchedInstanceId(i, resources = instanceId.resources), Offline))
     status = status.updated(instanceId.toInt, new RackHealth(instanceId, Offline))
+    resources = padToIndexed(resources, instanceId.toInt + 1, i => InvokerPoolResources.none)
+    resources = resources.updated(instanceId.toInt, InvokerPoolResources.none)
+
 
     val ref = childFactory(context, instanceId)
     ref ! SubscribeTransitionCallBack(self) // register for state change events
@@ -195,6 +211,8 @@ object RackPool {
         case Failure(e) => logging.error(this, s"error creating test action for rack health: $e")
       }
   }
+
+  object LogResources
 
   /**
    * Prepares everything for the health protocol to work (i.e. creates a testaction)

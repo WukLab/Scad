@@ -91,6 +91,13 @@ case class InvokerPoolResources(computePool: RuntimeResources, memPool: RuntimeR
   def sum: RuntimeResources = {
     computePool + memPool + balancedPool
   }
+  def +(other: InvokerPoolResources): InvokerPoolResources = {
+    InvokerPoolResources(
+      computePool + other.computePool,
+      memPool + other.memPool,
+      balancedPool + other.balancedPool,
+    )
+  }
 }
 
 object InvokerPoolResources extends DefaultJsonProtocol {

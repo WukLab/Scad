@@ -19,10 +19,7 @@ import akka.management.cluster.bootstrap.ClusterBootstrap
 import akka.management.scaladsl.AkkaManagement
 import akka.stream.ActorMaterializer
 import org.apache.kafka.clients.producer.RecordMetadata
-import org.apache.openwhisk.common.Logging
-import org.apache.openwhisk.common.LoggingMarkers
-import org.apache.openwhisk.common.MetricEmitter
-import org.apache.openwhisk.common.TransactionId
+import org.apache.openwhisk.common.{Logging, LoggingMarkers, MetricEmitter, Scheduler, TransactionId}
 import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.WhiskConfig
 import org.apache.openwhisk.core.WhiskConfig.kafkaHosts
@@ -36,6 +33,7 @@ import org.apache.openwhisk.core.loadBalancer.LoadBalancerException
 import org.apache.openwhisk.core.loadBalancer.ShardingContainerPoolBalancer
 import org.apache.openwhisk.core.scheduler.FinishActivation
 import org.apache.openwhisk.core.swap.SwapObject
+import org.apache.openwhisk.core.topbalancer.RackPool.LogResources
 import org.apache.openwhisk.spi.SpiLoader
 import pureconfig.loadConfigOrThrow
 import pureconfig._
@@ -140,8 +138,14 @@ class DefaultTopBalancer(config: WhiskConfig,
     sendActivationToRack,
     Some(monitor))
 
+  Scheduler.scheduleWaitAtLeast(3.seconds)(() => {
+    Future.successful(rackPool ! LogResources)
+  })
+
   implicit val entityStore: EntityStore = WhiskEntityStore.datastore()
   implicit val authStore: AuthStore = WhiskAuthStore.datastore()
+
+
 
   protected[DefaultTopBalancer] def processSchedulingMessage(bytes: Array[Byte]): Future[Unit] = Future {
     val raw = new String(bytes, StandardCharsets.UTF_8)
