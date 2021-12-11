@@ -22,12 +22,12 @@ import akka.management.scaladsl.AkkaManagement
 import akka.stream.ActorMaterializer
 import org.apache.kafka.clients.producer.RecordMetadata
 import org.apache.openwhisk.common.LoggingMarkers.{ForcedAfterRegularCompletionAck, ForcedCompletionAck, HealthcheckCompletionAck, RegularAfterForcedCompletionAck, RegularCompletionAck}
-import org.apache.openwhisk.common.{LogMarkerToken, Logging, LoggingMarkers, MetricEmitter, TransactionId}
+import org.apache.openwhisk.common.{LogMarkerToken, Logging, LoggingMarkers, MetricEmitter, Scheduler, TransactionId}
 import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.WhiskConfig
 import org.apache.openwhisk.core.WhiskConfig.kafkaHosts
 import org.apache.openwhisk.core.WhiskConfig.wskApiHost
-import org.apache.openwhisk.core.connector.{AcknowledegmentMessage, ActivationMessage, MessageFeed, MessageProducer, MessagingProvider}
+import org.apache.openwhisk.core.connector.{AcknowledegmentMessage, ActivationMessage, MessageFeed, MessageProducer, MessagingProvider, PingRackMessage}
 import org.apache.openwhisk.core.containerpool.{InvokerPoolResourceType, RuntimeResources}
 import org.apache.openwhisk.core.entity.{ActivationEntityLimit, ActivationId, ExecManifest, ExecutableWhiskActionMetaData, InstanceId, InvokerInstanceId, RackSchedInstanceId, TimeLimit, UUID, WhiskActionMetaData, WhiskActivation, WhiskEntityStore}
 import org.apache.openwhisk.core.loadBalancer.{ActivationEntry, FeedFactory, InvocationFinishedMessage, InvocationFinishedResult, InvokerHealth, ShardingContainerPoolBalancerConfig}
@@ -180,11 +180,19 @@ class RackSimpleBalancer(config: WhiskConfig,
   val lbConfig: ShardingContainerPoolBalancerConfig =
     loadConfigOrThrow[ShardingContainerPoolBalancerConfig](ConfigKeys.loadbalancer)
 
+
   /** Loadbalancer interface methods */
   def invokerHealth(): Future[IndexedSeq[InvokerHealth]] = Future.successful(IndexedSeq.empty[InvokerHealth])
   override def clusterSize: Int = 1
 
   val schedulingState: ShardingContainerPoolBalancerState = ShardingContainerPoolBalancerState()(lbConfig)
+
+  val healthProducer = messagingProvider.getProducer(config)
+  Scheduler.scheduleWaitAtMost(1.seconds)(() => {
+    val pools = schedulingState.invokerSlots.map(_.toInvokerPoolResources).reduce(_ + _)
+    healthProducer.send("rackHealth", PingRackMessage(rackschedInstance, pools))
+  })
+
 
   /**
    * Monitors invoker supervision and the cluster to update the state sequentially
