@@ -23,7 +23,7 @@ import org.scalatest.junit.JUnitRunner
 import spray.json._
 import org.apache.openwhisk.common.{TransactionId, WhiskInstants}
 import org.apache.openwhisk.core.connector.{AcknowledegmentMessage, CombinedCompletionAndResultMessage, CompletionMessage, ResultMessage}
-import org.apache.openwhisk.core.containerpool.RuntimeResources
+import org.apache.openwhisk.core.containerpool.{InvokerPoolResources, RuntimeResources}
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size.SizeInt
 
@@ -38,7 +38,8 @@ class AcknowledgementMessageTests extends FlatSpec with Matchers with WhiskInsta
 
   behavior of "acknowledgement message"
 
-  val defaultResources: RuntimeResources = RuntimeResources(1.0, 1024.MB, 512.MB)
+  val defaultRtResources: RuntimeResources = RuntimeResources(1.0, 1024.MB, 512.MB)
+  val defaultResources: InvokerPoolResources = InvokerPoolResources(defaultRtResources, defaultRtResources, defaultRtResources)
   val activation = WhiskActivation(
     namespace = EntityPath("ns"),
     name = EntityName("a"),

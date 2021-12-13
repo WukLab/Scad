@@ -49,9 +49,7 @@ import scala.concurrent.duration._
 import org.apache.openwhisk.common.TransactionId
 import org.apache.openwhisk.core.WhiskConfig
 import org.apache.openwhisk.core.WhiskConfig._
-import org.apache.openwhisk.core.containerpool.ContainerArgsConfig
-import org.apache.openwhisk.core.containerpool.ContainerPoolConfig
-import org.apache.openwhisk.core.containerpool.RuntimeResources
+import org.apache.openwhisk.core.containerpool.{ContainerArgsConfig, ContainerPoolConfig, InvokerPoolResources, RuntimeResources}
 import org.apache.openwhisk.core.containerpool.logging.DockerToActivationLogStore
 import org.apache.openwhisk.core.entity.ExecManifest.ImageName
 import org.apache.openwhisk.core.entity.size._
@@ -85,7 +83,8 @@ class MesosContainerFactoryTest
   }
 
   // 80 slots, each 265MB
-  val poolConfig = ContainerPoolConfig(RuntimeResources(128, 21200.MB, 4096.MB), 0.5, false, 1.minute, None, 100)
+  val rtr = RuntimeResources(128, 21200.MB, 4096.MB)
+  val poolConfig = ContainerPoolConfig(InvokerPoolResources(rtr, rtr, rtr), 0.5, false, 1.minute, None, 100)
   val actionMemory = RuntimeResources(1, 265.MB, 512.MB)
   val mesosCpus = poolConfig.cpuShare(actionMemory) / 1024.0
 

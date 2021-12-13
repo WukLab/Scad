@@ -30,8 +30,8 @@ class DepInvoker(invokerInstance: InvokerInstanceId, schedId: RackSchedInstanceI
   implicit val logging: Logging,
 ) extends Actor {
   private val schedTopic: String = schedId.topic
-  protected val controllerPrewarmConfig: Boolean =
-    loadConfigOrThrow[Boolean](ConfigKeys.controllerDepPrewarm)
+  protected val controllerPrewarmConfig: Int =
+    loadConfigOrThrow[Int](ConfigKeys.controllerDepPrewarm)
 
   val timeouts: ContainerProxyTimeoutConfig = loadConfigOrThrow[ContainerProxyTimeoutConfig](ConfigKeys.containerProxyTimeouts)
 
@@ -175,13 +175,13 @@ class DepInvoker(invokerInstance: InvokerInstanceId, schedId: RackSchedInstanceI
                 profile = msg.profile,
               )
               transid.mark(this, LoggingMarkers.INVOKER_DEP_SCHED)
-              DepInvoker.publishToTopBalancer(message, msgProducer, schedTopic)
+              DepInvoker.publishToScheduler(message, msgProducer, schedTopic)
                 .onComplete({
                   case Success(_) =>
                     // once published, prewarm next objects in the DAG...
-                    if (controllerPrewarmConfig) {
+                    if (controllerPrewarmConfig > 0) {
                       DepInvoker.prewarmNextLevelDeps(message, obj, entityStore, msgProducer, schedTopic,
-                        timeouts.idleContainer, prewarmDeadlineCache)
+                        timeouts.idleContainer, prewarmDeadlineCache, controllerPrewarmConfig)
                     }
                   case Failure(exception) =>
                     logging.warn(this, s"Failed to publish to topbalancer: ${exception}")
@@ -201,14 +201,14 @@ class DepInvoker(invokerInstance: InvokerInstanceId, schedId: RackSchedInstanceI
 object DepInvoker {
   val ACTION_TIMEOUT: FiniteDuration = Duration(30, SECONDS)
 
-  def publishToTopBalancer(activationMessage: ActivationMessage, msgProducer: MessageProducer, schedTopic: String)(implicit logging: Logging): Future[RecordMetadata] = {
+  def publishToScheduler(activationMessage: ActivationMessage, msgProducer: MessageProducer, schedTopic: String)(implicit logging: Logging): Future[RecordMetadata] = {
     logging.debug(this, s"dep invoker scheduling action: ${activationMessage.activationId}")
     msgProducer.send(schedTopic, activationMessage)
   }
 
   private def prewarmNextLevelDeps(activationMessage: ActivationMessage, obj: ExecutableWhiskActionMetaData, entityStore: EntityStore,
                            msgProducer: MessageProducer, schedTopic: String, prewarmTimeout: FiniteDuration,
-                           prewarmDeadlineCache: PrewarmDeadlineCache)(implicit transid: TransactionId, logging: Logging, ec: ExecutionContext): Future[Unit] = {
+                           prewarmDeadlineCache: PrewarmDeadlineCache, depth: Int)(implicit transid: TransactionId, logging: Logging, ec: ExecutionContext): Future[Unit] = {
     Future.successful(obj.porusParams.relationships.map(relationships => {
       relationships.dependents.map(ref => {
         WhiskActionMetaData.get(entityStore, ref.getDocId()) flatMap { nextObj =>
@@ -219,7 +219,12 @@ object DepInvoker {
             implicit val tid: TransactionId = childOf(activationMessage.transid)
             val newMsg = activationMessage.copy(action = nextObj.fullyQualifiedName(false), transid = tid,
               prewarmOnly = ppc, waitForContent = None, sendResultToInvoker = None)
-            publishToTopBalancer(newMsg, msgProducer, schedTopic)
+            publishToScheduler(newMsg, msgProducer, schedTopic)
+              .onComplete({
+                case Failure(exception) => logging.warn(this, s"failed to publish prewarm msg of ${activationMessage.activationId} to ${schedTopic}: ${exception}")(transid)
+                case Success(value) =>
+                  prewarmNextLevelDeps(newMsg, nextAction, entityStore, msgProducer, schedTopic, prewarmTimeout, prewarmDeadlineCache, depth - 1)(transid, logging, ec)
+              })
           })
         }
       })

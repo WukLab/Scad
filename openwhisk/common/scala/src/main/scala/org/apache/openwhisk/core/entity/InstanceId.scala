@@ -17,7 +17,7 @@
 
 package org.apache.openwhisk.core.entity
 
-import org.apache.openwhisk.core.containerpool.RuntimeResources
+import org.apache.openwhisk.core.containerpool.{InvokerPoolResources, RuntimeResources}
 import org.apache.openwhisk.core.entity.RackSchedInstanceId.rackSchedHealthTopic
 import spray.json.{DefaultJsonProtocol, JsNumber, JsObject, JsString, JsValue, RootJsonFormat, deserializationError}
 import spray.json._
@@ -35,7 +35,7 @@ import scala.util.Try
 case class InvokerInstanceId(val instance: Int,
                              uniqueName: Option[String] = None,
                              displayedName: Option[String] = None,
-                             val resources: RuntimeResources)
+                             val resources: InvokerPoolResources)
     extends InstanceId {
   def toInt: Int = instance
   def getMainTopic: String = s"invoker${toInt}"
@@ -92,7 +92,7 @@ object InvokerInstanceId extends DefaultJsonProtocol {
       val instance = fromField[Int](json, "instance")
       val uniqueName = fromField[Option[String]](json, "uniqueName")
       val displayedName = fromField[Option[String]](json, "displayedName")
-      val resources = RuntimeResources.serdes.read(json.asJsObject.fields("resources"))
+      val resources = InvokerPoolResources.serdes.read(json.asJsObject.fields("resources"))
       val instanceType = fromField[String](json, "instanceType")
 
       if (instanceType == "invoker") {

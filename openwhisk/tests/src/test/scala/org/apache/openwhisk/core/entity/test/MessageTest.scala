@@ -1,7 +1,7 @@
 package org.apache.openwhisk.core.entity.test
 
 import org.apache.openwhisk.core.connector.PingRackMessage
-import org.apache.openwhisk.core.containerpool.RuntimeResources
+import org.apache.openwhisk.core.containerpool.{InvokerPoolResources, RuntimeResources}
 import org.apache.openwhisk.core.entity.ByteSize
 import org.apache.openwhisk.core.entity.RackSchedInstanceId
 import org.junit.runner.RunWith
@@ -20,7 +20,7 @@ class MessageTest extends FlatSpec with Matchers {
 
   it should "parse rack ping" in {
     val inst = new RackSchedInstanceId(0, new RuntimeResources(0, ByteSize.fromString("0B"), ByteSize.fromString("0B")));
-    val x = PingRackMessage(inst)
+    val x = PingRackMessage(inst, InvokerPoolResources.none)
     val output = x.serialize
     println(output)
 //    val result = PingRackMessage.parse(output)

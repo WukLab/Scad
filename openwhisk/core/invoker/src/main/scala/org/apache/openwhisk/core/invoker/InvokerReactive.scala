@@ -136,7 +136,7 @@ class InvokerReactive(
 
   // The maximum number of containers is limited by the memory or storage
   private val maximumContainers: Int = {
-    val configured = poolConfig.resources
+    val configured = poolConfig.invokerPoolResources.sum
     val min = ResourceLimit.MIN_RESOURCES
     // memory or storage minimums could be 0
     val minStorage = configured.storage.toBytes / Math.max(1, min.storage.toBytes)

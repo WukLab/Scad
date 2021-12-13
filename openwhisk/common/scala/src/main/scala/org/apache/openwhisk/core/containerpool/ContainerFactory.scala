@@ -20,12 +20,13 @@ package org.apache.openwhisk.core.containerpool
 import akka.actor.ActorSystem
 import org.apache.openwhisk.common.{Logging, TransactionId}
 import org.apache.openwhisk.core.WhiskConfig
-import org.apache.openwhisk.core.entity.ByteSize
-import org.apache.openwhisk.core.entity.{ExecManifest, ExecutableWhiskAction, InvokerInstanceId}
+import org.apache.openwhisk.core.entity.{ByteSize, EnumJsonConverter, ExecManifest, ExecutableWhiskAction, ExecutableWhiskActionMetaData, InvokerInstanceId, PorusParams}
 import org.apache.openwhisk.spi.Spi
+import spray.json.{DefaultJsonProtocol, RootJsonFormat}
 
 import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
+import scala.language.implicitConversions
 import scala.math.max
 
 case class ContainerArgsConfig(network: String,
@@ -45,7 +46,69 @@ case class ContainerArgsConfig(network: String,
     }.toMap
 }
 
-case class ContainerPoolConfig(resources: RuntimeResources,
+
+object InvokerPoolResourceType extends Enumeration with DefaultJsonProtocol {
+  type InvokerPoolResourceType = Value
+  val Compute, Memory, Balanced = Value
+
+  class RT(v: InvokerPoolResourceType) {
+    def ofResources(pools: InvokerPoolResources): RuntimeResources = {
+      v match {
+        case Compute => pools.computePool
+        case Memory => pools.memPool
+        case Balanced => pools.balancedPool
+      }
+    }
+  }
+
+  implicit val serdes: RootJsonFormat[InvokerPoolResourceType] = new EnumJsonConverter[InvokerPoolResourceType.this.type](InvokerPoolResourceType)
+
+  implicit def ResourceToRT(v: InvokerPoolResourceType): RT = new RT(v)
+
+  def poolFor(r: ExecutableWhiskActionMetaData): InvokerPoolResourceType = {
+    this.poolFor(r.porusParams)
+  }
+
+  def poolFor(r: ExecutableWhiskAction): InvokerPoolResourceType = {
+    this.poolFor(r.porusParams)
+  }
+
+  def poolFor(r: PorusParams): InvokerPoolResourceType  = {
+    if (r.withMerged.nonEmpty) {
+      Balanced
+    } else {
+      r.runtimeType.getOrElse(Compute) match {
+        case Compute => Compute
+        case org.apache.openwhisk.core.entity.ElementType.Memory => Memory
+        case org.apache.openwhisk.core.entity.ElementType.Storage => Balanced
+      }
+    }
+  }
+
+}
+
+case class InvokerPoolResources(computePool: RuntimeResources, memPool: RuntimeResources, balancedPool: RuntimeResources) {
+  def sum: RuntimeResources = {
+    computePool + memPool + balancedPool
+  }
+  def +(other: InvokerPoolResources): InvokerPoolResources = {
+    InvokerPoolResources(
+      computePool + other.computePool,
+      memPool + other.memPool,
+      balancedPool + other.balancedPool,
+    )
+  }
+}
+
+object InvokerPoolResources extends DefaultJsonProtocol {
+  implicit val serdes: RootJsonFormat[InvokerPoolResources] = jsonFormat3(InvokerPoolResources.apply)
+
+  def none: InvokerPoolResources = {
+    InvokerPoolResources(RuntimeResources.none(), RuntimeResources.none(), RuntimeResources.none())
+  }
+}
+
+case class ContainerPoolConfig(invokerPoolResources: InvokerPoolResources,
                                concurrentPeekFactor: Double,
                                akkaClient: Boolean,
                                prewarmExpirationCheckInterval: FiniteDuration,

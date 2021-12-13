@@ -30,10 +30,10 @@ import pureconfig.generic.auto._
 import spray.json.DefaultJsonProtocol._
 import spray.json._
 import org.apache.openwhisk.common.Https.HttpsConfig
-import org.apache.openwhisk.common.{AkkaLogging, ConfigMXBean, Logging, LoggingMarkers, Scheduler, TransactionId}
+import org.apache.openwhisk.common.{AkkaLogging, ConfigMXBean, Logging, LoggingMarkers, TransactionId}
 import org.apache.openwhisk.core.WhiskConfig
 import org.apache.openwhisk.core.WhiskConfig.kafkaHosts
-import org.apache.openwhisk.core.connector.{MessagingProvider, PingRackMessage}
+import org.apache.openwhisk.core.connector.MessagingProvider
 import org.apache.openwhisk.core.containerpool.RuntimeResources
 import org.apache.openwhisk.core.containerpool.logging.LogStoreProvider
 import org.apache.openwhisk.core.controller.RestApiCommons
@@ -307,11 +307,6 @@ object RackSched {
           abort(s"failure during msgProvider.ensureTopic for topic $topic")
         }
     }
-
-    val healthProducer = msgProvider.getProducer(config)
-    Scheduler.scheduleWaitAtMost(1.seconds)(() => {
-      healthProducer.send("rackHealth", PingRackMessage(instance))
-    })
 
     ExecManifest.initialize(config) match {
       case Success(_) =>
