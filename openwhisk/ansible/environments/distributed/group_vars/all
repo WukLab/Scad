@@ -58,6 +58,6 @@ invoker_container_network_name: bridge
 container_network: bridge
 cli_tag: "latest"
 db_host: wuklab-02.ucsd.edu
-dependency_prewarm: 4
+dependency_prewarm: "2"
 container_pool_prewarm_expirationCheckInterval: 5 seconds
 containerProxy_timeouts_idleContainer: 20 seconds

@@ -277,6 +277,7 @@ class ShardingContainerPoolBalancer(
         homeInvoker,
         stepSize,
         iprt = InvokerPoolResourceType.poolFor(action),
+        prewarmConfig = msg.prewarmOnly,
       )
       invoker.foreach {
         case (_, true) =>
@@ -332,6 +333,7 @@ class ShardingContainerPoolBalancer(
     schedulingState.invokerSlots
       .lift(invoker.toInt)
       .foreach(_.releaseConcurrent(entry.fullyQualifiedEntityName, entry.maxConcurrent, entry.resourceLimit, entry.iprt))
+    logging.info(this, s"${entry.fullyQualifiedEntityName} released resources ${entry.resourceLimit} from ${entry.iprt}")
   }
 }
 
@@ -400,7 +402,7 @@ object ShardingContainerPoolBalancer extends LoadBalancerProvider {
    * @return an invoker to schedule to or None of no invoker is available
    */
   @tailrec
-  def schedule(
+  def  schedule(
     maxConcurrent: Int,
     fqn: FullyQualifiedEntityName,
     invokers: IndexedSeq[InvokerHealth],
@@ -410,14 +412,20 @@ object ShardingContainerPoolBalancer extends LoadBalancerProvider {
     step: Int,
     stepsDone: Int = 0,
     iprt: InvokerPoolResourceType,
-    swappingInvoker: Option[InvokerInstanceId] = None)(implicit logging: Logging, transId: TransactionId): Option[(InvokerInstanceId, Boolean)] = {
+    swappingInvoker: Option[InvokerInstanceId] = None,
+    prewarmConfig: Option[PartialPrewarmConfig] = None)(implicit logging: Logging, transId: TransactionId): Option[(InvokerInstanceId, Boolean)] = {
     val numInvokers = invokers.size
 
     if (numInvokers > 0) {
       val invoker = invokers(index)
       //test this invoker - if this action supports concurrency, use the scheduleConcurrent function
-      if (invoker.status.isUsable && dispatched(invoker.id.toInt).tryAcquireConcurrent(fqn, maxConcurrent, slots, iprt)
-      && !swappingInvoker.contains(invoker.id)) {
+      // if we're prewarm only, then don't actually acquire scheduling resources
+      val acquiredResources = prewarmConfig match {
+        case Some(_) => true
+        case None => invoker.status.isUsable && dispatched(invoker.id.toInt).tryAcquireConcurrent(fqn, maxConcurrent, slots, iprt)
+      }
+      if (acquiredResources && !swappingInvoker.contains(invoker.id)) {
+        logging.info(this, s"${fqn} acquired resources ${slots} from ${iprt} pool")
         Some(invoker.id, false)
       } else {
         // If we've gone through all invokers
@@ -426,7 +434,9 @@ object ShardingContainerPoolBalancer extends LoadBalancerProvider {
           if (healthyInvokers.nonEmpty) {
             // Choose a healthy invoker randomly
             val random = healthyInvokers(ThreadLocalRandom.current().nextInt(healthyInvokers.size)).id
-            dispatched(random.toInt).forceAcquireConcurrent(fqn, maxConcurrent, slots, iprt)
+            if (prewarmConfig.isEmpty) {
+              dispatched(random.toInt).forceAcquireConcurrent(fqn, maxConcurrent, slots, iprt)
+            }
             logging.warn(this, s"system is overloaded. Chose invoker${random.toInt} by random assignment.")
             Some(random, true)
           } else {
@@ -434,7 +444,7 @@ object ShardingContainerPoolBalancer extends LoadBalancerProvider {
           }
         } else {
           val newIndex = (index + step) % numInvokers
-          schedule(maxConcurrent, fqn, invokers, dispatched, slots, newIndex, step, stepsDone + 1, iprt)
+          schedule(maxConcurrent, fqn, invokers, dispatched, slots, newIndex, step, stepsDone + 1, iprt, prewarmConfig = prewarmConfig)
         }
       }
     } else {
