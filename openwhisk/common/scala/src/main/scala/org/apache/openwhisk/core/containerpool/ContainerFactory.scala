@@ -20,7 +20,7 @@ package org.apache.openwhisk.core.containerpool
 import akka.actor.ActorSystem
 import org.apache.openwhisk.common.{Logging, TransactionId}
 import org.apache.openwhisk.core.WhiskConfig
-import org.apache.openwhisk.core.entity.{ByteSize, EnumJsonConverter, ExecManifest, ExecutableWhiskAction, ExecutableWhiskActionMetaData, InvokerInstanceId, PorusParams}
+import org.apache.openwhisk.core.entity.{ByteSize, ElementType, EnumJsonConverter, ExecManifest, ExecutableWhiskAction, ExecutableWhiskActionMetaData, InvokerInstanceId, PorusParams}
 import org.apache.openwhisk.spi.Spi
 import spray.json.{DefaultJsonProtocol, RootJsonFormat}
 
@@ -77,10 +77,10 @@ object InvokerPoolResourceType extends Enumeration with DefaultJsonProtocol {
     if (r.withMerged.nonEmpty) {
       Balanced
     } else {
-      r.runtimeType.getOrElse(Compute) match {
-        case Compute => Compute
-        case org.apache.openwhisk.core.entity.ElementType.Memory => Memory
-        case org.apache.openwhisk.core.entity.ElementType.Storage => Balanced
+      r.runtimeType.getOrElse(ElementType.Compute) match {
+        case ElementType.Compute => Compute
+        case ElementType.Memory => Memory
+        case ElementType.Storage => Balanced
       }
     }
   }
