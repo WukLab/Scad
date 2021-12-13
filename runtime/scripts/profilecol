@@ -64,6 +64,12 @@ def store():
         pickle.dump(db, f)
     return 'ok'
 
+@app.route("/clear")
+def clear():
+    global db
+    db = ActivationInfo()
+    return 'ok'
+
 @app.route("/load")
 def load():
     global db

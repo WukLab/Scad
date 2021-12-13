@@ -187,7 +187,7 @@ class MemoryPoolClient(val proxy: ProxyNode, acker: MessagingActiveAck)(implicit
         open(Base64.getDecoder.decode(peerInfo), elementId, connId)
         // TODO: current logic is we do allocate extra QPs (for extra connections)
         // TODO: check this. should be fine without parallelism
-        // allocConn(elementId)
+        allocConn(elementId)
       case _: MemoryPoolEnd =>
         release(elementId)
     }
@@ -245,7 +245,7 @@ class MemoryPoolEndPoint(socketFile : String, proxy: ProxyNode, acker: Messaging
 
   // Hardcode for now
   def initRun(r: Run)(implicit transid: TransactionId) =
-    client.initRun(r.msg, "memory", LibdAPIs.Action.getSize(r.msg, r.action), r.msg.siblings.size)
+    client.initRun(r.msg, "memory", LibdAPIs.Action.getSize(r.msg, r.action), r.msg.siblings.map(_.size).getOrElse(1))
 
   def initRunTest(parallelism: Int)(implicit transid: TransactionId) = {
     val aid = ActivationId.generate()
