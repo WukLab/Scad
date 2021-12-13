@@ -47,7 +47,7 @@ protected[core] object ResourceLimit extends ArgNormalizer[ResourceLimit] {
   val config: ResourceLimitConfig = loadConfigOrThrow[ResourceLimitConfig](ConfigKeys.resource)
 
   /** These values are set once at the beginning. Dynamic configuration updates are not supported at the moment. */
-  protected[core] val MIN_RESOURCES: RuntimeResources = config.min.toRuntimeResources
+  protected[core] val MIN_RESOURCES: RuntimeResources = ConfigResources(0.1, "32 M", "32 M").toRuntimeResources
   protected[core] val MAX_RESOURCES: RuntimeResources = ConfigResources(32, "32 g", "2 g").toRuntimeResources
   protected[core] val STD_RESOURCES: RuntimeResources = config.std.toRuntimeResources
 
