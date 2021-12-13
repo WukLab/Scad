@@ -516,9 +516,9 @@ case class ResourcePermits(cpu: NestedSemaphore[FullyQualifiedEntityName], mem: 
 
   def toResources: RuntimeResources = {
     RuntimeResources(
-      cpu.availablePermits.toDouble,
-      mem.availablePermits.MB,
-      storage.availablePermits.MB,
+      cpu.availablePermits.max(0).toDouble,
+      mem.availablePermits.max(0).MB,
+      storage.availablePermits.max(0).MB,
     )
   }
 }
