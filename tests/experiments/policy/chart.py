@@ -33,7 +33,7 @@ def parse_raw_resources(file):
 def main():
 
   parser = argparse.ArgumentParser()
-  parser.add_argument("--file", help='file to parse', default="resources.txt")
+  parser.add_argument("--file", help='file to parse', default="resources3.txt")
 
   args = parser.parse_args()
 
