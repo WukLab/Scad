@@ -29,7 +29,7 @@ import org.apache.openwhisk.core.WhiskConfig.kafkaHosts
 import org.apache.openwhisk.core.WhiskConfig.wskApiHost
 import org.apache.openwhisk.core.connector.{AcknowledegmentMessage, ActivationMessage, MessageFeed, MessageProducer, MessagingProvider, PingRackMessage}
 import org.apache.openwhisk.core.containerpool.{InvokerPoolResourceType, InvokerPoolResources, RuntimeResources}
-import org.apache.openwhisk.core.entity.{ActivationEntityLimit, ActivationId, ExecManifest, ExecutableWhiskActionMetaData, InstanceId, InvokerInstanceId, RackSchedInstanceId, TimeLimit, UUID, WhiskActionMetaData, WhiskActivation, WhiskEntityStore}
+import org.apache.openwhisk.core.entity.{ActivationEntityLimit, ActivationId, EntityName, ExecManifest, ExecutableWhiskActionMetaData, FullyQualifiedEntityName, InstanceId, InvokerInstanceId, RackSchedInstanceId, TimeLimit, UUID, WhiskActionMetaData, WhiskActivation, WhiskEntityStore}
 import org.apache.openwhisk.core.loadBalancer.{ActivationEntry, FeedFactory, InvocationFinishedMessage, InvocationFinishedResult, InvokerHealth, ShardingContainerPoolBalancerConfig}
 import org.apache.openwhisk.spi.Spi
 import org.apache.openwhisk.spi.SpiLoader
@@ -283,7 +283,16 @@ class RackSimpleBalancer(config: WhiskConfig,
       if (!isBlackboxInvocation) (schedulingState.managedInvokers, schedulingState.managedStepSizes)
       else (schedulingState.blackboxInvokers, schedulingState.blackboxStepSizes)
     val chosen: Option[(InvokerInstanceId, Option[ActivationId])] = if (invokersToUse.nonEmpty) {
-      val hash = ShardingContainerPoolBalancer.generateHash(msg.user.namespace.name, action.fullyQualifiedName(false))
+      val hasCorunning = action.porusParams.relationships.exists(_.corunning.nonEmpty)
+      val hashName: FullyQualifiedEntityName = if (hasCorunning) {
+        val s = action.porusParams.relationships.map(x => (x.corunning ++ Seq(action.getReference())).map(_.name.name).sorted)
+          .map(x => x.head)
+          .getOrElse(action.name.name)
+        FullyQualifiedEntityName(action.namespace, EntityName(s))
+      } else {
+        action.fullyQualifiedName(false)
+      }
+      val hash = ShardingContainerPoolBalancer.generateHash(msg.user.namespace.name, hashName)
       val homeInvoker = hash % invokersToUse.size
       val stepSize = stepSizes(hash % stepSizes.size)
       val defaultSchedule = () => ShardingContainerPoolBalancer.schedule(
