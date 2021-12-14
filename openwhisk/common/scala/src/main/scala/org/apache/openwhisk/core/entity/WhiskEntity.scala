@@ -128,11 +128,11 @@ object WhiskDocumentReader extends DocumentReader {
     val doc = ma.runtimeClass match {
       case x if x == classOf[WhiskAction]         => WhiskAction.serdes.read(value)
       case x if x == classOf[WhiskActionMetaData] => WhiskActionMetaData.serdes.read(value)
+      case x if x == classOf[WhiskApplication]    => WhiskApplication.serdes.read(value)
       case x if x == classOf[WhiskPackage]        => WhiskPackage.serdes.read(value)
       case x if x == classOf[WhiskActivation]     => WhiskActivation.serdes.read(value)
       case x if x == classOf[WhiskTrigger]        => WhiskTrigger.serdes.read(value)
       case x if x == classOf[WhiskRule]           => WhiskRule.serdes.read(value)
-      case x if x == classOf[WhiskApplication]    => WhiskApplication.serdes.read(value)
       case x if x == classOf[WhiskFunction]       => WhiskFunction.serdes.read(value)
       case _                                      => throw DocumentUnreadable(Messages.corruptedEntity)
     }
@@ -156,10 +156,10 @@ object WhiskEntityJsonFormat extends RootJsonFormat[WhiskEntity] {
     Stream(
       WhiskAction.serdes.read,
       WhiskActivation.serdes.read,
+      WhiskApplication.serdes.read,
       WhiskRule.serdes.read,
       WhiskTrigger.serdes.read,
       WhiskPackage.serdes.read,
-      WhiskApplication.serdes.read,
       WhiskFunction.serdes.read)
 
   // Not necessarily the smartest way to go about this. In theory, whenever
