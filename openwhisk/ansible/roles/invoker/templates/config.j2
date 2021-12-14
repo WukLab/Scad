@@ -62,6 +62,24 @@ whisk {
             mem = 16 g
             storage = 64 g
         }
+  }
+  container-pool {
+    invoker-pool-resources {
+        compute-pool {
+            cpu = 32
+            mem = 32 g
+            storage = 64 g
+        }
+        mem-pool {
+            cpu = 32
+            mem = 32 g
+            storage = 64 g
+        }
+        balanced-pool {
+            cpu = 32
+            mem = 32 g
+            storage = 64 g
+        }
     }
     user-memory: 55 g
     concurrent-peek-factor: 0.5 #factor used to limit message peeking: 0 < factor <= 1.0 - larger number improves concurrent processing, but increases risk of message loss during invoker crash
