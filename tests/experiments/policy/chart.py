@@ -53,8 +53,9 @@ def main():
   df = pd.DataFrame(result, columns=cols)
   print(df)
 
-  fig, ax = plt.subplots(3, 1)
-#   ax = [ax]
+#   fig, ax = plt.subplots(3, 1)
+  fig, ax = plt.subplots(1, 1)
+  ax = [ax]
 
 
   timestart = df[['time']].min()
@@ -79,17 +80,17 @@ def main():
 
   # plot CPU
   df.plot(x='time', y='bal-cpu', color='blue', ax=ax[0])
-  df.plot(x='time', y='cpu-cpu', color='blue', ax=ax[1])
+#   df.plot(x='time', y='cpu-cpu', color='blue', ax=ax[1])
 
   # plot mem
   color = 'tab:red'
   axs = [x.twinx() for x in ax]
-  df.plot(x='time', y='bal-mem', color=color, ax=axs[0])
-  df.plot(x='time', y='cpu-mem', color=color, ax=axs[1])
-  df.plot(x='time', y='mem-mem', color=color, ax=ax[2])
+  df.plot(x='time', y='bal-mem', color=color, ax=ax[0])
+#   df.plot(x='time', y='cpu-mem', color=color, ax=ax[1])
+#   df.plot(x='time', y='mem-mem', color=color, ax=ax[2])
 
   ax[0].set_xticklabels([])
-  ax[1].set_xticklabels([])
+#   ax[1].set_xticklabels([])
   #by mohammad
   for axx in ax:
       axx.yaxis.set_major_formatter(mtick.PercentFormatter())
@@ -101,14 +102,15 @@ def main():
           axx.get_legend().remove()
 
   ax[0].set_xlabel("")
-  ax[1].set_xlabel("")
+#   ax[1].set_xlabel("")
+#   ax[2].set_xlabel("")
   ax[0].set_xlim(0,end)
   # ax[1].set_xlim(0,300)
 
   plt.subplots_adjust(hspace = 0.3)
-  ax[0].set_title('Balanced Pool')
-  ax[1].set_title('Compute Pool')
-  ax[1].set_title('Memory Pool')
+#   ax[0].set_title('Balanced Pool')
+#   ax[1].set_title('Compute Pool')
+#   ax[2].set_title('Memory Pool')
 
 
   ax[0].set_xlabel('Execution Time (s)', fontsize=16)
@@ -116,8 +118,9 @@ def main():
 
   red_patch = mpatches.Patch(color='red', label='Memory')
   blue_patch = mpatches.Patch(color='blue', label='CPU')
-  plt.legend(handles=[red_patch, blue_patch], loc='lower left')
-
+  plt.legend(handles=[red_patch, blue_patch], loc='upper right')
+  fig.set_size_inches(7, 2.5)
+  plt.subplots_adjust(bottom=0.2)
   plt.savefig('figure-policy.pdf')
 
 
