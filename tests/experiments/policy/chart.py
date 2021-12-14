@@ -5,6 +5,8 @@ import re
 import pandas as pd
 import datetime
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
+import matplotlib.patches as mpatches
 
 def parse_raw_resources(file):
   res = []
@@ -51,7 +53,6 @@ def main():
   df = pd.DataFrame(result, columns=cols)
   print(df)
 
-  plt.rcParams.update({'font.size': 14})
   fig, ax = plt.subplots(3, 1)
 
 
@@ -62,32 +63,52 @@ def main():
   df['time'] = df['time'].dt.total_seconds() - start
   df['bal-mem'] = df['bal-mem'] / 1024
   df['cpu-mem'] = df['cpu-mem'] / 1024
-  df['mem-mem'] = df['mem-mem'] / 1024
+  df['mem-mem'] = df['mem-mem'] / df['mem-mem'].max() * 100
+
+  df['bal-cpu'] = df['bal-cpu'] / df['bal-cpu'].max() * 100
+  df['cpu-cpu'] = df['cpu-cpu'] / df['cpu-cpu'].max() * 100
+
 
   # plot CPU
-  df.plot(x='time', y='bal-cpu', ax=ax[0])
-  df.plot(x='time', y='cpu-cpu', ax=ax[1])
+  df.plot(x='time', y='bal-cpu', color='blue', ax=ax[0])
+  df.plot(x='time', y='cpu-cpu', color='blue', ax=ax[1])
 
   # plot mem
   color = 'tab:red'
-  df.plot(x='time', y='bal-mem', color=color, ax=ax[0].twinx())
-  df.plot(x='time', y='cpu-mem', color=color, ax=ax[1].twinx())
-  df.plot(x='time', y='mem-mem', color=color, ax=ax[2].twinx())
+  axs = [x.twinx() for x in ax]
+  df.plot(x='time', y='bal-mem', color=color, ax=axs[0])
+  df.plot(x='time', y='cpu-mem', color=color, ax=axs[1])
+  df.plot(x='time', y='mem-mem', color=color, ax=ax[2])
 
   ax[0].set_xticklabels([]) 
   ax[1].set_xticklabels([]) 
-  ax[2].set_yticklabels([]) 
+  for axx in ax:
+      axx.yaxis.set_major_formatter(mtick.PercentFormatter())
+      axx.get_legend().remove()
+  for axx in axs:
+      axx.set_yticklabels([])
+      if axx.get_legend() is not None:
+          axx.get_legend().remove()
+
   ax[0].set_xlabel("") 
   ax[1].set_xlabel("") 
   ax[0].set_xlim(0,300)
   ax[1].set_xlim(0,300)
   ax[2].set_xlim(0,300)
-  ax[2].set_xlabel('Execution Time (s)') 
 
-  fig.text(0.02, 0.5, 'CPU Resources (cores)', va='center', rotation='vertical')
-  fig.text(0.97, 0.5, 'Memory Resources (GB)', va='center', rotation='vertical')
+  plt.subplots_adjust(hspace = 0.3)
+  ax[0].set_title('Balanced Pool')
+  ax[1].set_title('Compute Pool')
+  ax[2].set_title('Memory Pool')
 
-  plt.show()
+  ax[2].set_xlabel('Execution Time (s)', fontsize=16) 
+  fig.text(0.01, 0.5, 'Resource Utilization', va='center', rotation='vertical', fontsize=16)
+
+  red_patch = mpatches.Patch(color='red', label='Memory')
+  blue_patch = mpatches.Patch(color='blue', label='CPU')
+  plt.legend(handles=[red_patch, blue_patch], loc='lower left')
+
+  plt.savefig('Figure-policy.pdf')
 
 
 
