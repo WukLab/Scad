@@ -34,7 +34,7 @@ def main(args, action):
 
     for i in range(iterations):
         addr = i * batchsize % memsize
-        trans.write(batchsize, addr = addr , offset = 0)
+        trans.write(batchsize/2, addr = addr , offset = 0)
 
     rv['end'] = time.time()
     action.profile(1)
