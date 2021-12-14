@@ -51,18 +51,42 @@ def main():
   df = pd.DataFrame(result, columns=cols)
   print(df)
 
+  plt.rcParams.update({'font.size': 14})
   fig, ax = plt.subplots(3, 1)
+
+
+  timestart = df[['time']].min()
+  df[['time']] -= timestart
+  
+  start = 25
+  df['time'] = df['time'].dt.total_seconds() - start
+  df['bal-mem'] = df['bal-mem'] / 1024
+  df['cpu-mem'] = df['cpu-mem'] / 1024
+  df['mem-mem'] = df['mem-mem'] / 1024
 
   # plot CPU
   df.plot(x='time', y='bal-cpu', ax=ax[0])
   df.plot(x='time', y='cpu-cpu', ax=ax[1])
-  df.plot(x='time', y='mem-cpu', ax=ax[2])
 
   # plot mem
   color = 'tab:red'
   df.plot(x='time', y='bal-mem', color=color, ax=ax[0].twinx())
   df.plot(x='time', y='cpu-mem', color=color, ax=ax[1].twinx())
   df.plot(x='time', y='mem-mem', color=color, ax=ax[2].twinx())
+
+  ax[0].set_xticklabels([]) 
+  ax[1].set_xticklabels([]) 
+  ax[2].set_yticklabels([]) 
+  ax[0].set_xlabel("") 
+  ax[1].set_xlabel("") 
+  ax[0].set_xlim(0,300)
+  ax[1].set_xlim(0,300)
+  ax[2].set_xlim(0,300)
+  ax[2].set_xlabel('Execution Time (s)') 
+
+  fig.text(0.02, 0.5, 'CPU Resources (cores)', va='center', rotation='vertical')
+  fig.text(0.97, 0.5, 'Memory Resources (GB)', va='center', rotation='vertical')
+
   plt.show()
 
 
