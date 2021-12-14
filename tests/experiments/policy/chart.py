@@ -33,7 +33,7 @@ def parse_raw_resources(file):
 def main():
 
   parser = argparse.ArgumentParser()
-  parser.add_argument("--file", help='file to parse', default="resources3.txt")
+  parser.add_argument("--file", help='file to parse', default="resources.txt")
 
   args = parser.parse_args()
 
@@ -53,8 +53,8 @@ def main():
   df = pd.DataFrame(result, columns=cols)
   print(df)
 
-  fig, ax = plt.subplots(1, 1)
-  ax = [ax]
+  fig, ax = plt.subplots(3, 1)
+#   ax = [ax]
 
 
   timestart = df[['time']].min()
@@ -63,9 +63,13 @@ def main():
   start = 350
   df['time'] = df['time'].dt.total_seconds() - start
   end = df['time'].max()
-  df['time'] = df[df['time'] < end]
+  df = df[df['time']>0]
+#   print(end)
+  print(df)
+#   df['time'] = df[df['time'] < end]
+#   print(df[df['time'] < end])
   df['bal-mem'] = df['bal-mem'] / 1024
-  df['cpu-mem'] = df['cpu-mem'] / 1024
+  df['cpu-mem'] = 100 - df['cpu-mem'] / 1024
   df['mem-mem'] = 100 - (df['mem-mem'] / df['mem-mem'].max() * 100)
 
   df['bal-mem'] = 100 - (df['bal-mem'] / df['bal-mem'].max() * 100)
@@ -75,33 +79,37 @@ def main():
 
   # plot CPU
   df.plot(x='time', y='bal-cpu', color='blue', ax=ax[0])
-  # df.plot(x='time', y='cpu-cpu', color='blue', ax=ax[1])
+  df.plot(x='time', y='cpu-cpu', color='blue', ax=ax[1])
 
   # plot mem
   color = 'tab:red'
   axs = [x.twinx() for x in ax]
   df.plot(x='time', y='bal-mem', color=color, ax=axs[0])
-  # df.plot(x='time', y='cpu-mem', color=color, ax=axs[1])
-  # df.plot(x='time', y='mem-mem', color=color, ax=ax[2])
+  df.plot(x='time', y='cpu-mem', color=color, ax=axs[1])
+  df.plot(x='time', y='mem-mem', color=color, ax=ax[2])
 
   ax[0].set_xticklabels([])
-  # ax[1].set_xticklabels([])
+  ax[1].set_xticklabels([])
+  #by mohammad
   for axx in ax:
       axx.yaxis.set_major_formatter(mtick.PercentFormatter())
       axx.get_legend().remove()
+      axx.set_ylim(0, 100)
   for axx in axs:
       axx.set_yticklabels([])
       if axx.get_legend() is not None:
           axx.get_legend().remove()
 
   ax[0].set_xlabel("")
-  # ax[1].set_xlabel("")
+  ax[1].set_xlabel("")
   ax[0].set_xlim(0,end)
   # ax[1].set_xlim(0,300)
 
   plt.subplots_adjust(hspace = 0.3)
   ax[0].set_title('Balanced Pool')
-  # ax[1].set_title('Compute Pool')
+  ax[1].set_title('Compute Pool')
+  ax[1].set_title('Memory Pool')
+
 
   ax[0].set_xlabel('Execution Time (s)', fontsize=16)
   fig.text(0.01, 0.5, 'Resource Utilization', va='center', rotation='vertical', fontsize=16)
