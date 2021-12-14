@@ -18,4 +18,21 @@ whisk {
             }
         }
     }
+    resources {
+        min {
+            cpu = 1
+            mem = 32 m
+            storage = 32 m
+        }
+        max {
+            cpu = 16
+            mem = 32 g
+            storage = 64 g
+        }
+        std {
+            cpu = 1
+            mem = 128 m
+            storage = 256 m
+        }
+    }
 }

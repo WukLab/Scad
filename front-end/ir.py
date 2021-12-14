@@ -15,6 +15,19 @@ class DAG:
     def __init__(self, name, nodes = []):
         self.name = name
         self.nodes = nodes
+        # build relations
+        for n in self.nodes:
+            n.dependents = [self.getNode(rn) for rn in n.dependents]
+            n.parents = [self.getNode(rn) for rn in n.parents]
+            n.corunning = [self.getNode(rn) for rn in n.corunning]
+
+
+    def getNode(self, name):
+        for n in self.nodes:
+            if n.name == name:
+                return n
+        return None
+
     # get the start node of the DAG
     def getStarts(self):
         starts = []
@@ -52,29 +65,36 @@ class DAG:
     def getRelationshipsForGroup(self, nodes):
         parents = []
         dependents = []
+        corunning = []
         for n in nodes:
             for p in n.parents:
                 if p not in nodes and p not in parents:
                     parents.append(p)
             for d in n.dependents:
                 if d not in nodes and d not in dependents:
-                    dependents.append(p)
-        return parents, dependents
+                    dependents.append(d)
+            for c in n.corunning:
+                if c not in nodes and c not in corunning:
+                    corunning.append(c)
+        return parents, dependents, corunning
 
     def mergeFrom(self, nodes, newNode):
-        parents, dependents = self.getRelationshipsForGroup(nodes)
+        # genearte relationship
+        parents, dependents, corunning = self.getRelationshipsForGroup(nodes)
         newNode.parents = parents
         newNode.dependents = dependents
+        newNode.corunning = corunning
         for p in parents:
             p.dependets = filterAdd(p.dependents, nodes, newNode)
         for d in dependents:
             d.parents = filterAdd(d.parents, nodes, newNode)
-        # TODO: corunning?
+        for c in corunning:
+            d.corunning = filterAdd(d.corunning, nodes, newNode)
         self.nodes = [n for n in self.nodes if n not in nodes] + [newNode]
 
     def splitTo(self, node:'DAGNode', newNodesDAG:'DAG'):
         starts, ends = newNodesDAG.getStarts(), newNodesDAG.getEnds()
-        # parents 
+        # parents
         for p in node.parents:
             p.parents = subConcat(p.parents, node, starts)
         # dependents
@@ -123,6 +143,7 @@ class DAGNode:
         self.corunning = []
         self.parents = []
         self.dependents = []
+        self.withMerged = {}
         # content
         self.codeOp = codeOp
         # proprity
@@ -146,6 +167,8 @@ class DAGNode:
         self.dependents = metaDict.get('dependents', [])
         self.corunning = metaDict.get('corunning', [])
         self.resources = metaDict.get('limits', {})
+        # TODO: load with merged
+        self.withMerged = []
     def dumpMetaDict(self):
         meta = {}
         meta['name'] = self.name
@@ -153,21 +176,36 @@ class DAGNode:
         meta['parents'] = self.parents
         meta['dependents'] = self.dependents
         meta['corunning'] = self.corunning
-        meta['resources'] = self.resources
+        meta['limits'] = self.resources
+        meta['withMerged'] = self.withMerged
         return meta
 
-    # Copmile Meta
-    def mergeCompileMetaFrom(self, nodes):
-        return meta
+    def removeReltaion(self, node):
+        self.corunning = [n for n in self.corunning if n.name != node.name]
+        self.dependents = [n for n in self.dependents if n.name != node.name]
+        self.parents = [n for n in self.parents if n.name != node.name]
 
-    # Can be splited!
+    # dump to a plain json
     def generateMeta(self):
         meta = {
             "parents": [n.name for n in self.parents],
             "dependets": [n.name for n in self.dependents],
             "corunning": [n.name for n in self.corunning],
             "type": self.type,
-            "compileMeta": { k:v.toJson() for k,v in self.meta.items() }
+            'limits': self.resources,
+            'withMerged': [ {
+                    'action': {
+                        'namespace': 'whisk.system',
+                        'name': n.name
+                    },
+                    'resources': {
+                        # TODO: fix these literals
+                        'cpu': n.resources.get('cpu', '1.0'),
+                        'mem': n.resources.get('mem', '128 M'),
+                        'storage': n.resources.get('storage', '128 M')
+                    },
+                    'elem': n.type.capitalize()
+                } for n in self.withMerged ]
         }
         return meta
 
@@ -225,8 +263,4 @@ class SplitTree:
         # only generate leaf nodes
         for leaf in self.leaves():
             leaf.el.generate(targetDir)
-
-
-
-
 

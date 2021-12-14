@@ -29,9 +29,6 @@ whisk {
     parallel-runs: 0
   }
   resources {
-        cpu = 64
-        mem = 55 g
-        storage = 128 g
         min {
             cpu = 1
             mem = 32 m
@@ -39,13 +36,31 @@ whisk {
         }
         max {
             cpu = 16
-            mem = 512 m
-            storage = 2 g
+            mem = 32 g
+            storage = 64 g
         }
         std {
             cpu = 1
-            mem = 256 m
-            storage = 1 g
+            mem = 128 m
+            storage = 256 m
+        }
+  }
+  container-pool {
+    invoker-pool-resources {
+        compute-pool {
+            cpu = 32
+            mem = 32 g
+            storage = 64 g
+        }
+        mem-pool {
+            cpu = 4
+            mem = 64 g
+            storage = 64 g
+        }
+        balanced-pool {
+            cpu = 8
+            mem = 16 g
+            storage = 64 g
         }
   }
   container-pool {
