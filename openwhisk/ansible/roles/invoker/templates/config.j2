@@ -46,6 +46,7 @@ whisk {
         }
   }
   container-pool {
+    use-proxy: true
     invoker-pool-resources {
         compute-pool {
             cpu = 32
@@ -53,31 +54,13 @@ whisk {
             storage = 64 g
         }
         mem-pool {
-            cpu = 4
+            cpu = 16
             mem = 64 g
             storage = 64 g
         }
         balanced-pool {
-            cpu = 8
+            cpu = 16
             mem = 16 g
-            storage = 64 g
-        }
-  }
-  container-pool {
-    invoker-pool-resources {
-        compute-pool {
-            cpu = 32
-            mem = 32 g
-            storage = 64 g
-        }
-        mem-pool {
-            cpu = 32
-            mem = 32 g
-            storage = 64 g
-        }
-        balanced-pool {
-            cpu = 32
-            mem = 32 g
             storage = 64 g
         }
     }
@@ -96,7 +79,7 @@ whisk {
   container-proxy {
       timeouts {
         idle-container = {{ containerProxy_timeouts_idleContainer }}
-        pause-grace = 500 seconds
+        pause-grace = 60 seconds
       }
   }
 }

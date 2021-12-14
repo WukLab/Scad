@@ -22,6 +22,7 @@ import time
 batchsize = 4 * 1024 * 1024
 
 def main(args, action):
+    action.profile(0)
     rv = {}
 
     # get connection to memory object by name

@@ -24,6 +24,7 @@ iterations = 128
 memsize = 512 * 1024 * 1024
 
 def main(args, action):
+    action.profile(0)
     rv = {}
     rv['start'] = time.time()
     trans = action.get_transport('mem1', 'rdma')

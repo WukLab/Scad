@@ -322,7 +322,7 @@
       {{ invoker.confdir }}/{{ invoker_name }}:/conf,\
       {{ dockerInfo['DockerRootDir'] }}/containers/:/containers,\
       {{ docker_sock | default('/var/run/docker.sock') }}:/var/run/docker.sock,\
-      /tmp/memorypool.sock:/tmp/memorypool.sock"
+      /tmp/:/tmp/"
 ###
 # The root runc directory varies based on the version of docker and runc.
 # When docker>=18.06 uses docker-runc the directory is /run/docker/runtime-runc/moby.
@@ -371,6 +371,13 @@
     volumes: "{{ volumes|default('') }},{{ invoker.docker.volumes | join(',') }}"
   when: invoker.docker.volumes|length > 0
 
+- name: stop invoker
+  docker_container:
+    name: "{{ invoker_name }}"
+    hostname: "{{ invoker_name }}"
+    state: absent
+  when: not lean
+
 - name: start invoker
   docker_container:
     userns_mode: "host"
@@ -378,7 +385,7 @@
     privileged: "yes"
     name: "{{ invoker_name }}"
     hostname: "{{ invoker_name }}"
-    restart_policy: "{{ docker.restart.policy }}"
+    # restart_policy: "{{ docker.restart.policy }}"
     image: "{{ docker_registry }}{{ docker.image.prefix }}/invoker:{{ 'cov' if (coverage_enabled) else docker.image.tag }}"
     state: started
     recreate: true
