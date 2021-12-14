@@ -71,7 +71,7 @@ private[database] object StoreUtils {
 
     if (asFormat.getClass != ma.runtimeClass) {
       throw DocumentTypeMismatchException(
-        s"document type ${asFormat.getClass} did not match expected type ${ma.runtimeClass}.")
+        s"document type ${asFormat.getClass} did not match expected type ${ma.runtimeClass}: ${js}")
     }
 
     val deserialized = asFormat.asInstanceOf[A]

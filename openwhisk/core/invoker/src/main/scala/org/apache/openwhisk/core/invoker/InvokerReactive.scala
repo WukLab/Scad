@@ -325,7 +325,11 @@ class InvokerReactive(
           val response = t match {
             case _: NoDocumentException =>
               ActivationResponse.applicationError(Messages.actionRemovedWhileInvoking)
-            case _: DocumentTypeMismatchException | _: DocumentUnreadable =>
+            case e: DocumentTypeMismatchException =>
+              logging.error(this, s"failed to invoke action mismatch: ${e}")
+              ActivationResponse.whiskError(Messages.actionMismatchWhileInvoking)
+            case e: DocumentUnreadable =>
+              logging.error(this, s"failed to invoke action unreadable: ${e}")
               ActivationResponse.whiskError(Messages.actionMismatchWhileInvoking)
             case _ =>
               ActivationResponse.whiskError(Messages.actionFetchErrorWhileInvoking)

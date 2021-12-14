@@ -28,21 +28,14 @@ whisk {
     # 0 means that there are infinite parallel runs.
     parallel-runs: 0
   }
-  container-pool {
-    user-memory: 55 g
-    concurrent-peek-factor: 0.5 #factor used to limit message peeking: 0 < factor <= 1.0 - larger number improves concurrent processing, but increases risk of message loss during invoker crash
-    akka-client: false # if true, use PoolingContainerClient for HTTP from invoker to action container (otherwise use ApacheBlockingContainerClient)
-    prewarm-expiration-check-interval: {{ container_pool_prewarm_expirationCheckInterval }} # period to check for prewarm expiration
-    prewarm-expiration-check-interval-variance: 2 seconds # varies expiration across invokers to avoid many concurrent expirations
-    prewarm-expiration-limit: 100 # number of prewarms to expire in one expiration cycle (remaining expired will be considered for expiration in next cycle)
-    resources {
+  resources {
         cpu = 64
         mem = 55 g
         storage = 128 g
         min {
             cpu = 1
-            mem = 128 m
-            storage = 128 m
+            mem = 32 m
+            storage = 32 m
         }
         max {
             cpu = 16
@@ -54,7 +47,31 @@ whisk {
             mem = 256 m
             storage = 1 g
         }
+  }
+  container-pool {
+    invoker-pool-resources {
+        compute-pool {
+            cpu = 32
+            mem = 32 g
+            storage = 64 g
+        }
+        mem-pool {
+            cpu = 32
+            mem = 32 g
+            storage = 64 g
+        }
+        balanced-pool {
+            cpu = 32
+            mem = 32 g
+            storage = 64 g
+        }
     }
+    user-memory: 55 g
+    concurrent-peek-factor: 0.5 #factor used to limit message peeking: 0 < factor <= 1.0 - larger number improves concurrent processing, but increases risk of message loss during invoker crash
+    akka-client: false # if true, use PoolingContainerClient for HTTP from invoker to action container (otherwise use ApacheBlockingContainerClient)
+    prewarm-expiration-check-interval: {{ container_pool_prewarm_expirationCheckInterval }} # period to check for prewarm expiration
+    prewarm-expiration-check-interval-variance: 2 seconds # varies expiration across invokers to avoid many concurrent expirations
+    prewarm-expiration-limit: 100 # number of prewarms to expire in one expiration cycle (remaining expired will be considered for expiration in next cycle)
   }
   concurrency-limit {
     min = 1
