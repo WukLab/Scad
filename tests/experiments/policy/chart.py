@@ -8,6 +8,10 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 import matplotlib.patches as mpatches
 
+import matplotlib
+matplotlib.rcParams['pdf.fonttype'] = 42
+matplotlib.rcParams['ps.fonttype'] = 42
+
 def parse_raw_resources(file):
   res = []
   for line in open(file, 'r'):
@@ -63,8 +67,10 @@ def main():
 
   start = 350
   df['time'] = df['time'].dt.total_seconds() - start
-  end = df['time'].max()
+#   end = df['time'].max()
+  end = 236
   df = df[df['time']>0]
+  df = df[df['time']<236]
 #   print(end)
   print(df)
 #   df['time'] = df[df['time'] < end]
@@ -89,7 +95,7 @@ def main():
 #   df.plot(x='time', y='cpu-mem', color=color, ax=ax[1])
 #   df.plot(x='time', y='mem-mem', color=color, ax=ax[2])
 
-  ax[0].set_xticklabels([])
+#   ax[0].set_xticklabels([])
 #   ax[1].set_xticklabels([])
   #by mohammad
   for axx in ax:
@@ -101,7 +107,32 @@ def main():
       if axx.get_legend() is not None:
           axx.get_legend().remove()
 
-  ax[0].set_xlabel("")
+  ax[0].hlines(70, 0, end, linestyles='dashed')
+  ax[0].text(19, 52, 'High Util.\nWatermark', horizontalalignment='center')
+  
+  ax[0].text(87.5, 105, 'Increasing App. 1 Load', horizontalalignment='center')
+  ax[0].annotate(text='',xytext=(25, 100), xycoords='data',
+				xy=(150, 100),textcoords='data',
+				arrowprops=dict(arrowstyle="|-|",lw=4),va='center')
+
+  ax[0].text(190, 105, 'Decreasing App. 1 Load', horizontalalignment='center')
+  ax[0].annotate(text='',xytext=(236, 100), xycoords='data',
+				xy=(148, 100),textcoords='data',
+				arrowprops=dict(arrowstyle="|-|",lw=4),va='center')
+  
+  ax[0].vlines(63, 0, 100, linestyles='dotted')
+  ax[0].text(65, 7, 'App. 2\nSplit', horizontalalignment='left')
+
+  ax[0].vlines(117, 0, 100, linestyles='dotted')
+  ax[0].text(119, 7, 'App. 3\nSplit', horizontalalignment='left')
+
+  ax[0].vlines(200, 0, 100, linestyles='dotted')
+  ax[0].text(199, 12, 'App. 3\nMerged', horizontalalignment='right')
+
+  ax[0].vlines(223, 0, 100, linestyles='dotted')
+  ax[0].text(222, 35, 'App. 2\nMerged', horizontalalignment='right')
+
+#   ax[0].set_xlabel("")
 #   ax[1].set_xlabel("")
 #   ax[2].set_xlabel("")
   ax[0].set_xlim(0,end)
@@ -113,14 +144,16 @@ def main():
 #   ax[2].set_title('Memory Pool')
 
 
-  ax[0].set_xlabel('Execution Time (s)', fontsize=16)
-  fig.text(0.01, 0.5, 'Resource Utilization', va='center', rotation='vertical', fontsize=16)
+  ax[0].set_xlabel('Time (s)', fontsize=15)
+  fig.text(0.01, 0.5, 'Resource Utilization', va='center', rotation='vertical', fontsize=15)
 
   red_patch = mpatches.Patch(color='red', label='Memory')
   blue_patch = mpatches.Patch(color='blue', label='CPU')
-  plt.legend(handles=[red_patch, blue_patch], loc='upper right')
-  fig.set_size_inches(7, 2.5)
-  plt.subplots_adjust(bottom=0.2)
+  plt.legend(handles=[blue_patch, red_patch], loc='upper right')
+  fig.set_size_inches(6.5, 2.8)
+  plt.subplots_adjust(bottom=0.2, right=0.95)
+#   handles, labels = ax[0].get_legend_handles_labels()
+#   ax[0].legend(handles[::-1], labels[::-1], )
   plt.savefig('figure-policy.pdf')
 
 
