@@ -162,7 +162,7 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--output_dir', type=str, default='/tmp',
                         help='output directory')
     parser.add_argument('-m', '--memory', type=str, nargs='+',
-                        help='corunning memory objects, in format <name>:port')
+                        help='corunning memory objects, in format <name>:port[:transport[:args]]')
     parser.add_argument('-p', '--print_output', action='store_true',
                         help='print output')
     parser.add_argument('-i', '--par_index', type=int,

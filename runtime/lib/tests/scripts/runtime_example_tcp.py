@@ -4,7 +4,6 @@ import threading
 import time
 
 activation_id = "0000"
-server_url = "0000"
 
 transport_name = 'client1'
 server_port = 2333
@@ -39,20 +38,20 @@ def main(args, action):
             fetched_value == int_value)
 
 if __name__ == '__main__':
-
     cv = threading.Condition()
     # in real launch, this part will be handled by serverless system
     action = LibdAction(cv, activation_id)
 
+    transport_url = "{};rdma_tcp;".format(transport_name);
     # transport_url = "{};rdma_uverbs;".format(transport_name);
-    transport_url = "{};rdma_local;".format(transport_name);
+    # transport_url = "{};rdma_local;".format(transport_name);
     action.add_transport(transport_url)
 
     def delayed_config():
         time.sleep(5)
-        # extra_url = "url,tcp://localhost:{};".format(
-        #     server_port)
-        extra_url = "size,{};".format(67108864)
+        extra_url = "url,tcp://localhost:{};".format(
+            server_port)
+        # extra_url = "size,{};".format(67108864)
         action.config_transport(transport_name, extra_url)
 
     config_thread = threading.Thread(
