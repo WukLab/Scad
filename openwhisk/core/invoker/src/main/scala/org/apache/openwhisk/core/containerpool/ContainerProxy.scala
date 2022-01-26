@@ -589,6 +589,8 @@ class ContainerProxy(factory: (TransactionId,
         // TODO: is WarmedData correct layer?
         case d: WarmedData =>
           d.currentRun.foreach { r => context.parent ! ObjectEnd(r.msg.activationId) }
+        case _ =>
+          // Do nothing
       }
   }
 
