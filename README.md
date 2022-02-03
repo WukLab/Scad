@@ -21,7 +21,7 @@ Scad programs are written in a DAG whose vertexes are elements and edges are rel
 The input of Scad is a DAG of elements. Currently Scad supports compute elements written in python and memory elements.
 The DAG is defined as a separate directory and elements are defined as files with format "<element-name>.o.<ext-type>". Elements files are begin with meta data defining its relationships with other elements. Currently python files `.o,py` are used to define compute elements and `.o.yaml` to define memory elements. A simple example for Scad Program and Elements can be find in `runtime/test/src/corunning-2-node`.
 
-Compute elements can use Scad APIs to access memory elements. To access memory elements, first call `get_transport('<mem-element-name>')` to get instance of memory element, then use `trans.buf()` to create access buffer. Transfer calls `trans.read()` and `trans.write()` can be used to transfer data between buffer and memory elements. The full list of APIs can be found in `runtime/lib/ext/python/disagg.pyx`. A more complex example (Logistic regression) can be found in `runtime/test/src/logistic_regression/splitted_program/first`.
+Compute elements can use Scad APIs to access memory elements. To access memory elements, first call `get_transport('<mem-element-name>')` to get instance of memory element, then use `trans.buf()` to create access buffer. Transfer calls `trans.read()` and `trans.write()` can be used to transfer data between buffer and memory elements. The full list of APIs can be found in [Python runtime API document](runtime/lib/ext/python). A more complex example (Logistic regression) can be found in `runtime/test/src/logistic_regression/splitted_program/first`.
 
 On top of basic APIs, Scad provides high-level APIs. High-level APIs provide interfaces to accessing remote data structures but hiding the details of remote memory.
 - Data Frame APIs, see `runtime/lib/ext/npjoin`
@@ -31,7 +31,7 @@ On top of basic APIs, Scad provides high-level APIs. High-level APIs provide int
 
 Scad provides `wskgen` commandline tool to generate JSON DAG file from program directory and `wskish` tool to submit to modified OpenWhisk runtime.
 
-However, testing Scad programs do not always need to bring to the whole Scad system as we will show in next section.
+However, testing Scad programs do not always need to bring up the whole Scad system as we will show in next section.
 
 ## Testing Scad Programs
 
@@ -55,7 +55,7 @@ pip install cython requests numpy pyyaml
 
 Scad Local environment can be built with:
 ```
-make -C runtime/lib ext_python
+make -C runtime/lib ext_python memory_server
 ```
 
 #### Verifying the environment.
@@ -98,7 +98,7 @@ $ memory_server
 [transports/rdma_tcp_server_nanomsg.c:70] get a message of size 28
 [transports/rdma_tcp_server_nanomsg.c:70] get a message of size 24
 
-$ python runtime/lib/tests/scripts/runtime_example_local.py
+$ python runtime/lib/tests/scripts/runtime_example_tcp.py
 [libd.c:60] Action 0000 initd with argc 0
 
 [durl.c:46] parsing durl client1;rdma_tcp;
