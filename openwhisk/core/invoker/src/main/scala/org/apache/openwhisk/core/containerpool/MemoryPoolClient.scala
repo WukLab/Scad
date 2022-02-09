@@ -120,7 +120,6 @@ class MemoryPoolClient(val proxy: ProxyNode, acker: MessagingActiveAck)(implicit
     ch.writeAndFlush(req)
     elementId
   }
-  def free() = ???
   def extend() = ???
   def open(rKey: RKey, elementId: Int, connId : Int) = {
     // insert the command
@@ -129,7 +128,7 @@ class MemoryPoolClient(val proxy: ProxyNode, acker: MessagingActiveAck)(implicit
       id = elementId, conn_id = connId, msg = Option(rKey))
     ch.writeAndFlush(req)
   }
-  def close(elementId: Int) = {
+  def free(elementId: Int) = {
     activationIdMap.get(elementId) match {
       case Some((act, _, _, transid)) =>
         val activation = WhiskActivation(
@@ -148,11 +147,9 @@ class MemoryPoolClient(val proxy: ProxyNode, acker: MessagingActiveAck)(implicit
 
     }
     activationIdMap -= elementId
-    val req = MPSelectMsg(op_code = MPOpCode.CLOSE, id = elementId);
+    val req = MPSelectMsg(op_code = MPOpCode.FREE, id = elementId);
+    logging.info(this, s"[MPT] Sending Ack to racksched.. CLOSE $req")
     ch.writeAndFlush(req)
-
-    // send activeAck to scheduler
-
   }
 
   def messageHandler = new SimpleChannelInboundHandler[MPSelectMsg]() {
@@ -179,7 +176,7 @@ class MemoryPoolClient(val proxy: ProxyNode, acker: MessagingActiveAck)(implicit
                             message: Serializable,
                             messageId: (Int, Int)): Unit = {
     val (elementId, connId) = messageId
-    logging.debug(this, s"[MPT] Getting Message $message, for $elementId . $connId")
+    logging.debug(this, s"[MPT] Getting Message $message, for $elementId.$connId")
 
     message match {
       case m: TransportAddress =>
@@ -196,11 +193,12 @@ class MemoryPoolClient(val proxy: ProxyNode, acker: MessagingActiveAck)(implicit
   def release(elementId: Int) = {
     activationIdMap
       .get(elementId)
+      // Release References!
       .foreach { case t@(_, _, references, _) =>
         val newRef = references - 1
         activationIdMap.update(elementId, t.copy(_3 = newRef))
         if (newRef == 0)
-          close(elementId)
+          free(elementId)
       }
   }
 

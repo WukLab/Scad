@@ -385,7 +385,10 @@ class ContainerProxy(factory: (TransactionId,
         .flatMap { container =>
           // now attempt to inject the user code and run the action
           initializeAndRun(container, job)
-            .map(_ => RunCompleted)
+            .map {_ =>
+              context.parent ! ObjectEnd(job.msg.activationId)
+              RunCompleted
+            }
         }
         .pipeTo(self)
 
@@ -423,7 +426,10 @@ class ContainerProxy(factory: (TransactionId,
       implicit val transid = job.msg.transid
       activeCount += 1
       initializeAndRun(data.container, job)
-        .map(_ => RunCompleted)
+        .map{ _ =>
+          context.parent ! ObjectEnd(job.msg.activationId)
+          RunCompleted
+        }
         .pipeTo(self)
       goto(Running) using PreWarmedData(data.container, data.kind, data.resources, 1, data.expires)
 
@@ -504,7 +510,10 @@ class ContainerProxy(factory: (TransactionId,
       implicit val transid = job.msg.transid
       bufferProcessing = false //reset buffer processing state
       initializeAndRun(data.container, job)
-        .map(_ => RunCompleted)
+        .map { _ =>
+          context.parent ! ObjectEnd(job.msg.activationId)
+          RunCompleted
+        }
         .pipeTo(self)
       stay using data.run(job)
 
@@ -526,7 +535,6 @@ class ContainerProxy(factory: (TransactionId,
       //resend to self will send to parent once we get to Removing state
       val newData = data.resumeRun
         .map { run =>
-          logging.warn(this, "Ready warm container unhealthy, will retry activation.")
           self ! run
           data.withoutResumeRun()
         }
@@ -581,18 +589,21 @@ class ContainerProxy(factory: (TransactionId,
     case _ => delay
   }
 
-  onTransition {
-    // Try to capture container finish
-    case Running -> _ =>
-      // Forward Object End message to
-      stateData match {
-        // TODO: is WarmedData correct layer?
-        case d: WarmedData =>
-          d.currentRun.foreach { r => context.parent ! ObjectEnd(r.msg.activationId) }
-        case _ =>
-          // Do nothing
-      }
-  }
+  // Try not use this
+//  onTransition {
+//    // Try to capture container finish
+//    case Running -> _ =>
+//      logging.debug(this, "[MPT][RE] into Running")
+//      // Forward Object End message to
+//      stateData match {
+//        // TODO: is WarmedData correct layer?
+//        case d: WarmedData =>
+//          logging.debug(this, "[MPT][RE] Release CAlled in")
+//          d.currentRun.foreach { r => context.parent ! ObjectEnd(r.msg.activationId) }
+//        case _ =>
+//          // Do nothing
+//      }
+//  }
 
   when(Ready, stateTimeout = pauseGrace) {
     case Event(job: Run, data: WarmedData) =>
@@ -600,7 +611,10 @@ class ContainerProxy(factory: (TransactionId,
       activeCount += 1
       val newData = data.withResumeRun(job)
       initializeAndRun(data.container, job, true)
-        .map(_ => RunCompleted)
+        .map {_ =>
+          context.parent ! ObjectEnd(job.msg.activationId)
+          RunCompleted
+        }
         .pipeTo(self)
 
       goto(Running) using newData
@@ -645,7 +659,10 @@ class ContainerProxy(factory: (TransactionId,
             self ! job
         }
         .flatMap(_ => initializeAndRun(data.container, job, true))
-        .map(_ => RunCompleted)
+        .map {_ =>
+          context.parent ! ObjectEnd(job.msg.activationId)
+          RunCompleted
+        }
         .pipeTo(self)
       goto(Running) using newData
 
