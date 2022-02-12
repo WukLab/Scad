@@ -49,9 +49,10 @@ static inline darray* darray_new(size_t elsize, size_t n) {
 }
 
 static inline void darray_set_size(darray* arr, int size) {
-    size_t nsize = size * arr->elsize;
+    size_t nsize = size * arr->elsize, osize = arr->len * arr->elsize;
     arr->data = realloc(arr->data, nsize);
-    memset(arr->data + arr->len * arr->elsize, arr->data + nsize, 0);
+    if (nsize > osize)
+        memset(arr->data + arr->len * arr->elsize, 0, nsize-osize);
     arr->len = size;
 }
 

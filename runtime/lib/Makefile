@@ -41,6 +41,8 @@ ext_npjoin:
 ext_npjoin_install: ext_npjoin
 	pip install ext/np_join
 
+EXT_OBJECTS = ext/host/memory_server.o ext/pool/memory_pool.o
+EXT_TARGETS = memory_server memory_pool
 memory_server: ext/host/memory_server.o $(OBJECTS)
 	$(LD) $(LD_FLAGS) -o $@ $^ $(LIBS)
 memory_pool: ext/pool/memory_pool.o $(OBJECTS)
@@ -50,6 +52,6 @@ tests:
 	make -C tests
 
 clean:
-	rm $(OBJECTS) $(TARGETS) *.so
+	rm $(OBJECTS) $(TARGETS) $(EXT_OBJECTS) $(EXT_TARGETS) *.so 
 	make -C test clean
 

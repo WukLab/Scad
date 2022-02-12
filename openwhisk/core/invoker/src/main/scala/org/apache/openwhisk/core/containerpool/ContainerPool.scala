@@ -246,7 +246,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
                   if (poolConfig.useProxy) {
                     val srcTransportName = if (isPar) s"$name@$par" else name
-                    val dstTransportName = name
+                    val dstTransportName = "memory"
                     proxyAddressBook.foreach { book =>
                       book.prepareReply(
                         src = ProxyAddress(aid,              srcTransportName),
