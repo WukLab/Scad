@@ -108,7 +108,7 @@ static int _init(struct libd_transport *trans) {
     // init the RDMA connection
     if (!trans->initd) {
         memset(&rstate->conn, 0, sizeof(struct rdma_conn));
-        rstate->conn.gid = 0;
+        rstate->conn.gid = RDMA_GID;
         rstate->conn.port = 1;
 
         // init using the global context and PD

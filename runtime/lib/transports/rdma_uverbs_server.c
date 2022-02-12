@@ -73,8 +73,8 @@ static int _init(struct libd_transport *trans) {
     rstate->conns = NULL;
 
     memset(&rstate->conn, 0, sizeof(struct rdma_conn));
-    rstate->conn.gid = 0;
-    rstate->conn.port = 1;
+    rstate->conn.gid = RDMA_GID; 
+    rstate->conn.port = RDMA_PORT;
 
     // init using the global context and PD
     if (_context == NULL)
@@ -156,8 +156,8 @@ static int _serve(struct libd_transport *trans) {
 
         conn->num_mr = rstate->conn.num_mr;
         conn->mr     = rstate->conn.mr;
-        conn->gid    = 0;
-        conn->port   = 1;
+        conn->gid    = RDMA_GID;
+        conn->port   = RDMA_PORT;
         conn->context = _context;
         conn->pd     = _pd;
 

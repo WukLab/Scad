@@ -2,6 +2,7 @@
 #include <infiniband/verbs.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 
 #include "transports/rdma_uverbs.h"
 #include "libd.h"
@@ -96,7 +97,6 @@ int qp_stm_reset_to_init(struct rdma_conn *conn) {
 }
 
 int qp_stm_init_to_rtr(struct rdma_conn *conn) {
-
     int ret;
     struct ibv_qp_attr qp_attr;
     memset(&qp_attr, 0, sizeof(qp_attr));
@@ -126,7 +126,8 @@ int qp_stm_init_to_rtr(struct rdma_conn *conn) {
     ret = ibv_modify_qp(conn->qp, &qp_attr, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
 
     if (ret != 0) {
-        dprintf("rtr fail %d, roce %d\n", ret, conn->gid);
+        dprintf("rtr fail %d, roce %d, %s", ret, conn->gid, strerror(errno));
+        dprintf("  more info conn %p PORT %d QPN %d RGID %d LGID %d", conn, conn->peerinfo->port, conn->peerinfo->qp_number, conn->peerinfo->gid, conn->gid);
         return -1;
     }
 
@@ -157,13 +158,15 @@ int qp_stm_rtr_to_rts(struct rdma_conn *conn) {
 
 int extract_info(struct rdma_conn *conn, void **buf) {
 
+    int ret;
     int info_size = sizeof(struct conn_info) + conn->num_mr * sizeof(struct ibv_mr);
     *buf = calloc(1, info_size);
     struct conn_info *info = (struct conn_info*) *buf;
 
     if (conn->gid != RDMA_PROTOCOL_IB) {
         union ibv_gid gids;
-        ibv_query_gid(conn->context, conn->port, conn->gid, &gids);
+        ret = ibv_query_gid(conn->context, conn->port, conn->gid, &gids);
+	if (ret != 0) dprintf("WRONG GID %d", ret);
         info->gid = gids;
     } else {
         struct ibv_port_attr port_attr;

@@ -173,8 +173,8 @@ int main(int argc, char *argv[]) {
                     mselect->status = MPOOL_STATUS_OK;
                     mselect->conn_id = i;
 
-                    dprintf("Reply ALLOC, eid %d connid %d msgSize %d",
-                            mselect->id, mselect->conn_id, mselect->msg_size);
+                    dprintf("Reply ALLOC, eid %d connid %d msgSize %d, gid %d, rgid %d",
+                            mselect->id, mselect->conn_id, mselect->msg_size, conn->gid, ((struct rdma_conn *)(mselect->msg))->gid);
 
                     send(fd, buf,
                         mselect->msg_size + sizeof(struct mp_select), 0);

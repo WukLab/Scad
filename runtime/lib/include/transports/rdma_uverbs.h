@@ -36,7 +36,7 @@ struct rdma_conn {
 struct conn_info {
     int port;
     uint32_t local_id;
-    uint16_t qp_number;
+    uint32_t qp_number;
 
     int num_mr;
     union ibv_gid gid;
