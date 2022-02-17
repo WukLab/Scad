@@ -97,13 +97,15 @@ int main(int argc, char *argv[]) {
     dprintf("start memory pool on %s with file %s", device_name, socketpath);
 
     if ((sfd = socket_setup(socketpath)) < 0)
-        dprintf("Failed on socket set at %s", socketpath);
+        dprintf("Failed on socket setup at %s", socketpath);
         return sfd;
 
+    dprintf("socket setup completed");
     if ((ret = listen(sfd, 1)) < 0)
         dprintf("Failed to listen socket");
         return ret;
 
+    dprintf("listening on socket completed");
     socklen = sizeof(remote);
     if ((fd = accept(sfd, (struct sockaddr *)&remote, &socklen)) < 0) {
         dprintf("failed to accept");
