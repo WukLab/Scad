@@ -104,7 +104,7 @@ int main(int argc, char *argv[]) {
     device_name = argc > 2 ? argv[2] : RDMA_DEVICE_NAME;
 
     dprintf("start memory pool on %s with file %s", device_name, socketpath);
-    if ((sfd = socket_setup(socketpath) < 0) {
+    if ((sfd = socket_setup(socketpath)) < 0) {
         dprintf("Failed on socket setup at %s", socketpath);
         return sfd;
     }
