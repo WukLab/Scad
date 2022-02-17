@@ -24,21 +24,30 @@ int socket_setup(char * const socketpath) {
     int fd, len, ret;
     struct sockaddr_un  un;
 
+
     memset(&un, 0, sizeof(un));
     un.sun_family = AF_UNIX;
     strcpy(un.sun_path, socketpath);
     len = offsetof(struct sockaddr_un, sun_path) + strlen(socketpath);
 
     // unlink socket if exists
-    unlink(socketpath);
-
+    dprintf("attempting to unlink %s", socketpath);
+    int rv = unlink(socketpath);
+    // enoent OK
+    if (errno != ENOENT) {
+        dprintf("uh oh failed to unlink %s. errno: %d, %s", socketpath, errno, strerror(errno));
+        return rv;
+    }
+    dprintf("unlinked %s", socketpath);
     // create a UNIX domain datagram socket
     if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0)
         return fd;
 
+    dprintf("created socket %s", socketpath);
     if ((ret = bind(fd, (struct sockaddr *)&un, len)) < 0)
         return ret;
 
+    dprintf("bound socket %s", socketpath);
     return fd;
 }
 
@@ -95,15 +104,16 @@ int main(int argc, char *argv[]) {
     device_name = argc > 2 ? argv[2] : RDMA_DEVICE_NAME;
 
     dprintf("start memory pool on %s with file %s", device_name, socketpath);
-
-    if ((sfd = socket_setup(socketpath)) < 0)
+    if ((sfd = socket_setup(socketpath) < 0) {
         dprintf("Failed on socket setup at %s", socketpath);
         return sfd;
+    }
 
     dprintf("socket setup completed");
-    if ((ret = listen(sfd, 1)) < 0)
+    if ((ret = listen(sfd, 1)) < 0) {
         dprintf("Failed to listen socket");
         return ret;
+    }
 
     dprintf("listening on socket completed");
     socklen = sizeof(remote);

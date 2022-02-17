@@ -1,7 +1,20 @@
 
 
 - name: shutdown mempool
-  shell: pkill memory_pool || true
+  shell: systemctl --user stop mempool
+
+- name: disable mempool
+  shell: systemctl --user disable mempool
+
+- name: Copy systemd mempool service file
+  ansible.builtin.copy:
+    src: /home/wuklab/projects/disagg-serverless/openwhisk/ansible/roles/mempool/files/mempool.service
+    dest: /home/wuklab/.config/systemd/user/mempool.service
+    owner: wuklab
+    group: wuklab
+
+- name: enable mempool service
+  shell: systemctl --user enable mempool
 
 - name: delete /tmp/memorypool.sock
   shell: rm -rf /tmp/memorypool.sock || true
@@ -10,4 +23,4 @@
   shell: cd /home/wuklab/projects/disagg-serverless/runtime/lib && USE_RDMA=1 make memory_pool
 
 - name: launch mempool
-  shell: nohup /home/wuklab/projects/disagg-serverless/runtime/lib/memory_pool "/tmp/memorypool.sock" mlx5_1 > /tmp/mempool.log &
+  shell: systemctl --user start mempool
