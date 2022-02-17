@@ -36,7 +36,7 @@ int socket_setup(char * const socketpath) {
     if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0)
         return fd;
 
-    if ((ret = bind(fd, (struct sockaddr *)&un, len)) < 0) 
+    if ((ret = bind(fd, (struct sockaddr *)&un, len)) < 0)
         return ret;
 
     return fd;
@@ -87,7 +87,7 @@ int main(int argc, char *argv[]) {
 
     struct mp_select *mselect;
 
-    /* struct mp_element */ darray * elements; 
+    /* struct mp_element */ darray * elements;
     struct mp_element *melement;
     struct rdma_conn *conn;
 
@@ -97,14 +97,16 @@ int main(int argc, char *argv[]) {
     dprintf("start memory pool on %s with file %s", device_name, socketpath);
 
     if ((sfd = socket_setup(socketpath)) < 0)
+        dprintf("Failed on socket set at %s", socketpath);
         return sfd;
 
     if ((ret = listen(sfd, 1)) < 0)
+        dprintf("Failed to listen socket");
         return ret;
 
     socklen = sizeof(remote);
     if ((fd = accept(sfd, (struct sockaddr *)&remote, &socklen)) < 0) {
-        dprintf("accept");
+        dprintf("failed to accept");
         return fd;
     }
 
@@ -129,7 +131,7 @@ int main(int argc, char *argv[]) {
             return -1;
         }
 
-        if (mselect->msg_size > 0) 
+        if (mselect->msg_size > 0)
             bytes = recv(fd, buf + sizeof(struct mp_select),
                             mselect->msg_size, 0);
 
