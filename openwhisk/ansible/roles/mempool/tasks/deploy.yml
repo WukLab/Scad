@@ -1,13 +1,19 @@
 
 
 - name: shutdown mempool
-  shell: systemctl --user stop mempool
+  shell: systemctl --user stop mempool || true
 
 - name: disable mempool
-  shell: systemctl --user disable mempool
+  shell: systemctl --user disable mempool || true
+
+- name: Creates systemd user service directory
+  file:
+    path: /home/wuklab/.config/systemd/user
+    state: directory
 
 - name: Copy systemd mempool service file
   ansible.builtin.copy:
+    remote_src: yes
     src: /home/wuklab/projects/disagg-serverless/openwhisk/ansible/roles/mempool/files/mempool.service
     dest: /home/wuklab/.config/systemd/user/mempool.service
     owner: wuklab
