@@ -49,6 +49,7 @@ import org.apache.openwhisk.core.loadBalancer.ShardingContainerPoolBalancer
 import org.apache.openwhisk.core.loadBalancer.ShardingContainerPoolBalancerState
 
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.locks.ReentrantLock
 import scala.collection.concurrent.TrieMap
@@ -156,6 +157,7 @@ class RackSimpleBalancer(config: WhiskConfig,
   val preschedLock = new ReentrantLock()
   case class PreSchedKey(appId: ActivationId, funcId: ActivationId, msgFQEN: String)
   val preScheduled: mutable.Map[PreSchedKey, (InvokerInstanceId, ActivationId, Int, Int)] = mutable.Map()
+  val corunSched: ConcurrentHashMap[ActivationId, InvokerInstanceId] = new ConcurrentHashMap()
 
   /** Build a cluster of all loadbalancers */
   private val cluster: Option[Cluster] = if (loadConfigOrThrow[ClusterConfig](ConfigKeys.cluster).useClusterBootstrap) {
@@ -311,6 +313,16 @@ class RackSimpleBalancer(config: WhiskConfig,
         // schedule it anyways and make the assumption the top balancer could not find another rack for it.
         if (v._2 && msg.rerouteFromRack.forall(f => f.toInt != rackschedInstance.toInt)) {
           None
+        } else if (v._2) {
+          msg.appActivationId match {
+            case Some(appId) =>
+              val invoker = corunSched.computeIfAbsent(appId, aid => {
+                actorSystem.getScheduler.scheduleOnce(FiniteDuration(1, MINUTES))(() => corunSched.remove(aid))
+                v._1
+              })
+              Some(invoker, None, v._2)
+            case None => Some(v._1, None, v._2)
+          }
         } else {
           Some(v._1, None, v._2)
         }
