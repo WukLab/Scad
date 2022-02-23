@@ -316,10 +316,11 @@ class RackSimpleBalancer(config: WhiskConfig,
         } else if (v._2) {
           msg.appActivationId match {
             case Some(appId) =>
-              val invoker = corunSched.computeIfAbsent(appId, aid => {
-                actorSystem.getScheduler.scheduleOnce(FiniteDuration(1, MINUTES))(() => corunSched.remove(aid))
+              val invoker = corunSched.computeIfAbsent(appId, _ => {
+                actorSystem.getScheduler.scheduleOnce(FiniteDuration(2, MINUTES))(() => corunSched.remove(appId))
                 v._1
               })
+              logging.debug(this, s"scheduled randomly, but used corunSched to schedule ${action.fullyQualifiedName(false)} to ${invoker}")
               Some(invoker, None, v._2)
             case None => Some(v._1, None, v._2)
           }
@@ -398,7 +399,6 @@ class RackSimpleBalancer(config: WhiskConfig,
         val activationResult = setupActivation(msg, action, invoker)
         sendActivationToInvoker(messageProducer, msg, aid, invoker).map(_ => activationResult)
       case None =>
-        logging.warn(this, s"system is overloaded. Re-routing through topsched")
         // report the state of all invokers
         val invokerStates = invokersToUse.foldLeft(Map.empty[InvokerState, Int]) { (agg, curr) =>
           val count = agg.getOrElse(curr.status, 0) + 1
@@ -410,6 +410,7 @@ class RackSimpleBalancer(config: WhiskConfig,
           logging.error(this, s"Message was already re-routed and couldn't be scheduled again. Failing activation: ${msg.activationId}")
           Future.failed(LoadBalancerException(s"no invokers available and already re-routed. Activation ${msg.activationId} failed"))
         } else {
+          logging.warn(this, s"system is overloaded. Re-routing through topsched")
           messageProducer.send("topsched", msg.copy(rerouteFromRack = Some(rackschedInstance))) .recoverWith {
             case t: Throwable =>
               logging.error(
