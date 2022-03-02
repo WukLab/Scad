@@ -65,8 +65,8 @@ static int _init(struct libd_transport *trans) {
     init_config_for(trans, struct uverbs_rdma_state);
     get_local_state(rstate,trans,struct uverbs_rdma_state);
 
-    init_config_set(device_name, "mlx5_1");
-    init_config_set(num_devices, 2);
+    init_config_set(device_name, RDMA_DEVICE_NAME);
+    init_config_set(num_devices, RDMA_NUM_DEVICES);
     init_config_set(cq_size, 16);
 
     rstate->num_conns = 0;
