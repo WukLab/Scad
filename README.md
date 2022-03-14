@@ -60,7 +60,7 @@ make -C runtime/lib ext_python memory_server
 
 #### Verifying the environment.
 
-To enable the environment, run `source runtime/scripts/activation`.
+To enable the environment, run `source runtime/scripts/activate`.
 To verify the python language library, run `python runtime/lib/tests/scripts/runtime_example_local.py`. The expected results should be:
 
 ```
@@ -80,7 +80,7 @@ To verify the python language library, run `python runtime/lib/tests/scripts/run
 API test int = 12345, fetch = 12345 True
 [transports/rdma_local.c:31] calling terminate with 65536 size
 ```
-To verify the simulated memory element, launch one simulated memory with `runtime/lib/memory_server` in background, then run `python runtime/lib/tests/scripts/runtime_example_local.py`. The expected result should be:
+To verify the simulated memory element, launch one simulated memory with `runtime/lib/memory_server` in background, then run `python runtime/lib/tests/scripts/runtime_example_tcp.py`. The expected result should be:
 
 ```
 $ memory_server
@@ -141,7 +141,6 @@ Script `wskruntime` can be used to test Scad at container level. run `cd runtime
 ### Testing Scad with Scheduling System and RDMA Communication
 
 Container level testing should be done ONLY IF you are looking for performance numbers with RDMA networking.
-
 
 
 
