@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+
+import requests
+import argparse
+import json
+import subprocess
+import random
+import os
+import yaml
+
+from glob import glob
+
+dir_path = os.path.dirname(os.path.realpath(__file__))
+lib_path = os.path.join(dir_path, '../lib')
+
+# Function for extracting the meta info
+def metaline(line, filetype):
+    if filetype == '.py':
+        if line.startswith('#@ '):
+            return True, line[3:]
+    elif filetype == '.yaml':
+        return True, line
+    return False, None
+
+
+def getMetaFromCode(meta, line):
+    def findMeta(startpattern, endpattern, line):
+        t=[]
+        s = line.find(startpattern)
+        if s != -1:
+            e = line.find(endpattern, s + len(startpattern))
+            t = line[s + len(startpattern):e].replace("'", "").replace('"', "").split(", ")
+        return t
+
+    #Get Memory Element
+    t = findMeta("action.get_transport(",")", line)
+    if len(t)>1:
+        meta["corunning"][t[0]] = {"trans":t[0], "type":t[1] }
+
+    #Get Parent Element
+    t = findMeta("params[", "]", line)
+    if len(t) > 0:
+        meta["parents"].append(t[-1])
+
+
+def AutoGenrateFilemeta(f):
+    metaphase = True
+    name = os.path.basename(f).split('.')[0]
+    filetype = os.path.splitext(f)[1]
+    metadictionary = {}
+    metalist = []
+    sourcelist = []
+    metadictionary["type"] = "memory"
+    if filetype == '.py':
+        metadictionary["type"] = "compute"
+        metadictionary["corunning"] = {}
+
+    metadictionary["name"] = name
+    metadictionary["filetype"] = filetype
+    metadictionary["dependents"] =[]
+    metadictionary["parents"] = []
+    print("processing object file", f, "type", filetype)
+    with open(f) as source:
+        for line in source.readlines():
+            is_meta, meta = metaline(line, filetype)
+            if is_meta:
+                metalist.append(meta)
+            else:
+                sourcelist.append(line)
+                getMetaFromCode(metadictionary,line)
+
+    metaFromComment = yaml.load(''.join(metalist), Loader=yaml.Loader)
+    if metaFromComment:
+        for key in metaFromComment:
+            if key not in metadictionary:
+                metadictionary[key] = metaFromComment[key]
+
+    return metaphase, metadictionary, ''.join(sourcelist)
+
+
+
+def gen_obj(meta, source):
+    # process memory objects
+    memory_source = "def main(_, action):\n    t = action.get_transport('memory', 'rdma_server')\n    t.serve()"
+
+    kind = 'python:3'
+    annotations = {}
+    annotations['exec'] = 'python'
+    if meta['type'] == 'memory':
+        source = memory_source
+
+    name = meta.get('name')
+
+    # process limits
+    limits = {
+        "concurrency": 1,
+        "logs": 10,
+        "resources": {
+            "cpu": meta.get('limits', {}).get('cpu', 1.0),
+            "mem": meta.get('limits', {}).get('mem', '128 MB'),
+            "storage": meta.get('limits', {}).get('storage', '512 MB')
+        },
+        "timeout": 60000
+    }
+
+    # change corunning dict to list
+    corunning = [k for k in meta.get('corunning', {})]
+
+    # import
+    for filename in meta.get('import', []):
+        fullname = os.path.join(dir_path, "../lib/", filename)
+        print('import', fullname)
+        with open(fullname) as f:
+            source = f.read() + '\n' + source
+
+    obj = {
+        'annotations': [{'key': k, 'value': v} for k, v in annotations.items()],
+        'exec': {
+            'kind': kind,
+            'code': source,
+            'binary': True,
+            'main': 'main'
+        },
+        'limits': limits,
+        'name': name,
+        'parameters': [],
+        'publish': False,
+        'porusParams': {
+            'relationships': {
+                'corunning': corunning,
+                'dependents': meta.get('dependents', []),
+                'parents': meta.get('parents', [])
+            },
+            'runtimeType': meta['type'],
+            'withMerged': meta.get('withMerged', []),
+        },
+        'version': "0.0.1"
+    }
+
+    if 'parallelism' in meta:
+        obj['porusParams']['parallelism'] = meta['parallelism']
+
+    return obj
+
+# l : meta, l
+def gen_json(funcname, l):
+    func = {
+        'name': funcname,
+        'objects': [],
+        "publish": True,
+    }
+    dependent = {}
+    for _, meta, _ in l:
+        parents = meta['parents']
+        for p in parents:
+            if p not in dependent:
+                dependent[p] = set()
+            dependent[p].add(meta["name"])
+
+    for _, meta, source in l:
+        meta["dependents"] = list(dependent[meta["name"]]) if meta["name"] in dependent else []
+        func['objects'].append(gen_obj(meta, source))
+    return {'functions': [func], "publish": True}
+
+
+def generate(path, targetFile):
+    if path.endswith('/'):
+        path = path[:-1]
+    dirname = os.path.basename(path)
+    objects = glob(os.path.join(path, "*.o.*"))
+    config = gen_json(dirname, [AutoGenrateFilemeta(f) for f in objects])
+
+    print('generating config file:', targetFile, 'from folder', dirname)
+
+    with open(targetFile, 'w') as outfile:
+        json.dump(config, outfile, indent = 2)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        description='Generate disaggregated json from folder')
+    parser.add_argument('-o', '--output', type=str, default='action.json',
+                        help='Json file with disaggregated openwhisk type')
+    parser.add_argument('path', type=str,
+                        help='path of the object files')
+    args = parser.parse_args()
+
+    generate(args.path, args.output)
