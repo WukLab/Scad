@@ -11,6 +11,8 @@ from numpy.lib import recfunctions as rfn
 import numpy_groupies as npg
 from npjoin import join
 
+port = 8456
+
 """
 checklist:
 1. numpy join only works when keys are unique.
@@ -136,7 +138,7 @@ def main():
     print("[tpcds] step1: begin")
 
     print("[tpcds] step1: start reading csv")
-    tableurl = "http://localhost:8123/date_dim.csv"
+    tableurl = f"http://localhost:{port}/date_dim.csv"
     csv = urllib.request.urlopen(tableurl)
 
     scheme_in = schemas['step1']
@@ -154,7 +156,7 @@ def main():
     print("[tpcds] step 2: begin")
 
     print("[tpcds] step 2: start reading csv")
-    tableurl = "http://localhost:8123/store_returns.csv"
+    tableurl = f"http://localhost:{port}/store_returns.csv"
     csv = urllib.request.urlopen(tableurl)
 
     df2 = genfromtxt(csv, delimiter='|', dtype=build_dtype(schemas['step2']))
@@ -203,7 +205,7 @@ def main():
     print(f"[tpcds] step 5: begin")
 
     print(f"[tpcds] step 5: start reading csv")
-    tableurl = "http://localhost:8123/customer.csv"
+    tableurl = f"http://localhost:{port}/customer.csv"
     csv = urllib.request.urlopen(tableurl)
 
     df5 = genfromtxt(csv, delimiter='|', dtype=build_dtype(schemas['step5']))
@@ -229,7 +231,7 @@ def main():
     print(f"[tpcds] step 7: begin")
 
     print(f"[tpcds] step 7: start reading csv")
-    tableurl = "http://localhost:8123/store.csv"
+    tableurl = f"http://localhost:{port}/store.csv"
     csv = urllib.request.urlopen(tableurl)
 
     df7 = genfromtxt(csv, delimiter='|', dtype=build_dtype(schemas['step7']))

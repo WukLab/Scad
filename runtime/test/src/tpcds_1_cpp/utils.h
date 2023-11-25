@@ -19,4 +19,7 @@
         PRINTO(obj)
 #endif // NDEBUG
 
+// Hook for Mira
+#define WORKER(x)
+
 #endif // _UTILS_H_
