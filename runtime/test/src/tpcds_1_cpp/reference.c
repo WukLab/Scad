@@ -108,7 +108,7 @@ int main(int argc, const char * argv[]) {
         PyArray_DescrConverter(df3_tup, &df3_descr);
         npy_intp df3_len = PyArray_DIM((PyArrayObject *)df2_idx, 0);
 
-        float *buf_df3 = malloc(df3_len * df3_descr->elsize);
+        float *buf_df3 = (float *) malloc(df3_len * df3_descr->elsize);
         // Actual datacopy for join
         char *buf_df2 = PyArray_BYTES((PyArrayObject *)o_df2);
         npy_intp df2_elsize = PyArray_ITEMSIZE((PyArrayObject *)o_df2);

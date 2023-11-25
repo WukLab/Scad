@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <math.h>
+#include <time.h>
 #include <stdlib.h>
 #include <iostream>
 #include <malloc.h>
@@ -25,6 +27,12 @@
 #include <sys/wait.h>
 
 #include "Python.h"
+#ifndef PORT
+    #define PORT 8456
+#endif
+#define XSTR(x) STR(x)
+#define STR(x) #x
+
 
 // required by numpy CAPI
 #define PY_ARRAY_UNIQUE_SYMBOL private_NUMPY_ARRAY_API
@@ -212,13 +220,18 @@ void destroy_hook()
 // -----------------------------------------------------------------------------
 
 
+static inline double time_diff(struct timespec s, struct timespec e) {
+    return (e.tv_sec - s.tv_sec) + 1.0e-9 * (e.tv_nsec - s.tv_nsec);
+}
 
 
-int _main(int argc, char * argv[]) {
+int main_(int argc, char * argv[]) {
     wchar_t *program = Py_DecodeLocale(argv[0], NULL);
     Py_SetProgramName(program);  /* optional but recommended */
     Py_Initialize();
     import_array();
+
+    struct timespec stime, etime;
 
     // imports
     PyObject* m_numpy   = PyImport_Import(PyUnicode_FromString("numpy"));
@@ -226,11 +239,16 @@ int _main(int argc, char * argv[]) {
     PyObject* m_join    = PyImport_Import(PyUnicode_FromString("npjoin.join"));
     PyObject* m_rfn     = PyImport_Import(PyUnicode_FromString("numpy.lib.recfunctions"));
     PyObject* m_npg     = PyImport_Import(PyUnicode_FromString("numpy_groupies"));
-    CHECKO(m_join);
 
-    // functions
     PyObject* f_genfromtxt = PyObject_GetAttrString(m_numpy, "genfromtxt");
+    PyObject *f_unique = PyObject_GetAttrString(m_numpy, "unique");
     PyObject *f_joinon = PyObject_GetAttrString(m_join, "join_on_table_float32");
+    PyObject *f_merge = PyObject_GetAttrString(m_rfn, "merge_arrays");
+    PyObject *f_agg = PyObject_GetAttrString(m_npg, "aggregate");
+
+    CHECKO(f_merge);
+    CHECKO(f_joinon);
+    CHECKO(f_agg);
 
     //////////
     // step1
@@ -371,7 +389,7 @@ int main(int argc, char * argv[])  {
     }
 
     {
-        _main(argc, argv);
+        main_(argc, argv);
     }
 
     if (!disable_hook){
