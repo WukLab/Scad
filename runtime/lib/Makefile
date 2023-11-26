@@ -15,6 +15,8 @@ UTIL_OBJS  := map.o durl.o
 OBJECTS    := libd.o libd_plugin.o libd_plugins.o libd_transport.o libd_transports.o $(UTIL_OBJS) $(DYN_OBJS)
 TARGETS    := libd.so
 
+PYTHON   := python3
+PIP	 := pip3
 LD       := gcc
 INCLUDES := -I./include $(shell pkg-config --cflags glib-2.0)
 LIBS     := -lnanomsg -lcurl -lpthread -libverbs -lrt $(shell pkg-config --libs glib-2.0)
@@ -34,12 +36,12 @@ libd.so: $(OBJECTS)
 # Extensions.
 # Python interface module using cython
 ext_python: libd.so
-	python ext/python/setup.py build_ext -i
+	$(PYTHON) ext/python/setup.py build_ext -i
 
 ext_npjoin:
-	python ext/np_join/setup.py build_ext -i
+	$(PYTHON) ext/np_join/setup.py build_ext -i
 ext_npjoin_install: ext_npjoin
-	pip install ext/np_join
+	$(PIP3) install ext/np_join
 
 EXT_OBJECTS = ext/host/memory_server.o ext/pool/memory_pool.o
 EXT_TARGETS = memory_server memory_pool
