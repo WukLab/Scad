@@ -1,11 +1,12 @@
-from collections import defaultdict
-import pandas as pd
-import json
-from pathlib import Path
-import re
 import argparse
+import json
+import re
 import subprocess
+from pathlib import Path
 from typing import TypedDict
+
+import pandas as pd
+
 
 class MemLogItem(TypedDict):
     event: str
@@ -31,17 +32,18 @@ def parse_traceback(traceback: 'list[str]'):
         pass
     return result
 
+
 def translate_memlog(memlog: 'list[MemLogItem]', source_path, exec_path):
     offset_queries = set()
     _exec_path = exec_path.stem
     _source_path = source_path.stem
     df = pd.DataFrame(memlog)
-    df['focused_offsets'] = df['traceback'].apply(parse_traceback).apply( 
+    df['focused_offsets'] = df['traceback'].apply(parse_traceback).apply(
         lambda x: [offset for name, offset in x if _exec_path in name]
     )
     # aggregate the queries
     df['focused_offsets'].agg(lambda x: offset_queries.update(set(x)))
-    
+
     # Now query the addr2line -e exec_path offset
     offset_queries = list(offset_queries)
     command = ['addr2line', '-e', exec_path] + list(offset_queries)
@@ -70,24 +72,28 @@ def translate_memlog(memlog: 'list[MemLogItem]', source_path, exec_path):
             if i in offset_2_file:
                 return offset_2_file[i]
         return None
-    
+
     # Eventually get the "most relevant" file function / offset 
     df['line_num'] = df['focused_offsets'].apply(get_final_offset)
     df = df[['event', 'timestamp', 'size', 'line_num']]
     # Drop all rows where final_offset is NaN
     df = df.dropna(subset=['line_num'])
-    
+
     # Timestamp base on min
     df['line_num'] = df['line_num'].astype(int)
     return df
-    
+
+
 def parse_args():
     # file
     args = argparse.ArgumentParser()
     args.add_argument('memlog_path', type=str, help='Path to the memory analysis JSONL log.')
-    args.add_argument('--source_path', type=str, help='Path to the source file for analysis. Currently only support one file, but can extend to multiple files (see source code).)', required=True)
+    args.add_argument('--source_path', type=str,
+                      help='Path to the source file for analysis. Currently only support one file, but can extend to multiple files (see source code).)',
+                      required=True)
     args.add_argument('--exec_path', type=str, help='Path to the executable.', required=True)
     return args.parse_args()
+
 
 def main():
     args = parse_args()
@@ -97,7 +103,7 @@ def main():
     memlog_path = Path(args.memlog_path)
     source_path = Path(args.source_path)
     exec_path = Path(args.exec_path)
-    
+
     # Read memlog as line json
     memlog = []
     with open(memlog_path, 'r') as f:
@@ -105,10 +111,11 @@ def main():
         for _line in lines:
             item = json.loads(_line)
             memlog.append(item)
-    
+
     df = translate_memlog(memlog, source_path, exec_path)
     print(df.to_csv())
     pass
+
 
 if __name__ == '__main__':
     main()

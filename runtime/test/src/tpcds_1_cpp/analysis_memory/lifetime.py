@@ -12,6 +12,26 @@ import clang
 import clang.cindex
 from clang.cindex import CursorKind
 
+try:
+    # Set library file for clang.cindex
+    clang.cindex.Config.set_library_file("/home/junda/.local/lib/python3.8/site-packages/clang/native/libclang-16.so")
+except:
+    pass
+
+NODE_DECL_TYPE = [
+    CursorKind.PARM_DECL,
+    CursorKind.VAR_DECL,
+]
+
+NODE_REF_TYPE = [
+    CursorKind.DECL_REF_EXPR,
+]
+
+NODE_SCOPE_TYPE = [
+    CursorKind.FOR_STMT, CursorKind.WHILE_STMT, CursorKind.IF_STMT,
+    CursorKind.COMPOUND_STMT, CursorKind.FUNCTION_DECL,
+]
+
 
 def parse_file(path):
     idx = clang.cindex.Index.create()
@@ -33,7 +53,8 @@ def parse_file(path):
         import warnings
         warnings.warn(str(diag))
     if tu.diagnostics:
-        warnings.warn("Compiler error usually cause error to program analysis. If encountered downstream exception, consider look at function `parse_file` and alter the compiler flags.")
+        warnings.warn(
+            "Compiler error usually cause error to program analysis. If encountered downstream exception, consider look at function `parse_file` and alter the compiler flags.")
     return tu
 
 
@@ -85,9 +106,26 @@ def get_used_node_types():
     return node_types
 
 
+def node_is_assignment(node: 'Cursor'):
+    if node.kind != CursorKind.BINARY_OPERATOR:
+        return False
+    tokens = node.get_tokens()
+    spellings = [t.spelling for t in tokens]
+    if len(spellings) < 2:
+        return False
+    return spellings[1] == '='
+
+
+def get_binary_op_lhs(node: 'Cursor'):
+    assert node.kind == CursorKind.BINARY_OPERATOR
+    first = next(node.get_tokens())
+    return first.spelling
+
+
 def traverse_children_with_life(root: 'clang.cindex.Cursor'):
     var_start = {}
     var_used = {}
+    var_assigned = {}
 
     def _traverse_children_with_life(node: 'clang.cindex.Cursor', depth=0):
 
@@ -95,8 +133,12 @@ def traverse_children_with_life(root: 'clang.cindex.Cursor'):
             if node.spelling in var_start:
                 print("Warning: variable {} is declared multiple times".format(node.spelling))
             var_start[node.spelling] = node
+
         if node.kind in NODE_REF_TYPE:
             var_used[node.spelling] = node
+
+        if node.kind in [CursorKind.DECL_STMT]:
+            pass
 
         # If node is a call expression, don't include the first element (function name).
         # Here we assume function name is always used.
@@ -228,17 +270,100 @@ def describe_concise(node):
         node.extent.end.line)
 
 
+next_scope_id = 0
+
+
+def traverse_children_with_life_scoped(root: 'clang.cindex.Cursor'):
+    results = {}
+
+    scope_def = [{}]
+    scope_used = [{}]
+    assigned_vars = set()
+
+    def __traverse(node: 'clang.cindex.Cursor', depth=0):
+        global next_scope_id
+        if node.kind in NODE_DECL_TYPE:
+            # print(f"Declaration: {node.spelling}. code: ", *describe_with_source(node))
+            if node.spelling:
+                if node.spelling in scope_def[-1]:
+                    print(f"Warning: variable {node.spelling} is declared multiple times.")
+                scope_def[-1][node.spelling] = node
+
+        if node.kind == CursorKind.BINARY_OPERATOR:
+            if node_is_assignment(node):
+                lhs_var = get_binary_op_lhs(node)
+                if lhs_var in assigned_vars:
+                    print(
+                        f"Warning: variable {lhs_var} is assigned multiple times. "
+                        f"This time in line {node.extent.start.line}, "
+                        f"where previously in line {assigned_vars[lhs_var].extent.start.line}"
+                    )
+                assigned_vars.add(lhs_var)
+                # print(f"Assignment: {lhs_var} = ...")
+                # TODO: This is assuming one variable only has one assignment.
+                for _scope_id in range(len(scope_def) - 1, -1, -1):
+                    if lhs_var in scope_def[_scope_id]:
+                        scope_def[_scope_id][lhs_var] = node
+                        scope_used[_scope_id][lhs_var] = node
+            pass
+
+        if node.kind in NODE_REF_TYPE:
+            # Node get used - find the original definition and mark it as used.
+            for _scope_id in range(len(scope_def) - 1, -1, -1):
+                if node.spelling in scope_def[_scope_id]:
+                    scope_used[_scope_id][node.spelling] = node
+                    break
+
+        # If node is a call expression, don't include the first element (function name).
+        # Here we assume function name is always used.
+        for i, child in enumerate(node.get_children()):
+            if child.kind in [CursorKind.CALL_EXPR] and i == 0:
+                continue
+            if child.kind in NODE_SCOPE_TYPE:
+                # enter a new scope
+                scope_def.append({})
+                scope_used.append({})
+
+            __traverse(child, depth + 1)
+
+            if child.kind in NODE_SCOPE_TYPE:
+                # exit a scope
+                a = scope_def.pop()
+                b = scope_used.pop()
+                if a or b:
+                    results[next_scope_id] = (child, a, b)
+                next_scope_id = next_scope_id + 1
+
+        return
+
+    __traverse(root)
+
+    # Organize the result to get var_start, var_used.
+    # But this time, `var_start` has to rename its variable with a line number as suffix ("@<line_number>")
+    # ---> results # (scope_node_, scope_def_, scope_used_)
+    var_start = {}
+    var_used = {}
+    for scope_id, (scope_node, scope_def, scope_used) in results.items():
+        for var, node in scope_def.items():
+            name = f"{var}@{node.extent.start.line}"
+            var_start[name] = node
+            if var in scope_used:
+                var_used[name] = scope_used[var]
+
+    return var_start, var_used
+
+
 def parse_args():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('path', type=Path,)
+    parser.add_argument('source_path', type=Path, )
     parser.add_argument('--target_function', type=str, default="main_")
     return parser.parse_args()
 
 
 if __name__ == '__main__':
     args = parse_args()
-    path = Path(args.path)
+    path = Path(args.source_path)
     target_function = args.target_function
     # path = Path("/home/junda/Scad/runtime/test/src/tpcds_1_cpp/reference_mem.cpp")
     # target_function = "main_"
@@ -248,16 +373,7 @@ if __name__ == '__main__':
     if not _main_func:
         raise ValueError(f"Cannot find function {target_function}")
 
-    NODE_DECL_TYPE = [
-        CursorKind.PARM_DECL,
-        CursorKind.VAR_DECL,
-    ]
-    NODE_REF_TYPE = [
-        CursorKind.DECL_REF_EXPR,
-    ]
-
-    var_start, var_used = traverse_children_with_life(_main_func)
-
+    var_start, var_used = traverse_children_with_life_scoped(_main_func)
     var_end = suggest_delete_line(_main_func, var_start, var_used)
 
     # Organize a csv report

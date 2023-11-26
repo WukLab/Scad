@@ -19,9 +19,6 @@
 #include <time.h>
 #include <unistd.h>
 
-// Assume the main program will be defined as `main_`
-int main_(int argc, char * argv[]);
-
 // -----------------------------------------------------------------------------
 // * Define the TCMallocHook
 // -----------------------------------------------------------------------------
@@ -81,9 +78,9 @@ void NewHook(const void* ptr, size_t size)
 {
     // Filter less than 4KB  = 4 * 1024
     // / 8KB = 8 * 1024
-    if (size <= 4 * 1024){
-        return ;
-    }
+    // if (size <= 4 * 1024){
+    //     return ;
+    // }
 
     sem_wait(mutex);
     {
@@ -199,38 +196,7 @@ void destroy_hook()
 
 
 
-int main(int argc, char * argv[])  {
-    global_argv = argv;
-    global_argc = argc;;
 
-    const char * _disable_hook = getenv(DISABLE_HOOK_ENV_VAR_NAME);
-    bool disable_hook = false;
-    if (_disable_hook){
-        if (strcmp(_disable_hook, "1") == 0){
-            disable_hook = true;
-        } else if (strcmp(_disable_hook, "true") == 0){
-            disable_hook = true;
-        } else if (strcmp(_disable_hook, "True") == 0){
-            disable_hook = true;
-        } else if (strcmp(_disable_hook, "TRUE") == 0){
-            disable_hook = true;
-        }
-    }
-    if (!disable_hook){
-        init_hook();
-        fprintf(stderr, "tcmalloc hook enabled.\n");
-    }
-
-    {
-        main_(argc, argv);
-    }
-
-    if (!disable_hook){
-        destroy_hook();
-    }
-    
-    return 0;
-}
 
 // -----------------------------------------------------------------------------
 // -----
@@ -245,7 +211,7 @@ int main(int argc, char * argv[])  {
 #include "Python.h"
 
 #ifndef PORT
-    #define PORT 8456
+    #define PORT 8123
 #endif
 #define XSTR(x) STR(x)
 #define STR(x) #x
@@ -264,6 +230,7 @@ static inline double time_diff(struct timespec s, struct timespec e) {
 }
 
 int main_(int argc, char * argv[]) {
+    printf("Connect to port: %d", PORT);
     wchar_t *program = Py_DecodeLocale(argv[0], NULL);
     Py_SetProgramName(program);  /* optional but recommended */
     Py_Initialize();
@@ -596,5 +563,39 @@ int main_(int argc, char * argv[]) {
     free(df6_buf);
 
     Py_Finalize();
+    return 0;
+}
+
+
+int main(int argc, char * argv[])  {
+    global_argv = argv;
+    global_argc = argc;;
+
+    const char * _disable_hook = getenv(DISABLE_HOOK_ENV_VAR_NAME);
+    bool disable_hook = false;
+    if (_disable_hook){
+        if (strcmp(_disable_hook, "1") == 0){
+            disable_hook = true;
+        } else if (strcmp(_disable_hook, "true") == 0){
+            disable_hook = true;
+        } else if (strcmp(_disable_hook, "True") == 0){
+            disable_hook = true;
+        } else if (strcmp(_disable_hook, "TRUE") == 0){
+            disable_hook = true;
+        }
+    }
+    if (!disable_hook){
+        init_hook();
+        fprintf(stderr, "tcmalloc hook enabled.\n");
+    }
+
+    {
+        main_(argc, argv);
+    }
+
+    if (!disable_hook){
+        destroy_hook();
+    }
+    
     return 0;
 }

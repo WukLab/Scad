@@ -1,5 +1,5 @@
 PYTHON_CONFIG := python3-config
-CFLAGS  := $(CFLAGS) -O3
+# CFLAGS  := $(CFLAGS) -O3
 CFLAGS  := $(CFLAGS) $(shell python3-config --cflags)
 CFLAGS  := $(CFLAGS) -I$(shell python3 -c "import numpy as np; print(np.get_include());")
 CFLAGS  := $(CFLAGS) -g -pg -O0 -std=c++17
