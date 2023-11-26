@@ -141,13 +141,6 @@ void DeleteHook(const void* ptr)
 
 void setup_logging(){
 
-    // Setup the log file.
-    // Use the program name and the current time to create a unique log file name.
-    auto now = std::chrono::system_clock::now();
-    auto now_c = std::chrono::system_clock::to_time_t(now);
-    char time_str[100];
-    strftime(time_str, sizeof(time_str), "%Y%m%d_%H%M%S", std::localtime(&now_c));
-
     // Add environment variable
     const char * log_file_name = getenv(LOG_FILE_NAME_ENV_VAR_NAME);
     if (log_file_name == nullptr) {
@@ -230,7 +223,8 @@ static inline double time_diff(struct timespec s, struct timespec e) {
 }
 
 int main_(int argc, char * argv[]) {
-    printf("Connect to port: %d", PORT);
+    fprintf(stderr, "Connect to port: %d\n", PORT);
+
     wchar_t *program = Py_DecodeLocale(argv[0], NULL);
     Py_SetProgramName(program);  /* optional but recommended */
     Py_Initialize();
