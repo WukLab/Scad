@@ -4,7 +4,7 @@
 #include "string.h"
 
 static char fmt[4096];
-static char * SCHEMA_FMT(int pairs) {
+static char * SCHEMA_FMT_WITH(int pairs, const char *last) {
     int idx = 0;
     fmt[idx++] = '[';
     for (int i = 0; i < pairs; i++) {
@@ -12,8 +12,11 @@ static char * SCHEMA_FMT(int pairs) {
         if (i+1 != pairs) fmt[idx++] = ',';
     }
     fmt[idx++] = ']';
-    fmt[idx++] = '\0';
+    strcpy(fmt + idx, last);
     return fmt;
+}
+static char * SCHEMA_FMT(int pairs) {
+    return SCHEMA_FMT_WITH(pairs, "");
 }
 
 #define STEP1_SCHEMA_SIZE 28
@@ -75,5 +78,67 @@ static char * SCHEMA_FMT(int pairs) {
     "sr_customer_sk", "f4", \
     "sr_store_sk"   , "f4", \
     "sr_return_amt" , "f4"
+
+#define DF5_SCHEMA_SIZE 18
+#define DF5_SCHEMA \
+    "c_customer_sk", "f4", \
+    "c_customer_id", "S16", \
+    "c_current_cdemo_sk", "f4", \
+    "c_current_hdemo_sk", "f4", \
+    "c_current_addr_sk", "f4", \
+    "c_first_shipto_date_sk", "f4", \
+    "c_first_sales_date_sk", "f4", \
+    "c_salutation", "S10", \
+    "c_first_name", "S20", \
+    "c_last_name", "S30", \
+    "c_preferred_cust_flag", "S1", \
+    "c_birth_day", "f4", \
+    "c_birth_month", "f4", \
+    "c_birth_year", "f4", \
+    "c_birth_country", "S20", \
+    "c_login", "S13", \
+    "c_email_address", "S50", \
+    "c_last_review_date", "S10"
+
+// TODO: confirm df6 schema
+#define DF6_SCHEMA_SIZE 4
+#define DF6_SCHEMA \
+    "ctr_customer_sk", "f4", \
+    "ctr_store_sk"   , "f4", \
+    "ctr_return_amt" , "f4", \
+    "c_customer_id", "S16"
+
+// TODO: confirm type s2 -> s4
+#define DF7_SCHEMA_SIZE 29
+#define DF7_SCHEMA \
+    "s_store_sk", "f4", \
+    "s_store_id", "S16", \
+    "s_rec_start_date", "S12", \
+    "s_rec_end_date", "S12", \
+    "s_closed_date_sk", "f4", \
+    "s_store_name", "S52", \
+    "s_number_employees", "f4", \
+    "s_floor_space", "f4", \
+    "s_hours", "S20", \
+    "s_manager", "S40", \
+    "s_market_id", "f4", \
+    "s_geography_class", "S100", \
+    "s_market_desc", "S100", \
+    "s_market_manager", "S40", \
+    "s_division_id", "f4", \
+    "s_division_name", "S52", \
+    "s_company_id", "f4", \
+    "s_company_name", "S52", \
+    "s_street_number", "S12", \
+    "s_street_name", "S60", \
+    "s_street_type", "S16", \
+    "s_suite_number", "S12", \
+    "s_city", "S60", \
+    "s_county", "S32", \
+    "s_state", "S4", \
+    "s_zip", "S12", \
+    "s_country", "S20", \
+    "s_gmt_offset", "f4", \
+    "s_tax_precentage", "f4"
 
 #endif // _SCHEMA_H_
