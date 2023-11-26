@@ -9,7 +9,24 @@ if [ -z "$SF" ]; then
     exit 1
 fi
 
-echo "Warning: We do not check the python server for data size. You should make sure you have spin up a Python HTTP server at the correct location. In this case, you should refer to /data/tpcds_data_sf_${SF}/ to see if your"
+# Prepare data
+if [ ! -d "/data/tpcds_data_sf_${SF}" ]; then
+    echo "Error: /data/tpcds_data_sf_${SF} does not exist."
+    exit 1
+fi
+
+pid=$(pgrep -f "python -m http.server 8123")
+if [ ! -z "$pid" ]; then
+    echo "Python HTTP server is already running at port 8123: $pid"
+    echo "Killing it ..."
+    kill $pid
+fi
+
+cd /data/tpcds_data_sf_${SF}
+# Spin up a Python HTTP server
+python -m http.server 8123 &
+echo "Python HTTP server is running at port 8123"
+
 
 stem="tpcds_1.sf_${SF}"
 mem_log_file="${stem}.mem.log"
@@ -24,6 +41,11 @@ LOG_FILE_NAME="analysis_memory/${mem_log_file}" ./tpcds_1_mem
 
 cd /home/junda/Scad/runtime/test/src/tpcds_1_cpp/analysis_memory
 python lifetime.py ../reference_mem.cpp --target_function main_ >| ${lifetime_file}
-python memusage.py  ./tpcds_1.mem.log --source_path ../reference_mem.cpp --exec_path ../tpcds_1_mem >| ${line_activity_file}
+python memusage.py  ${mem_log_file} --source_path ../reference_mem.cpp --exec_path ../tpcds_1_mem >| ${line_activity_file}
 python final.py --lifetime_csv_path ${lifetime_file} --line_activity_csv_path ${line_activity_file} >| ${stem}.final.csv
 python final.py --lifetime_csv_path ${lifetime_file} --line_activity_csv_path ${line_activity_file} --display_markdown
+
+# Kill the Python HTTP server
+pid=$(pgrep -f "python -m http.server 8123")
+echo "Killing Python HTTP server at port 8123: $pid"
+kill $pid
