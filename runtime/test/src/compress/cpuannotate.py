@@ -5,22 +5,27 @@ only focus on the top-level of that function in the program to understand time s
 """
 import shutil
 import sys
-assert sys.version_info >= (3, 8)
-assert sys.version_info < (3, 9)
-
-from functools import lru_cache
+import warnings
 from pathlib import Path
 
 import clang
 import clang.cindex
 from clang.cindex import CursorKind
 
+assert sys.version_info >= (3, 8) and sys.version_info < (3, 9), (
+    f"Python version must be 3.8 as of now. "
+    f"I do not know how to extend this to other python versions just yet."
+)
+
 try:
     # Set library file for clang.cindex
-    clang.cindex.Config.set_library_file("/home/junda/.local/lib/python3.8/site-packages/clang/native/libclang-16.so")
+    clang.cindex.Config.set_library_file(
+        "/home/junda/.local/lib/python3.8/site-packages/clang/native/libclang-16.so"
+    )
 except:
     print("Library path already set once.")
     pass
+
 
 def parse_file(path):
     idx = clang.cindex.Index.create()
@@ -39,7 +44,6 @@ def parse_file(path):
             '-std=c++17',
         ])
     for diag in tu.diagnostics:
-        import warnings
         warnings.warn(str(diag))
     if tu.diagnostics:
         warnings.warn(
@@ -53,10 +57,10 @@ def describe(node):
 
 def describe_concise(node):
     f = node.extent.start.file.name
-    return (node.kind.name, getattr(node.kind, "displayname", ""), node.spelling, f"{node.extent.start.line}:{node.extent.start.column}~{node.extent.end.line}:{node.extent.end.column}")
+    return (node.kind.name, getattr(node.kind, "displayname", ""), node.spelling,
+            f"{node.extent.start.line}:{node.extent.start.column}~{node.extent.end.line}:{node.extent.end.column}")
 
 
-# @lru_cache(maxsize=None)
 def get_source_file(file_path):
     with open(file_path) as f:
         return f.read().splitlines(True)
@@ -71,6 +75,7 @@ def describe_with_source(node):
     f = node.extent.start.file.name
     return (f"{node.extent.start.line}:{node.extent.start.column}~{node.extent.end.line}:{node.extent.end.column}",
             get_source_line(f, node.extent.start, node.extent.end))
+
 
 def traverse_children(node: 'clang.cindex.Cursor', depth=0, describe_func=describe, max_depth=None):
     kwargs = dict(locals())
@@ -114,6 +119,7 @@ def get_used_node_types(target):
     get_all_used_node_types(target)
     return node_types
 
+
 def traverse_top_ish(node, depth=0, describe_func=describe_concise):
     """Only if the staetment is a compound statement you wil"""
     kwargs = dict(locals())
@@ -126,25 +132,30 @@ def traverse_top_ish(node, depth=0, describe_func=describe_concise):
             continue
         traverse_top_ish(child, **kwargs, depth=depth + 1)
     return
-        
+
 
 def collect_top_ish(root):
-    result = [] # Collect the leaves
+    result = []  # Collect the leaves
+
     def _collect(node):
-        if node.kind not in [CursorKind.COMPOUND_STMT, CursorKind.FUNCTION_DECL] + [CursorKind.RETURN_STMT, CursorKind.PARM_DECL]:
+        if node.kind not in [CursorKind.COMPOUND_STMT, CursorKind.FUNCTION_DECL] + [CursorKind.RETURN_STMT,
+                                                                                    CursorKind.PARM_DECL]:
             result.append(node)
         for child in node.get_children():
             if node.kind not in [CursorKind.COMPOUND_STMT, CursorKind.FUNCTION_DECL]:
                 continue
             _collect(child)
         return
+
     _collect(root)
     return result
 
+
 def describe_with_offset(node):
     f = node.extent.start.file.name
-    return (node.kind.name, getattr(node.kind, "displayname", ""), node.spelling, f"{node.extent.start.line}:{node.extent.start.column}~{node.extent.end.line}:{node.extent.end.column}", f"offset={node.extent.start.offset}~{node.extent.end.offset}")
-
+    return (node.kind.name, getattr(node.kind, "displayname", ""), node.spelling,
+            f"{node.extent.start.line}:{node.extent.start.column}~{node.extent.end.line}:{node.extent.end.column}",
+            f"offset={node.extent.start.offset}~{node.extent.end.offset}")
 
 
 def parse_args():
@@ -158,61 +169,67 @@ def parse_args():
 def get_time_macro_start(name, line):
     return '{' + f'__stgst("{name}", {line});' + '}'
 
+
 def get_time_macro_end(name, line):
     return '{' + f'__stged("{name}", {line});' + '}'
 
 
-
 if __name__ == '__main__':
     args = parse_args()
-    path  = args.source_path
+    path = args.source_path
     tu = parse_file(path)
     root = tu.cursor
-    _main_func = locate_function_decl(root, args.target_function)
-    
+    target_func_node = locate_function_decl(root, args.target_function)
+
     # Debug
     # traverse_top_ish(_main_func, describe_func=describe_with_offset)
-    result = collect_top_ish(_main_func)
+    result = collect_top_ish(target_func_node)
     # for i in result:
     #     print(*describe_concise(i))
-    # result
+    # traverse_children(target, describe_func=describe_concise)
+    # print(get_used_node_types(target))
+
     # Now copy the original file, and insert the annotation.
-    
     new_path = path.parent / (path.stem + "_annotated.cpp")
     shutil.copy(path, new_path)
-    
+
     codes = get_source_file(path)
     codes = [i.strip('\n') for i in codes]
-    # Now traverse the `result` in reverse order, and insert the annotation.
-    # at the end of the offset, insert the annotation 
-    for i, node in enumerate(result[::-1]):
+
+    # Now traverse the `result` and insert the instruction to print time.
+    for i, node in enumerate(reversed(result)):
         name_idx = len(result) - i
-        print(node.extent.start.line, node.extent.start.column, node.extent.end.line, node.extent.end.column, get_source_line(node.extent.start.file.name, node.extent.start, node.extent.end))
+        # print(node.extent.start.line, node.extent.start.column, node.extent.end.line, node.extent.end.column,
+        #       get_source_line(node.extent.start.file.name, node.extent.start, node.extent.end))
         st, ed = node.extent.start.line, node.extent.end.line
         st_macro = get_time_macro_start(name_idx, st)
         codes[st - 1] = st_macro + codes[st - 1]
-        print(st, codes[st - 1])
+        # print(st, codes[st - 1])
 
         ed_macro = get_time_macro_end(name_idx, ed)
         codes[ed - 1] = codes[ed - 1] + ed_macro
-        print(ed, codes[ed - 1])
+        # print(ed, codes[ed - 1])
 
-    codes = [
+    # TODO: Probably consider setting up a log file.
+    headers = [
         '#include <chrono>',
-        '#define __stgcommon(name, line, status) {auto t = std::chrono::high_resolution_clock::now(); std::cerr << name << "," << status << "," << line << "," << std::chrono::duration_cast<std::chrono::nanoseconds>(t.time_since_epoch()).count() << std::endl;}',
+        ('#define __stgcommon(name, line, status) {'
+         'auto t = std::chrono::high_resolution_clock::now(); '
+         'std::cerr '
+         '<< name << "," << status << "," << line << "," '
+         '<< std::chrono::duration_cast<std::chrono::nanoseconds>(t.time_since_epoch()).count() '
+         '<< std::endl;}'),
         '#define __stgst(name, line) {__stgcommon(name, line, "start")}',
         '#define __stged(name, line) {__stgcommon(name, line, "end")}',
-    ] + codes
+    ]
+    codes = headers + codes
 
     codes = [i + '\n' for i in codes]
 
     with open(new_path, 'w') as f:
         f.writelines(codes)
 
+    # Finally, in the build directory, write your make file and run the following command for compiling.
     # ! make simplemt_annotated.out
     # ! ./simplemt_annotated.out 2>simplemt_annotated.cpulog.csv
     # ! cat simplemt_annotated.cpulog.csv
-
-    # traverse_children(target, describe_func=describe_concise)
-    # print(get_used_node_types(target))
-    
