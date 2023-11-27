@@ -12,8 +12,13 @@ all: $(OBJECTS)
 simplemt.out: simplemt.cpp
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
+simplemt_annotated.out: simplemt_annotated.cpp
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
 zstdmt.out: zstdmt.cpp
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -lzstd -pthread
+
+
 
 clean: 
 	rm -f *.o *.out
